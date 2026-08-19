@@ -5,6 +5,8 @@ target/
 *.iml
 application-dev.yml
 application-local.yml
+.env
+.env.local
 *.log
 
 # ===== 前端 =====
