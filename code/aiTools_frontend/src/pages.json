@@ -1,0 +1,37 @@
+{
+  "pages": [
+    { "path": "pages/index", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/forum", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/search", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/my", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/login", "style": { "navigationBarTitleText": "登录", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/register", "style": { "navigationBarTitleText": "注册", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/forget", "style": { "navigationBarTitleText": "找回账号", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/reset-password", "style": { "navigationBarTitleText": "重置密码", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/change-password", "style": { "navigationBarTitleText": "修改密码", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/profile", "style": { "navigationBarTitleText": "个人资料", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/favorites", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/settings", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/tool-common", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/history", "style": { "navigationBarTitleText": "历史记录", "navigationStyle": "custom", "enablePullDownRefresh": true, "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/prompt-list", "style": { "navigationBarTitleText": "我的提示词", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/tool-custom", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "智汇工具箱",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F8F8F8"
+  },
+  "tabBar": {
+    "color": "#8E8B8B",
+    "selectedColor": "#211E1E",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/index", "text": "首页", "iconPath": "static/icons/home.png", "selectedIconPath": "static/icons/home-active.png" },
+      { "pagePath": "pages/forum", "text": "论坛", "iconPath": "static/icons/forum.png", "selectedIconPath": "static/icons/forum-active.png" },
+      { "pagePath": "pages/my", "text": "我的", "iconPath": "static/icons/my.png", "selectedIconPath": "static/icons/my-active.png" }
+    ]
+  }
+}

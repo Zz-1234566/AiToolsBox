@@ -1,0 +1,63 @@
+# 开发环境配置模板
+# 复制本文件为 application-dev.yml，按本地实际值替换占位符后即可使用。
+# application-dev.yml 已被 .gitignore 排除，不会提交到仓库。
+spring:
+  # MySQL
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ai_toolbox?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:your-mysql-password}
+
+  # 邮件配置（QQ 邮箱 SMTP）
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: ${MAIL_USERNAME:your-email@qq.com}
+    password: ${MAIL_PASSWORD:your-smtp-authorization-code}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
+      mail.smtp.socketFactory.class: javax.net.ssl.SSLSocketFactory
+      mail.smtp.socketFactory.fallback: false
+      mail.smtp.ssl.protocols: TLSv1.2
+
+  # Redis 配置
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+# JWT
+jwt:
+  secret: ${JWT_SECRET:your-jwt-secret-key-please-change-in-production}
+  expiration: 604800000  # 7 days in milliseconds
+
+# 腾讯云 COS：cos.enabled=true 启用 COS 存储（文件上传到 avatar/ 等前缀目录，公开读），
+# 否则默认使用本地 uploads/ 目录存储。密钥仅本地开发配置，请勿提交到公共仓库。
+cos:
+  enabled: true
+  secret-id: ${COS_SECRET_ID:your-cos-secret-id}
+  secret-key: ${COS_SECRET_KEY:your-cos-secret-key}
+  region: ap-guangzhou
+  bucket: your-cos-bucket-name
+
+# 验证码配置
+verify-code:
+  expire-minutes: 5          # 验证码有效期（分钟）
+  resend-seconds: 60         # 重发间隔（秒）
+  length: 6                  # 验证码位数
+
+# DeepSeek AI 配置
+ai:
+  deepseek:
+    api-url: https://opencode.ai/zen/go/v1/chat/completions
+    api-key: ${AI_DEEPSEEK_API_KEY:your-deepseek-api-key}
+    model: deepseek-v4-flash
+    timeout-seconds: 60

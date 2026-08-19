@@ -1,0 +1,14 @@
+# ===== 后端 =====
+target/
+*.class
+.idea/
+*.iml
+application-dev.yml
+application-local.yml
+*.log
+
+# ===== 前端 =====
+node_modules/
+dist/
+unpackage/
+.hbuilderx/

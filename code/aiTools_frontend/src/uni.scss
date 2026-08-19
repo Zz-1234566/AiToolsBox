@@ -1,0 +1,33 @@
+// 主题色 - 参考 OpenCode 黑白灰极简风格
+// 使用 CSS 自定义属性实现运行时主题切换，SCSS 编译后输出 var() 由浏览器解析
+$bg-color: var(--bg-color, #F8F8F8);
+$bg-white: var(--bg-white, #FFFFFF);
+$bg-gray: var(--bg-gray, #F5F5F5);
+
+$text-primary: var(--text-primary, #211E1E);
+$text-secondary: var(--text-secondary, #656363);
+$text-tertiary: var(--text-tertiary, #8E8B8B);
+
+$border-color: var(--border-color, #E8E8E8);
+$divider-color: var(--divider-color, #F0F0F0);
+
+$radius-sm: 12rpx;
+$radius-md: 16rpx;
+$radius-lg: 24rpx;
+$radius-pill: 9999rpx;
+
+$shadow-card: 0 4rpx 24rpx rgba(0, 0, 0, 0.04);
+$shadow-float: 0 8rpx 32rpx rgba(0, 0, 0, 0.08);
+
+$spacing-xs: 8rpx;
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+$spacing-lg: 32rpx;
+$spacing-xl: 48rpx;
+
+$font-size-xs: 22rpx;
+$font-size-sm: 24rpx;
+$font-size-md: 28rpx;
+$font-size-lg: 32rpx;
+$font-size-xl: 40rpx;
+$font-size-xxl: 48rpx;
