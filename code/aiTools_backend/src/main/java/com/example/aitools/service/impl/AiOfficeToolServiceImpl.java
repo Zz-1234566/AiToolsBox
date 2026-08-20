@@ -8,6 +8,7 @@ import com.example.aitools.entity.AiPrompt;
 import com.example.aitools.entity.AiTool;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.mapper.AiToolMapper;
+import com.example.aitools.service.AiFileReaderService;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.service.BatchTaskService;
@@ -42,6 +43,9 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     /** OCR 智能识别工具编码 */
     private static final String TOOL_CODE_AI_OCR = "ocr-recognize";
 
+    /** AI 文件解读工具编码 */
+    private static final String TOOL_CODE_AI_FILE_READER = "ai-file-reader";
+
     /** 提示词用途：格式 */
     private static final String PROMPT_USE_FORMAT = "format";
 
@@ -55,6 +59,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private final DocumentParser documentParser;
     private final OcrService ocrService;
     private final BatchTaskService batchTaskService;
+    private final AiFileReaderService aiFileReaderService;
 
     /**
      * 工作总结
@@ -424,5 +429,61 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                 .last("LIMIT 1");
         AiTool tool = aiToolMapper.selectOne(wrapper);
         return tool == null ? null : tool.getId();
+    }
+
+    @Override
+    public com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files,
+                                                                            String prompt, String batchId) {
+        if (files == null || files.isEmpty()) {
+            throw new BusinessException("请至少上传 1 个文件");
+        }
+        if (files.size() > 10) {
+            throw new BusinessException("单次最多上传 10 个文件");
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+        StringBuilder resultJson = new StringBuilder("[");
+        log.info("[B2-FILE] 开始 userId={} fileCount={} batchId={}", userId, files.size(), batchId);
+
+        for (int i = 0; i < files.size(); i++) {
+            BatchFilePayload payload = files.get(i);
+            String fileName = (payload != null && payload.getOriginalFilename() != null)
+                    ? payload.getOriginalFilename() : "未命名-" + (i + 1);
+            String fileResultJson;
+            boolean fileOk = false;
+
+            if (payload == null || payload.getContent() == null || payload.getContent().length == 0) {
+                failCount++;
+                fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"errorMsg\":\"文件为空\",\"output\":\"\"}";
+            } else {
+                long start = System.currentTimeMillis();
+                try {
+                    String output = aiFileReaderService.readFile(payload, prompt);
+                    long duration = System.currentTimeMillis() - start;
+                    successCount++;
+                    fileOk = true;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(output) + "\"}";
+                } catch (Exception e) {
+                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    failCount++;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
+                    log.warn("[B2-FILE] 单文件失败 userId={} fileName={} err={}", userId, fileName, errMsg);
+                }
+            }
+
+            if (i > 0) resultJson.append(",");
+            resultJson.append(fileResultJson);
+
+            try {
+                batchTaskService.appendItem(batchId, fileResultJson, fileOk);
+            } catch (Exception e) {
+                log.error("[B2-FILE] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
+            }
+        }
+
+        resultJson.append("]");
+        log.info("[B2-FILE] 完成 userId={} batchId={} success={} fail={}", userId, batchId, successCount, failCount);
+        return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, files.size(), resultJson.toString(), "");
     }
 }

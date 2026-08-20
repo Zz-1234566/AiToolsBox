@@ -47,3 +47,6 @@ mvnw.cmd
 
 ### Local uploads ###
 uploads/
+
+### Local env (contains secrets) ###
+.env

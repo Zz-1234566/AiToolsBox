@@ -3,7 +3,7 @@
 
 // 工具分类（模块），code 即 tool_type
 export const CATEGORIES = [
-  { code: 'AI办公助手', tools: ['work-summary', 'doc-keypoint-extract', 'weekly-report', 'meeting-minutes', 'ocr-recognize'] },
+  { code: 'AI办公助手', tools: ['work-summary', 'doc-keypoint-extract', 'ai-file-reader', 'weekly-report', 'meeting-minutes', 'ocr-recognize'] },
   { code: '图片创意工具', tools: ['id-photo-bg-change', 'portrait-bg-replace', 'image-compress', 'qr-code-gen'] },
   { code: '效率小工具', tools: ['todo-list', 'pomodoro', 'password-gen'] }
 ]
@@ -58,6 +58,29 @@ export const TOOLS = {
     },
     validateRules: {
       file:   { token: true, file: { type: 'batch', min: 1, error: '请至少选择 1 个文件' }, prompt: PROMPT_REQUIRED },
+      image:  { unsupported: true, error: '该工具请使用文件上传' },
+      text:   { unsupported: true, error: '该工具请使用文件上传' },
+      audio:  { unsupported: true, error: '音频输入功能开发中' }
+    }
+  },
+  'ai-file-reader': {
+    name: 'AI 文件解读', icon: 'summary', category: 'AI办公助手', realized: true,
+    desc: '上传任意文件（图片/PDF/Word/TXT），AI 自动识别内容并解读。支持多种文件格式，可同时处理多个文件。',
+    inputTypes: ['file'], defaultInput: 'file', fileType: 'document',
+    uploadTitle: '上传文件', uploadDesc: '支持图片、PDF、Word、TXT 格式',
+    actionText: '开始解读', resultTitle: '解读结果', resultPlaceholder: '文件解读结果将在这里显示...',
+    fileRule: {
+      accept: '.jpg,.jpeg,.png,.pdf,.docx,.txt',
+      maxCount: 10,
+      maxTotalSize: 200 * 1024 * 1024,
+      title: '上传文件',
+      desc: '支持图片/PDF/Word/TXT · 最多 10 个文件 · 总大小 200MB',
+      notice: 'PDF 支持说明：\n• ✅ 数字型 PDF 可直接解析\n• ✅ 扫描型 PDF（纸质拍照）可转图片识别\n• ⚠️ 若识别效果不佳，可先截图再上传图片',
+      uploadType: 'aiFileReaderBatch',
+      apiPath: '/api/ai-office/ai-file-reader/batch-upload'
+    },
+    validateRules: {
+      file:   { token: true, file: { type: 'batch', min: 1, error: '请至少选择 1 个文件' } },
       image:  { unsupported: true, error: '该工具请使用文件上传' },
       text:   { unsupported: true, error: '该工具请使用文件上传' },
       audio:  { unsupported: true, error: '音频输入功能开发中' }

@@ -72,3 +72,8 @@ ai:
     api-key: ${AI_DEEPSEEK_API_KEY:your-deepseek-api-key}
     model: deepseek-v4-flash
     timeout-seconds: 60
+  # MiniMax M3 多模态配置（AI 文件解读工具用）
+  minimax:
+    api-url: https://api.minimax.io/v1/chat/completions
+    api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
+    model: MiniMax-M3

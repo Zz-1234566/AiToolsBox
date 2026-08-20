@@ -94,4 +94,11 @@ public interface AiOfficeToolService {
      * @param batchId 批量任务 ID（必传）
      */
     com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files, String promptFormat, String promptGenerate, String batchId);
+
+    /**
+     * 批量 AI 文件解读（B2）：MiniMax M3 多模态
+     * <p>单文件完成后立即 appendItem 入库，最后由 Controller 调 completeBatch 写终态。
+     * 单文件失败不影响整体。
+     */
+    com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files, String prompt, String batchId);
 }
