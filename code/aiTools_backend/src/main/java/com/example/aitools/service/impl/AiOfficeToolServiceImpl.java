@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -155,6 +156,98 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
         // 输入用 OCR 结果 + 文件名作为占位，便于历史回溯
         String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
         return aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId, onChunk);
+    }
+
+    /**
+     * 批量流式文档重点提取（B2）：逐文件解析 + AI 整理，每文件发标记 + 内容 chunk
+     * 单文件失败不影响整体
+     */
+    @Override
+    public com.example.aitools.dto.BatchProcessResult aiDocumentSummaryBatchStream(Long userId, List<MultipartFile> files,
+                                              String promptFormat, String promptGenerate, Long promptId,
+                                              Consumer<String> onChunk) {
+        if (files == null || files.isEmpty()) {
+            throw new BusinessException("请至少上传 1 个文件");
+        }
+        if (files.size() > 10) {
+            throw new BusinessException("单次最多上传 10 个文件");
+        }
+
+        Long toolId = findToolIdByCode(TOOL_CODE_DOC_SUMMARY);
+        long batchStart = System.currentTimeMillis();
+        int successCount = 0;
+        int failCount = 0;
+        StringBuilder batchOutput = new StringBuilder();
+        // 文件结果用 JSON 字符串累积，结尾一次性入库
+        StringBuilder resultJson = new StringBuilder("[");
+
+        // 推送批次开始
+        onChunk.accept("--- [批量开始，共 " + files.size() + " 个文件] ---\n");
+
+        for (int i = 0; i < files.size(); i++) {
+            MultipartFile file = files.get(i);
+            String fileName = (file != null && file.getOriginalFilename() != null) ? file.getOriginalFilename() : "未命名-" + (i + 1);
+            String fileResultJson;
+            // 文件开始标记
+            onChunk.accept("--- [" + (i + 1) + "/" + files.size() + ": " + fileName + "] ---\n");
+
+            if (file == null || file.isEmpty()) {
+                String err = "文件为空";
+                onChunk.accept("--- [" + (i + 1) + "/" + files.size() + " 失败: " + err + "] ---\n\n");
+                failCount++;
+                fileResultJson = "{\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"FAIL\",\"output\":\"" + escapeJson(err) + "\"}";
+            } else {
+                long start = System.currentTimeMillis();
+                // 每个文件单独建"处理中"历史（便于回溯）
+                Long historyId = historyService.createPendingHistory(userId, toolId, null,
+                        TOOL_CODE_DOC_SUMMARY, "批量上传（" + (i + 1) + "/" + files.size() + "）：" + fileName);
+                StringBuilder fileOutput = new StringBuilder();
+                try {
+                    String docText = documentParser.parse(file);
+                    String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, TOOL_CODE_DOC_SUMMARY);
+                    String generatePrompt = resolvePrompt(promptGenerate, promptId, PROMPT_USE_GENERATE, TOOL_CODE_DOC_SUMMARY);
+                    validatePrompts(formatPrompt, generatePrompt);
+                    String systemPrompt = buildSystemPrompt(formatPrompt, docText);
+                    String userPrompt = generatePrompt + "\n\n文档内容：\n" + docText;
+                    // 流式推 chunk（前端打字机）
+                    aiClient.chatStream(systemPrompt, userPrompt, chunk -> {
+                        fileOutput.append(chunk);
+                        // 给前端 onChunk 加前缀标记（但这里 onChunk 接收的是原始 chunk）
+                        onChunk.accept(chunk);
+                    });
+                    long duration = System.currentTimeMillis() - start;
+                    historyService.completeHistory(historyId, fileOutput.toString(), (int) duration);
+                    onChunk.accept("\n--- [" + (i + 1) + "/" + files.size() + " 完成，耗时 " + duration + "ms] ---\n\n");
+                    successCount++;
+                    fileResultJson = "{\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"OK\",\"output\":\"" + escapeJson(fileOutput.toString()) + "\"}";
+                    batchOutput.append("=== ").append(fileName).append(" ===\n").append(fileOutput).append("\n\n");
+                } catch (Exception e) {
+                    log.error("批量文档处理失败：{}", fileName, e);
+                    historyService.failHistory(historyId, e.getMessage());
+                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    onChunk.accept("--- [" + (i + 1) + "/" + files.size() + " 失败: " + errMsg + "] ---\n\n");
+                    failCount++;
+                    fileResultJson = "{\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"FAIL\",\"output\":\"" + escapeJson(errMsg) + "\"}";
+                }
+            }
+
+            if (i > 0) resultJson.append(",");
+            resultJson.append(fileResultJson);
+        }
+
+        resultJson.append("]");
+
+        // 批量结束标记
+        onChunk.accept("--- [批量完成：" + successCount + " 成功 / " + failCount + " 失败，总耗时 " + (System.currentTimeMillis() - batchStart) + "ms] ---\n");
+
+        // 把汇总结果给调用方（Controller 会把 resultJson / successCount / failCount 入库）
+        return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, resultJson.toString(), batchOutput.toString());
+    }
+
+    /** JSON 字符串转义 */
+    private String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     /**

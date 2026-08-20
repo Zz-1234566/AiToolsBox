@@ -27,21 +27,16 @@ public class MailController {
 
     /**
      * 发送邮箱验证码
-     * @param request {email, type}  type 支持 register / reset-password
+     * @param request {email, type}  type 取自 Constants.CODE_TYPE_* 白名单
      * @return 触发限流时返回错误提示
      */
     @PostMapping("/send-code")
     public Result<Void> sendCode(@Valid @RequestBody SendCodeRequest request) {
         String email = request.getEmail().trim();
-        String type = request.getType();
-
-        // 校验场景类型
-        if (!"register".equals(type) && !"reset-password".equals(type)) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "不支持的验证码场景");
-        }
+        // 场景白名单校验下沉到 CodeService.generateAndSend（不在 Controller 硬编码 register/reset-password）
 
         // 生成验证码并发送，限流检查
-        boolean allowed = codeService.generateAndSend(type, email, code ->
+        boolean allowed = codeService.generateAndSend(request.getType(), email, code ->
                 mailService.sendVerifyCode(email, code, expireMinutes));
 
         if (!allowed) {

@@ -2,6 +2,7 @@ package com.example.aitools.service;
 
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 public interface AiOfficeToolService {
@@ -76,4 +77,17 @@ public interface AiOfficeToolService {
      * @return 完整结果
      */
     String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
+
+    /**
+     * 批量流式文档重点提取（B2 方案，多文件上传）：逐文件 OCR/解析 + AI 整理，
+     * 每文件发标记 + 内容 chunk，单文件失败不影响整体
+     * @param userId 用户ID
+     * @param files 上传的文件列表（1-10）
+     * @param promptFormat 用户自定义格式提示词（可空）
+     * @param promptGenerate 用户自定义生成内容提示词（可空）
+     * @param promptId 系统提示词ID（可空）
+     * @param onChunk 每收到一段内容回调（已包含文件标记）
+     * @return 批量处理结果（successCount / failCount / resultJson / batchOutput），Controller 拿到后入库
+     */
+    com.example.aitools.dto.BatchProcessResult aiDocumentSummaryBatchStream(Long userId, List<MultipartFile> files, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
 }

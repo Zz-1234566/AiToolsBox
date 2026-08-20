@@ -84,11 +84,11 @@ public class UserServiceImpl implements UserService {
     @Override
     public RegisterResponse register(RegisterRequest request) {
         // 校验邮箱验证码
-        if (!codeService.verify("register", request.getEmail().trim(), request.getCode())) {
+        if (!codeService.verify(com.example.aitools.common.Constants.CODE_TYPE_REGISTER, request.getEmail().trim(), request.getCode())) {
             throw new BusinessException(ResultCode.CODE_ERROR);
         }
         // 校验通过后删除验证码（一次性使用）
-        codeService.delete("register", request.getEmail().trim());
+        codeService.delete(com.example.aitools.common.Constants.CODE_TYPE_REGISTER, request.getEmail().trim());
 
         // 校验两次密码是否一致
         if (!request.getPassword().equals(request.getConfirmPassword())) {
@@ -231,10 +231,10 @@ public class UserServiceImpl implements UserService {
         }
 
         // 校验验证码（用账号绑定邮箱做 target）
-        if (!codeService.verify("reset-password", user.getEmail(), request.getCode())) {
+        if (!codeService.verify(com.example.aitools.common.Constants.CODE_TYPE_RESET_PASSWORD, user.getEmail(), request.getCode())) {
             throw new BusinessException(ResultCode.CODE_ERROR);
         }
-        codeService.delete("reset-password", user.getEmail());
+        codeService.delete(com.example.aitools.common.Constants.CODE_TYPE_RESET_PASSWORD, user.getEmail());
 
         // 更新密码
         user.setPassword(BCrypt.hashpw(request.getNewPassword(), BCrypt.gensalt()));

@@ -1,5 +1,8 @@
 package com.example.aitools.service.impl;
 
+import com.example.aitools.common.Constants;
+import com.example.aitools.common.ResultCode;
+import com.example.aitools.exception.BusinessException;
 import com.example.aitools.service.CodeService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -36,6 +39,10 @@ public class CodeServiceImpl implements CodeService {
 
     @Override
     public boolean generateAndSend(String type, String target, java.util.function.Consumer<String> sendAction) {
+        // 场景白名单校验（业务下沉：Controller 不再硬编码 register/reset-password）
+        if (type == null || !Constants.CODE_TYPE_ALLOWED.contains(type)) {
+            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "不支持的验证码场景");
+        }
         // 限流检查：60秒内同一 target+type 只能发一次
         String sentFlag = SEND_FLAG_PREFIX + type + ":" + target;
         Boolean sent = redisTemplate.hasKey(sentFlag);
