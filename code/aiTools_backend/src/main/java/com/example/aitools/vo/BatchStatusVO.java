@@ -20,24 +20,45 @@ public class BatchStatusVO {
     private Integer fileCount;
     private Integer successCount;
     private Integer failCount;
+    /** 已处理文件数（成功+失败），前端轮询 since 增量时使用 */
+    private Integer processedIndex;
     private Integer status;
     private String statusLabel;
+    /** 本次返回的增量 items（since 之后），如果 since=0 则返回全部 */
     private List<BatchFileResult> results;
     private String createTime;
     private String finishedAt;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** 旧接口：返回全部 results（兼容旧前端） */
     public static BatchStatusVO from(BatchTask t) {
+        return from(t, 0);
+    }
+
+    /**
+     * 新接口：since 增量返回
+     * @param t 数据库任务实体
+     * @param since 前端已收到的 items 数（0=全部；N=只返回 N 之后的新 items）
+     */
+    public static BatchStatusVO from(BatchTask t, int since) {
         BatchStatusVO vo = new BatchStatusVO();
         vo.batchId = t.getBatchId();
         vo.toolCode = t.getToolCode();
         vo.fileCount = t.getFileCount();
         vo.successCount = t.getSuccessCount();
         vo.failCount = t.getFailCount();
+        vo.processedIndex = t.getProcessedIndex() == null ? 0 : t.getProcessedIndex();
         vo.status = t.getStatus();
         vo.statusLabel = statusLabel(t.getStatus());
-        vo.results = parseResults(t.getResultSummary());
+        // 解析 result_summary 数组，按 since 截取增量
+        List<BatchFileResult> all = parseResults(t.getResultSummary());
+        if (since < 0) since = 0;
+        if (since >= all.size()) {
+            vo.results = Collections.emptyList();
+        } else {
+            vo.results = all.subList(since, all.size());
+        }
         vo.createTime = t.getCreateTime() == null ? null : t.getCreateTime().toString();
         vo.finishedAt = t.getFinishedAt() == null ? null : t.getFinishedAt().toString();
         return vo;

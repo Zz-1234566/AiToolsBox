@@ -70,6 +70,49 @@ public class BatchTaskServiceImpl implements BatchTaskService {
         batchTaskMapper.update(null, wrapper);
     }
 
+    /**
+     * 单文件完成追加：先查当前 result_summary（旧数组字符串）+ success/fail + processedIndex，
+     * 把新 item 追加到数组末尾，再原子 update。
+     * 业务约束：调用方按单文件串行调用（service 线程池单线程），不需要担心并发。
+     * JSON 处理策略：直接字符串拼接（item 内部由调用方保证是合法 JSON），不引 Jackson 增加复杂度。
+     */
+    @Override
+    public void appendItem(String batchId, String itemJson, boolean ok) {
+        // 1) 查当前状态（必须先查 processedIndex + resultSummary 才能原子追加）
+        BatchTask current = batchTaskMapper.selectOne(
+                new LambdaQueryWrapper<BatchTask>()
+                        .eq(BatchTask::getBatchId, batchId)
+                        .eq(BatchTask::getDr, 0));
+        if (current == null) {
+            log.warn("[B2] appendItem 任务不存在 batchId={}", batchId);
+            return;
+        }
+        // 2) 拼新 result_summary：取旧数组去掉末尾 ]，追加 ",{item}]"（item 已含 { ... }）
+        String oldJson = current.getResultSummary();
+        String newJson;
+        if (oldJson == null || oldJson.isBlank() || "[]".equals(oldJson)) {
+            newJson = "[" + itemJson + "]";
+        } else {
+            // 旧数组去掉末尾 ']'
+            int tail = oldJson.lastIndexOf(']');
+            if (tail < 0) {
+                // 异常状态：旧数据不是合法数组，重置为单元素数组
+                log.warn("[B2] appendItem result_summary 异常，重置 batchId={} old={}", batchId, oldJson);
+                newJson = "[" + itemJson + "]";
+            } else {
+                newJson = oldJson.substring(0, tail) + "," + itemJson + "]";
+            }
+        }
+        // 3) 原子 update：processed_index + 1 / successCount + 1 or failCount + 1 / result_summary
+        LambdaUpdateWrapper<BatchTask> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(BatchTask::getBatchId, batchId)
+               .set(BatchTask::getResultSummary, newJson)
+               .set(BatchTask::getProcessedIndex, current.getProcessedIndex() == null ? 1 : current.getProcessedIndex() + 1)
+               .set(BatchTask::getSuccessCount, ok ? (current.getSuccessCount() == null ? 1 : current.getSuccessCount() + 1) : current.getSuccessCount())
+               .set(BatchTask::getFailCount, ok ? current.getFailCount() : (current.getFailCount() == null ? 1 : current.getFailCount() + 1));
+        batchTaskMapper.update(null, wrapper);
+    }
+
     @Override
     public BatchTask getByBatchId(String batchId) {
         LambdaQueryWrapper<BatchTask> wrapper = new LambdaQueryWrapper<>();

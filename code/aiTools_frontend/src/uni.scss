@@ -11,6 +11,18 @@ $text-tertiary: var(--text-tertiary, #8E8B8B);
 $border-color: var(--border-color, #E8E8E8);
 $divider-color: var(--divider-color, #F0F0F0);
 
+// 语义色：成功 / 危险 / 警告（深浅色各一套，由 theme.js 切换）
+// 命名：<role>（主色，文字/边框）+ <role>_bg（浅色背景，状态徽标/容器底）
+// 注意：SCSS 变量名不要用连字符，dart-sass 会当数学运算
+$color_success: var(--color-success, #19be6b);
+$color_success_bg: var(--color-success-bg, #e8f7ed);
+$color_danger: var(--color-danger, #e54d42);
+$color_danger_bg: var(--color-danger-bg, #fff5f5);
+$color_danger_soft: var(--color-danger-soft, #fde9e9);
+$color_warning: var(--color-warning, #ff9900);
+$color_warning_bg: var(--color-warning-bg, #fff8e6);
+$color_warning_text: var(--color-warning-text, #8a6300);
+
 $radius-sm: 12rpx;
 $radius-md: 16rpx;
 $radius-lg: 24rpx;

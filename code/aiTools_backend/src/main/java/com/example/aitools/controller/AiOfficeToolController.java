@@ -3,8 +3,10 @@ package com.example.aitools.controller;
 import com.example.aitools.common.Result;
 import com.example.aitools.dto.AiSummaryDTO;
 import com.example.aitools.dto.AiWorkSummaryDTO;
+import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.dto.BatchUploadResponse;
 import com.example.aitools.entity.BatchTask;
+import com.example.aitools.exception.BusinessException;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
 import com.example.aitools.utils.AuthUtil;
@@ -209,13 +211,15 @@ public class AiOfficeToolController {
         return dto.getPrompt();
     }
 
-    // ==================== 批量文档处理（B1+B2 混合方案） ====================
-    // 流程：upload 端点内部直接开 SseEmitter 异步处理 + 推流，处理完入库
-    //      stream 端点只用于：① 任务已完成时补发 result_summary；② 心跳保活；③ 断线重连
+    // ==================== 批量文档处理（逐文件入库 + 前端轮询方案） ====================
+    // 流程：upload 端点同步建任务 + 启异步线程跑批（不再开 SSE）
+    //      service 内每文件完成立即调 batchTaskService.appendItem 入库
+    //      全部跑完调 completeBatch 写终态
+    //      前端用 GET /batch/{batchId}/completed?since=N 轮询拉增量 items
 
-    /** 批量上传文档（1-10 个）+ 立即开 SSE 推流：返回 SseEmitter（HTTP 短连接立即返回） */
-    @PostMapping(value = "/document-summary/batch-upload", produces = "text/event-stream;charset=UTF-8")
-    public SseEmitter batchDocumentUpload(@RequestParam("files") List<MultipartFile> files,
+    /** 批量上传文档（1-10 个）：立即建任务 + 异步处理 + 立即返回 batchId */
+    @PostMapping(value = "/document-summary/batch-upload", produces = "application/json;charset=UTF-8")
+    public Result<BatchUploadResponse> batchDocumentUpload(@RequestParam("files") List<MultipartFile> files,
                                           @RequestParam(value = "promptFormat", required = false) String promptFormat,
                                           @RequestParam(value = "promptGenerate", required = false) String promptGenerate,
                                           @RequestParam(value = "promptId", required = false) Long promptId,
@@ -232,50 +236,123 @@ public class AiOfficeToolController {
             throw new com.example.aitools.exception.BusinessException("批量文件总大小超过 200MB");
         }
 
-        // 1) 立即建任务（HTTP 短连接的关键）
+        // 1) 立即建任务（HTTP 同步返回的关键）
         String batchId = batchTaskService.createTask(userId, "doc-keypoint-extract", files.size());
         log.info("[B2] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
 
-        // 2) 立即返回 emitter（HTTP 短连接断开，service 在线程池里异步跑）
-        SseEmitter emitter = new SseEmitter(600000L); // 10 分钟超时
+        // 2) 同步阶段先把每个 MultipartFile 读到 byte[]（关键！避开 Tomcat 异步线程跑批时临时文件已被清理）
+        java.util.List<BatchFilePayload> payloads;
+        try {
+            payloads = files.stream().map(f -> {
+                try {
+                    return BatchFilePayload.from(f);
+                } catch (java.io.IOException e) {
+                    throw new BusinessException("读取文件失败：" + e.getMessage());
+                }
+            }).toList();
+        } catch (BusinessException e) {
+            throw e;
+        }
+
+        // 3) 异步跑批量处理（service 内部单文件完即 appendItem，全部跑完调 completeBatch）
+        executor.execute(() -> {
+            try {
+                batchTaskService.markRunning(batchId);
+                com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiDocumentSummaryBatchStream(
+                        userId, payloads, promptFormat, promptGenerate, promptId, batchId);
+                // 全部跑完入库（终态 + result_summary）
+                batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
+                log.info("[B2] 批量任务完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
+            } catch (Exception e) {
+                log.error("[B2] 批量任务异常 batchId={}", batchId, e);
+                try {
+                    batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
+                } catch (Exception ignore) {}
+            }
+        });
+
+        // 3) 同步返回 batchId（前端拿这个去轮询 /completed）
+        BatchUploadResponse resp = new BatchUploadResponse();
+        resp.setBatchId(batchId);
+        resp.setFileCount(files.size());
+        return Result.success("任务已创建", resp);
+    }
+
+    /**
+     * 批量 OCR 智能识别（1-10 张图片/PDF）：立即建任务 + 异步处理 + 立即返回 batchId
+     */
+    @PostMapping(value = "/ocr-recognize/batch-upload", produces = "application/json;charset=UTF-8")
+    public Result<BatchUploadResponse> batchOcrUpload(@RequestParam("files") List<MultipartFile> files,
+                                     @RequestParam(value = "promptFormat", required = false) String promptFormat,
+                                     @RequestParam(value = "promptGenerate", required = false) String promptGenerate,
+                                     HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        if (files == null || files.isEmpty()) {
+            throw new com.example.aitools.exception.BusinessException("请至少上传 1 个文件");
+        }
+        if (files.size() > 10) {
+            throw new com.example.aitools.exception.BusinessException("单次最多上传 10 个文件");
+        }
+        long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
+        if (totalSize > 200L * 1024 * 1024) {
+            throw new com.example.aitools.exception.BusinessException("批量文件总大小超过 200MB");
+        }
+
+        String batchId = batchTaskService.createTask(userId, "ocr-recognize", files.size());
+        log.info("[OCR-B2] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
+
+        // 同步阶段先把每个 MultipartFile 读到 byte[]（关键！避开 Tomcat 异步线程跑批时临时文件已被清理）
+        java.util.List<BatchFilePayload> payloads;
+        try {
+            payloads = files.stream().map(f -> {
+                try {
+                    return BatchFilePayload.from(f);
+                } catch (java.io.IOException e) {
+                    throw new BusinessException("读取文件失败：" + e.getMessage());
+                }
+            }).toList();
+        } catch (BusinessException e) {
+            throw e;
+        }
 
         executor.execute(() -> {
             try {
                 batchTaskService.markRunning(batchId);
-                emitter.send(SseEmitter.event().data("--- [任务已创建 batchId=" + batchId + "，开始处理] ---\n"));
-
-                // 3) 跑批量流式处理（返回封装结果：successCount / failCount / resultJson）
-                com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiDocumentSummaryBatchStream(
-                        userId, files, promptFormat, promptGenerate, promptId,
-                        chunk -> {
-                            try {
-                                emitter.send(SseEmitter.event().data(chunk));
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
-                        });
-
-                // 4) 处理完入库
+                com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiOcrBatchStream(
+                        userId, payloads, promptFormat, promptGenerate, batchId);
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
-                log.info("[B2] 批量任务完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
-
-                // 5) 推结束帧（状态判读 + 文案 在 service 里）
-                batchTaskService.emitFinishedFrame(emitter, result.getSuccessCount(), result.getFailCount());
-                emitter.complete();
+                log.info("[OCR-B2] 完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
             } catch (Exception e) {
-                log.error("[B2] 批量任务异常 batchId={}", batchId, e);
-                // 异常时也要入库（标记为 FAILED）
+                log.error("[OCR-B2] 异常 batchId={}", batchId, e);
                 try {
                     batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
                 } catch (Exception ignore) {}
-                emitter.completeWithError(e);
             }
         });
 
-        return emitter;
+        BatchUploadResponse resp = new BatchUploadResponse();
+        resp.setBatchId(batchId);
+        resp.setFileCount(files.size());
+        return Result.success("任务已创建", resp);
     }
 
-    /** 订阅批量任务进度（SSE）：仅做"补发已完成结果 / 心跳"（断线重连 / 后到客户端补看） */
+    /** 拉取批量任务增量完成项（since=已拉取数，返回 since 之后的新 items） */
+    @GetMapping("/batch/{batchId}/completed")
+    public Result<BatchStatusVO> batchCompleted(@PathVariable("batchId") String batchId,
+                                                @RequestParam(value = "since", defaultValue = "0") int since,
+                                                HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        BatchTask task = batchTaskService.getByBatchId(batchId);
+        if (task == null) {
+            return Result.fail("任务不存在或已过期");
+        }
+        if (!task.getUserId().equals(userId)) {
+            return Result.fail("无权访问此任务");
+        }
+        return Result.success(BatchStatusVO.from(task, since));
+    }
+
+    /** 兼容旧前端：批量任务 SSE 端点保留（仅做"补发已完成结果"），新前端可忽略 */
     @GetMapping(value = "/document-summary/batch-stream/{batchId}", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter batchDocumentStream(@PathVariable("batchId") String batchId, HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
@@ -286,12 +363,12 @@ public class AiOfficeToolController {
         if (!task.getUserId().equals(userId)) {
             throw new com.example.aitools.exception.BusinessException("无权访问此任务");
         }
-        SseEmitter emitter = new SseEmitter(60000L); // 1 分钟超时（仅补发）
+        SseEmitter emitter = new SseEmitter(60000L);
         executor.execute(() -> batchTaskService.subscribeProgress(task, emitter));
         return emitter;
     }
 
-    /** 查询批量任务状态（断线重连 / 业务方轮询用） */
+    /** 兼容旧前端：批量任务状态查询（带 items 全量） */
     @GetMapping("/document-summary/batch-status/{batchId}")
     public Result<BatchStatusVO> batchStatus(@PathVariable("batchId") String batchId, HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
@@ -302,6 +379,7 @@ public class AiOfficeToolController {
         if (!task.getUserId().equals(userId)) {
             return Result.fail("无权访问此任务");
         }
-        return Result.success(BatchStatusVO.from(task));
+        // 旧端点返回全部 items（since=0）
+        return Result.success(BatchStatusVO.from(task, 0));
     }
 }

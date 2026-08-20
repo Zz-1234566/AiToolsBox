@@ -152,10 +152,19 @@ export const streamUpload = (options) => {
     return Promise.reject(new Error('无效的文件对象'))
   }
 
-  return resolveFileBlob(options.file)
-    .then(({ blob, name }) => {
+  // 兼容单文件：options.file 直接用；多文件：options.files 数组
+  const fileList = options.files
+    ? options.files
+    : (options.file != null ? [options.file] : [])
+
+  Promise.all(fileList.map(resolveFileBlob))
+    .then((resolved) => {
       const formData = new FormData()
-      formData.append('file', blob, name)
+      // 多文件：field name 用 "files"（后端 @RequestParam("files") 接收）；单文件用 "file"
+      const fieldName = options.files ? 'files' : 'file'
+      resolved.forEach(({ blob, name }) => {
+        formData.append(fieldName, blob, name)
+      })
       const fields = options.fields || {}
       for (const key in fields) {
         const val = fields[key]

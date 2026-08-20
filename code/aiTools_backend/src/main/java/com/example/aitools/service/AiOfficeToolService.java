@@ -1,5 +1,6 @@
 package com.example.aitools.service;
 
+import com.example.aitools.dto.BatchFilePayload;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -80,14 +81,28 @@ public interface AiOfficeToolService {
 
     /**
      * 批量流式文档重点提取（B2 方案，多文件上传）：逐文件 OCR/解析 + AI 整理，
-     * 每文件发标记 + 内容 chunk，单文件失败不影响整体
+     * 单文件完成后立即调 batchTaskService.appendItem 入库，最后再调 completeBatch 写终态
+     * 单文件失败不影响整体
      * @param userId 用户ID
-     * @param files 上传的文件列表（1-10）
+     * @param files 文件载体列表（1-10，controller 在 HTTP 同步返回前已把 MultipartFile 读成 byte[]，避开 Tomcat 临时文件被清理问题）
      * @param promptFormat 用户自定义格式提示词（可空）
      * @param promptGenerate 用户自定义生成内容提示词（可空）
      * @param promptId 系统提示词ID（可空）
-     * @param onChunk 每收到一段内容回调（已包含文件标记）
-     * @return 批量处理结果（successCount / failCount / resultJson / batchOutput），Controller 拿到后入库
+     * @param batchId 批量任务 ID（必传，单文件完成后立即调 batchTaskService.appendItem 写入）
+     * @return 批量处理结果（successCount / failCount / processedIndex / resultJson），Controller 拿到后调 completeBatch
      */
-    com.example.aitools.dto.BatchProcessResult aiDocumentSummaryBatchStream(Long userId, List<MultipartFile> files, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
+    com.example.aitools.dto.BatchProcessResult aiDocumentSummaryBatchStream(Long userId, List<BatchFilePayload> files, String promptFormat, String promptGenerate, Long promptId, String batchId);
+
+    /**
+     * 批量 OCR 智能识别（B2）：逐文件 OCR + AI 整理，
+     * 单文件完成后立即调 batchTaskService.appendItem 入库，最后再调 completeBatch 写终态
+     * 单文件失败不影响整体
+     * @param userId 用户ID
+     * @param files 文件载体列表（1-10，字节已在内存，避开 MultipartFile 临时文件被清理问题）
+     * @param promptFormat 用户自定义格式提示词（可空）
+     * @param promptGenerate 用户自定义生成内容提示词（可空）
+     * @param batchId 批量任务 ID（必传）
+     * @return 批量处理结果（successCount / failCount / processedIndex / resultJson）
+     */
+    com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files, String promptFormat, String promptGenerate, String batchId);
 }

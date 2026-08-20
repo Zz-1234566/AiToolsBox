@@ -14,11 +14,19 @@
       <!-- 文字输入 -->
       <text-input-area v-if="currentInputType === 'text'" v-model="inputText" :placeholder="toolInfo.placeholder" />
 
-      <!-- 文件上传 -->
-      <file-input-area v-if="currentInputType === 'file'" :title="toolInfo.uploadTitle || '上传文档'" :desc="toolInfo.uploadDesc || '支持 PDF、Word、TXT 格式'" fileType="document" :fileName="fileName" :uploading="uploading" @choose="onFileChoose" />
+      <!-- 文件上传：doc-keypoint-extract / ocr-recognize 走多文件批量（共享 BatchFilePicker 组件）；其它工具单文件 -->
+      <file-input-area v-if="currentInputType === 'file' && !isBatchTool" :title="toolInfo.uploadTitle || '上传文档'" :desc="toolInfo.uploadDesc || '支持 PDF、Word、TXT 格式'" fileType="document" :fileName="fileName" :uploading="uploading" @choose="onFileChoose" />
 
-      <!-- 图片上传 -->
-      <file-input-area v-if="currentInputType === 'image'" :title="toolInfo.uploadTitle || '上传图片'" :desc="toolInfo.uploadDesc || '支持 JPG、PNG 格式'" fileType="image" :fileName="fileName" :uploading="uploading" @choose="onFileChoose" />
+      <!-- 多文件选择组件：doc-keypoint-extract / ocr-recognize 共用（fileRule 来自 tools.js） -->
+      <BatchFilePicker
+        v-if="isBatchTool && (currentInputType === 'file' || currentInputType === 'image')"
+        ref="batchPickerRef"
+        :rule="toolInfo.fileRule"
+        :disabled="loading"
+      />
+
+      <!-- 图片上传（非多文件工具，单文件） -->
+      <file-input-area v-if="currentInputType === 'image' && !isBatchTool" :title="toolInfo.uploadTitle || '上传图片'" :desc="toolInfo.uploadDesc || '支持 JPG、PNG 格式'" fileType="image" :fileName="fileName" :uploading="uploading" @choose="onFileChoose" />
 
       <!-- 音频输入（占位） -->
       <audio-input-area v-if="currentInputType === 'audio'" />
@@ -38,9 +46,15 @@
         </button>
       </view>
       
-      <!-- 结果区域 -->
+      <!-- 结果区域：批量工具用 BatchResultCards 卡片列表，其它工具用单文件 ResultArea -->
       <view class="result-section animate-fade-in-up">
+        <BatchResultCards
+          v-if="isBatchTool && batchCards.length > 0"
+          :items="batchCards"
+          :total="batchTotal"
+        />
         <result-area
+          v-else
           :title="toolInfo.resultTitle"
           :content="resultContent"
           :placeholder="toolInfo.resultPlaceholder"
@@ -100,11 +114,13 @@ import FileInputArea from '@/components/FileInputArea.vue'
 import AudioInputArea from '@/components/AudioInputArea.vue'
 import PromptInputArea from '@/components/PromptInputArea.vue'
 import ResultArea from '@/components/ResultArea.vue'
-import { uploadFileApi } from '@/api/ai.js'
+import BatchFilePicker from '@/components/BatchFilePicker.vue'
+import { uploadFileApi, batchUpload, ocrBatchUpload, batchCompleted } from '@/api/ai.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
 import { promptListApi, systemPromptListApi } from '@/api/prompt'
-import { getTool } from '@/config/tools'
+import { getTool, validate } from '@/config/tools'
+import BatchResultCards from '@/components/BatchResultCards.vue'
 
 const toolId = ref('')
 const currentInputType = ref('text')
@@ -113,9 +129,13 @@ const fileName = ref('')
 const filePath = ref('')
 const fileObj = ref(null)          // 原生 File/Blob 对象（H5 端用于 multipart 上传且保留真实文件名）
 const uploading = ref(false)
+const batchPickerRef = ref(null)   // BatchFilePicker 组件引用：通过 getFiles() 拿当前文件列表
 const fileUrl = ref('')
 const loading = ref(false)
 const resultContent = ref('')
+const batchCards = ref([])        // 批量结果卡片数据：[{ index, fileName, status, costMs, errorMsg, output }]
+const batchTotal = ref(0)          // 批量任务总文件数（用于卡片显示 i/N）
+const batchProgress = ref(0)       // 批量任务已处理数（用于 loading 提示）
 const promptFormatText = ref('')    // 用户自定义格式提示词
 const promptGenerateText = ref('')  // 用户自定义生成内容提示词
 const promptPickerTarget = ref('generate') // 选择弹窗当前填充的目标输入框
@@ -125,6 +145,20 @@ const systemPromptList = ref([])  // 系统提示词（按用途过滤）
 const showPromptPicker = ref(false) // 是否显示选择弹窗
 
 const toolInfo = computed(() => getTool(toolId.value))
+
+// 是否是支持多文件批量上传的工具（tools.js 中定义了 fileRule）
+const isBatchTool = computed(() => !!toolInfo.value.fileRule)
+
+// 通用校验（按工具 + 输入方式）：返回第一个失败的错误文案，null = 通过
+// 在 handleGenerate 入口前置校验，不通过直接 return + toast，不进 if-else 分支
+const runValidation = () => validate(toolId.value, currentInputType.value, {
+  filePath: filePath.value,
+  batchFiles: (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : [],
+  inputText: inputText.value,
+  promptFormat: promptFormatText.value,
+  promptGenerate: promptGenerateText.value,
+  token: !!uni.getStorageSync('token')
+})
 
 onLoad((option) => {
   if (!requireLogin()) return
@@ -144,6 +178,10 @@ const switchInputType = (type) => {
   fileName.value = ''
   fileObj.value = null
   fileUrl.value = ''
+  // 清空 BatchFilePicker 组件内部文件列表
+  if (batchPickerRef.value && batchPickerRef.value.clear) {
+    batchPickerRef.value.clear()
+  }
 }
 
 const onFileChoose = async (info) => {
@@ -261,235 +299,162 @@ const runTextStream = (url) => {
   })
 }
 
+/**
+ * 轮询批量任务结果：前端驱动（自适应间隔）
+ *   - 有新 items 时：立即追加渲染 + 立即再拉
+ *   - 无新 items 时：sleep 1.5s 再拉
+ *   - 终态（status >= 2）时：停
+ * @param {String} batchId - 批量任务 ID
+ * @param {String} toolCode - 当前工具编码（预留：以后按 toolCode 决定卡片渲染方式）
+ */
+const pollBatchCompleted = async (batchId, toolCode) => {
+  let since = 0
+  let aborted = false
+  // 用户切走 / 重新生成时停止轮询
+  const stop = () => { aborted = true }
+  // 用 uni.$once 监听页面卸载（uniapp 无 onUnload composable，简单粗暴）
+  const origUnload = uni.$once
+  // 简易实现：跑 1000 次上限（每个文件 sleep 1.5s + AI 处理 5-30s 足够）
+  const MAX_LOOPS = 200
+  for (let i = 0; i < MAX_LOOPS && !aborted; i++) {
+    let res
+    try {
+      res = await batchCompleted(batchId, since)
+    } catch (e) {
+      // 拉取失败：可能是网络抖动，继续重试
+      await new Promise(r => setTimeout(r, 1500))
+      continue
+    }
+    if (!res) {
+      await new Promise(r => setTimeout(r, 1500))
+      continue
+    }
+    // 追加新 items
+    const newItems = res.results || []
+    if (newItems.length) {
+      batchCards.value = batchCards.value.concat(newItems)
+      since += newItems.length
+      batchProgress.value = res.processedIndex || since
+    }
+    // 终态：status 2=COMPLETED 3=PARTIAL 4=FAILED
+    const status = res.status
+    if (status === 2 || status === 3 || status === 4) {
+      break
+    }
+    // 没新结果 + 还在进行中：等一下再拉
+    if (newItems.length === 0) {
+      await new Promise(r => setTimeout(r, 1500))
+    }
+  }
+  return stop
+}
+
 const handleGenerate = async () => {
-  if (currentInputType.value === 'text' && !inputText.value.trim()) {
-    uni.showToast({ title: '请输入内容', icon: 'none' })
+  // 通用前置校验（按 tools.js 的 validateRules；不通过直接 toast + return，不进 if-else 分支）
+  const err = runValidation()
+  if (err) {
+    uni.showToast({ title: err, icon: 'none' })
     return
   }
-  if ((currentInputType.value === 'file' || currentInputType.value === 'image') && !filePath.value) {
-    uni.showToast({ title: '请先上传文件', icon: 'none' })
-    return
-  }
-  if (currentInputType.value === 'audio') {
-    uni.showToast({ title: '音频输入功能开发中', icon: 'none' })
-    return
-  }
-  
+
   loading.value = true
   resultContent.value = ''
-  
+  // 批量场景：清空卡片数组（保证重新生成时刷新）
+  batchCards.value = []
+  batchTotal.value = 0
+  batchProgress.value = 0
+
   try {
     const id = toolId.value
-    
+
     if (id === 'doc-keypoint-extract') {
-      // 文档重点提取：multipart 上传文档 + SSE 流式输出（打字机效果）
-      // 仅文件输入方式走 multipart+SSE；文字/音频暂未接入对应后端
-      if (currentInputType.value !== 'file') {
-        uni.showToast({ title: '该输入方式暂未接入，请使用文件上传', icon: 'none' })
-        return
-      }
-      if (!uni.getStorageSync('token')) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.navigateTo({ url: '/pages/login' })
-        }, 600)
-        return
-      }
-
-      // 格式和生成内容提示词至少填一个（后端会凑齐，另一个用系统默认）
-      if (!promptFormatText.value.trim() && !promptGenerateText.value.trim()) {
-        uni.showToast({ title: '请填写格式或生成内容提示词', icon: 'none' })
-        return
-      }
-
-      // 字符队列打字机：onChunk 收到的文本入队，setInterval 每 20ms 输出一个字符
-      let fullText = ''
-      resultContent.value = ''
-      const charQueue = []
-      let streamDone = false
-      let typeTimer = null
-
-      await new Promise((resolve, reject) => {
-        const flushChar = () => {
-          if (charQueue.length > 0) {
-            resultContent.value += charQueue.shift()
-          }
-          // 流结束且队列排空后收尾
-          if (streamDone && charQueue.length === 0) {
-            if (typeTimer) {
-              clearInterval(typeTimer)
-              typeTimer = null
-            }
-            resolve()
-          }
+      // 文档重点提取：B2 多文件批量（轮询方案）
+      // 流程：batchUpload 拿 batchId → 轮询 batchCompleted 拉增量 items → 渲染到 BatchResultCards
+      const docBatchFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
+      const { batchId, fileCount } = await batchUpload({
+        files: docBatchFiles,
+        fields: {
+          promptFormat: promptFormatText.value,
+          promptGenerate: promptGenerateText.value,
+          promptId: selectedPromptId.value
         }
-
-        streamUpload({
-          url: '/api/ai-office/document-summary/stream',
-          file: fileObj.value || filePath.value,
-          fields: {
-            promptFormat: promptFormatText.value,
-            promptGenerate: promptGenerateText.value,
-            promptId: selectedPromptId.value
-          },
-          onChunk: (chunk) => {
-            fullText += chunk
-            for (const ch of chunk) {
-              charQueue.push(ch)
-            }
-            if (!typeTimer) {
-              typeTimer = setInterval(flushChar, 20)
-            }
-          },
-          onDone: () => {
-            streamDone = true
-            // 队列已空则立即结束，否则等 flushChar 排空后 resolve
-            if (charQueue.length === 0) {
-              if (typeTimer) {
-                clearInterval(typeTimer)
-                typeTimer = null
-              }
-              resolve()
-            }
-          },
-          onError: (err) => {
-            if (typeTimer) {
-              clearInterval(typeTimer)
-              typeTimer = null
-            }
-            reject(err)
-          }
-        })
       })
-      // 流式完成后格式化（兜底分段，即使 AI 没换行也能分行展示）
-      resultContent.value = formatAiResult(fullText)
+      batchTotal.value = fileCount
+      await pollBatchCompleted(batchId, 'doc-keypoint-extract')
 
     } else if (id === 'weekly-report') {
-      // 周报生成：SSE 流式输出（打字机效果）；仅文字输入方式走 SSE
-      if (currentInputType.value !== 'text') {
-        uni.showToast({ title: '该输入方式暂未接入，请使用文字输入', icon: 'none' })
-        return
-      }
-      if (!uni.getStorageSync('token')) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.navigateTo({ url: '/pages/login' })
-        }, 600)
-        return
-      }
-      if (!promptFormatText.value.trim() && !promptGenerateText.value.trim()) {
-        uni.showToast({ title: '请填写格式或生成内容提示词', icon: 'none' })
-        return
-      }
+      // 周报生成：SSE 流式输出（前置校验已统一处理）
       const fullText = await runTextStream('/api/ai-office/weekly-report/stream')
       resultContent.value = formatAiResult(fullText)
 
     } else if (id === 'meeting-minutes') {
-      // 会议纪要：SSE 流式输出（打字机效果）；仅文字输入方式走 SSE
-      if (currentInputType.value !== 'text') {
-        uni.showToast({ title: '该输入方式暂未接入，请使用文字输入', icon: 'none' })
-        return
-      }
-      if (!uni.getStorageSync('token')) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.navigateTo({ url: '/pages/login' })
-        }, 600)
-        return
-      }
-      if (!promptFormatText.value.trim() && !promptGenerateText.value.trim()) {
-        uni.showToast({ title: '请填写格式或生成内容提示词', icon: 'none' })
-        return
-      }
+      // 会议纪要：SSE 流式输出（前置校验已统一处理）
       const fullText = await runTextStream('/api/ai-office/meeting-minutes/stream')
       resultContent.value = formatAiResult(fullText)
 
     } else if (id === 'ocr-recognize') {
-      // OCR 智能识别：上传图片 → 腾讯云 OCR → 调 AI 整理（SSE 流式）
-      if (currentInputType.value !== 'file' && currentInputType.value !== 'image') {
-        uni.showToast({ title: '该工具请上传图片', icon: 'none' })
-        return
-      }
-      if (!uni.getStorageSync('token')) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.navigateTo({ url: '/pages/login' })
-        }, 600)
-        return
-      }
-      if (!filePath.value) {
-        uni.showToast({ title: '请先上传图片', icon: 'none' })
-        return
-      }
-      if (!promptFormatText.value.trim() && !promptGenerateText.value.trim()) {
-        uni.showToast({ title: '请填写格式或生成内容提示词', icon: 'none' })
-        return
-      }
+      // OCR 智能识别：上传图片/PDF → 腾讯云 OCR → 调 AI 整理（前置校验已统一处理）
+      // 兼容两种模式：老用户用单文件 filePath，新用户用组件多文件
+      const ocrFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
+      const useBatch = ocrFiles.length > 0
 
-      // 流式：multipart 上传 + SSE 增量读
-      let fullText = ''
-      resultContent.value = ''
-      const charQueue = []
-      let streamDone = false
-      let typeTimer = null
-
-      await new Promise((resolve, reject) => {
-        const flushChar = () => {
-          if (charQueue.length > 0) {
-            resultContent.value += charQueue.shift()
-          }
-          if (streamDone && charQueue.length === 0) {
-            if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
-            resolve()
-          }
-        }
-        streamUpload({
-          url: '/api/ai-office/ocr-recognize/stream',
-          file: filePath.value,
+      if (useBatch) {
+        // 多文件模式：轮询方案
+        const { batchId, fileCount } = await ocrBatchUpload({
+          files: ocrFiles,
           fields: {
             promptFormat: promptFormatText.value,
             promptGenerate: promptGenerateText.value
-          },
-          onChunk: (chunk) => {
-            fullText += chunk
-            for (const ch of chunk) charQueue.push(ch)
-            if (!typeTimer) typeTimer = setInterval(flushChar, 20)
-          },
-          onDone: () => {
-            streamDone = true
-            if (charQueue.length === 0) {
+          }
+        })
+        batchTotal.value = fileCount
+        await pollBatchCompleted(batchId, 'ocr-recognize')
+      } else {
+        // 单文件模式：保留原打字机效果
+        let fullText = ''
+        resultContent.value = ''
+        const charQueue = []
+        let streamDone = false
+        let typeTimer = null
+        await new Promise((resolve, reject) => {
+          const flushChar = () => {
+            if (charQueue.length > 0) resultContent.value += charQueue.shift()
+            if (streamDone && charQueue.length === 0) {
               if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
               resolve()
             }
-          },
-          onError: (err) => {
-            if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
-            // 弹窗显示后端真实错误信息（OCR 未启用 / 上传失败等）
-            uni.showModal({ title: '请求失败', content: err && err.message ? err.message : '未知错误', showCancel: false })
-            reject(err)
           }
+          streamUpload({
+            url: '/api/ai-office/ocr-recognize/stream',
+            file: filePath.value,
+            fields: {
+              promptFormat: promptFormatText.value,
+              promptGenerate: promptGenerateText.value
+            },
+            onChunk: (chunk) => {
+              fullText += chunk
+              for (const ch of chunk) charQueue.push(ch)
+              if (!typeTimer) typeTimer = setInterval(flushChar, 20)
+            },
+            onDone: () => {
+              streamDone = true
+              if (charQueue.length === 0) {
+                if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+                resolve()
+              }
+            },
+            onError: (err) => {
+              if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+              uni.showModal({ title: '请求失败', content: err && err.message ? err.message : '未知错误', showCancel: false })
+              reject(err)
+            }
+          })
         })
-      })
-      resultContent.value = formatAiResult(fullText)
+        resultContent.value = formatAiResult(fullText)
+      }
 
     } else if (id === 'work-summary') {
-      // 工作总结：SSE 流式输出（打字机效果）；仅文字输入方式走 SSE
-      if (currentInputType.value !== 'text') {
-        uni.showToast({ title: '该输入方式暂未接入，请使用文字输入', icon: 'none' })
-        return
-      }
-      if (!uni.getStorageSync('token')) {
-        uni.showToast({ title: '请先登录', icon: 'none' })
-        setTimeout(() => {
-          uni.navigateTo({ url: '/pages/login' })
-        }, 600)
-        return
-      }
-      // 格式和生成内容提示词至少填一个（后端会凑齐，另一个用系统默认）
-      if (!promptFormatText.value.trim() && !promptGenerateText.value.trim()) {
-        uni.showToast({ title: '请填写格式或生成内容提示词', icon: 'none' })
-        return
-      }
+      // 工作总结：SSE 流式输出（前置校验已统一处理）
       const fullText = await runTextStream('/api/ai-office/work-summary/stream')
       // 流式完成后格式化（兜底分段，即使 AI 没换行也能分行展示）
       resultContent.value = formatAiResult(fullText)
@@ -626,4 +591,7 @@ const handleGenerate = async () => {
 .result-section {
   margin-bottom: $spacing-md;
 }
+
+// ==================== doc-keypoint-extract / ocr-recognize 多文件批量（B2） ====================
+// 样式已抽到 src/components/BatchFilePicker.vue，本页面不再维护
 </style>

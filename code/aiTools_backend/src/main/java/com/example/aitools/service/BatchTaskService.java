@@ -28,6 +28,16 @@ public interface BatchTaskService {
     /** 设置 COMPLETED/PARTIAL/FAILED 状态 + 汇总结果 */
     void completeBatch(String batchId, int successCount, int failCount, String resultSummaryJson);
 
+    /**
+     * 单文件完成后追加一条结果到 result_summary（JSON 数组追加）+ processed_index + 1 + success/fail + 1
+     * service 内部按 ok 决定 successCount/failCount 哪个 +1
+     * 业务异常由调用方处理（建议只在 try 块内调用，确保失败不影响整体）
+     * @param batchId 任务 id
+     * @param itemJson 单条结果 JSON（不含方括号，例如 {"fileName":"x","status":"ok","output":"..."}）
+     * @param ok 是否成功（true=ok/false=failed）
+     */
+    void appendItem(String batchId, String itemJson, boolean ok);
+
     /** 按 batchId 查（软筛 dr=0） */
     BatchTask getByBatchId(String batchId);
 

@@ -31,6 +31,9 @@ public class BatchTask {
 
     private Integer failCount;
 
+    /** 已处理文件数（成功+失败，前端轮询 since 增量用） */
+    private Integer processedIndex;
+
     /** 0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED */
     private Integer status;
 

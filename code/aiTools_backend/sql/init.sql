@@ -400,6 +400,7 @@ CREATE TABLE IF NOT EXISTS sys_batch_task (
   file_count INT NOT NULL COMMENT '文件总数',
   success_count INT DEFAULT 0 COMMENT '成功数',
   fail_count INT DEFAULT 0 COMMENT '失败数',
+  processed_index INT DEFAULT 0 COMMENT '已处理文件数（成功+失败，用于前端轮询 since 增量）',
   status TINYINT NOT NULL DEFAULT 0 COMMENT '0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED',
   result_summary MEDIUMTEXT COMMENT '汇总结果（所有文件 AI 输出拼接，JSON 数组）',
   create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -411,3 +412,5 @@ CREATE TABLE IF NOT EXISTS sys_batch_task (
   KEY idx_user_id (user_id),
   KEY idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';
+
+ALTER TABLE sys_batch_task ADD COLUMN processed_index INT DEFAULT 0 COMMENT '已处理文件数（成功+失败，用于前端轮询 since 增量）' AFTER fail_count;

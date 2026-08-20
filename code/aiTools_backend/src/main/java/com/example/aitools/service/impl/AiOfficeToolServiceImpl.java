@@ -3,12 +3,14 @@ package com.example.aitools.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.ai.AiClient;
 import com.example.aitools.common.Constants;
+import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.entity.AiPrompt;
 import com.example.aitools.entity.AiTool;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.AiPromptTemplateService;
+import com.example.aitools.service.BatchTaskService;
 import com.example.aitools.service.HistoryService;
 import com.example.aitools.service.OcrService;
 import com.example.aitools.service.document.DocumentParser;
@@ -52,6 +54,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private final AiPromptTemplateService aiPromptTemplateService;
     private final DocumentParser documentParser;
     private final OcrService ocrService;
+    private final BatchTaskService batchTaskService;
 
     /**
      * 工作总结
@@ -103,7 +106,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiDocumentSummaryStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         // 文档拦截：空文件直接抛业务异常，不写历史
-        if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+        if (file == null || file.getSize() < 0 || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
             throw new BusinessException("请上传文档文件");
         }
 
@@ -141,7 +144,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         // 图片拦截
-        if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+        if (file == null || file.getSize() < 0 || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
             throw new BusinessException("请上传图片文件");
         }
 
@@ -159,13 +162,96 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     }
 
     /**
-     * 批量流式文档重点提取（B2）：逐文件解析 + AI 整理，每文件发标记 + 内容 chunk
+     * 批量 OCR 智能识别（B2）：逐文件 OCR + AI 整理
+     * 单文件完成立即调 batchTaskService.appendItem 入库（前端轮询可见），最后由 Controller 调 completeBatch
      * 单文件失败不影响整体
      */
     @Override
-    public com.example.aitools.dto.BatchProcessResult aiDocumentSummaryBatchStream(Long userId, List<MultipartFile> files,
+    public com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files,
+                                                String promptFormat, String promptGenerate, String batchId) {
+        if (files == null || files.isEmpty()) {
+            throw new BusinessException("请至少上传 1 个文件");
+        }
+        if (files.size() > 10) {
+            throw new BusinessException("单次最多上传 10 个文件");
+        }
+
+        Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
+        int successCount = 0;
+        int failCount = 0;
+        int processedIndex = 0;
+        StringBuilder resultJson = new StringBuilder("[");
+
+        for (int i = 0; i < files.size(); i++) {
+            BatchFilePayload payload = files.get(i);
+            String fileName = (payload != null && payload.getOriginalFilename() != null) ? payload.getOriginalFilename() : "未命名-" + (i + 1);
+            String fileResultJson;
+            boolean fileOk = false;
+            String fileOutput = "";
+
+            // 字节流已在内存（controller 进异步线程前已读到 bytes），避开 Tomcat 临时文件被清理问题
+            if (payload == null || payload.getContent() == null || payload.getContent().length == 0) {
+                String err = "文件为空";
+                failCount++;
+                fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"errorMsg\":\"" + escapeJson(err) + "\",\"output\":\"\"}";
+            } else {
+                long start = System.currentTimeMillis();
+                // 每个文件单独建"处理中"历史（便于回溯）
+                Long historyId = historyService.createPendingHistory(userId, toolId, null,
+                        TOOL_CODE_AI_OCR, "批量上传（" + (i + 1) + "/" + files.size() + "）：" + fileName);
+                StringBuilder fileOut = new StringBuilder();
+                try {
+                    // 直接用字节流重载（文件已在内存，OCR 不再依赖 MultipartFile 临时文件）
+                    String ocrText = ocrService.recognizeBytes(payload.getContent(), fileName);
+                    if (ocrText == null || ocrText.isBlank()) {
+                        throw new BusinessException("OCR 未识别出文字");
+                    }
+                    String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
+                    // 走 aiTextProcessStream 流式输出（内部用 chatStream 推 chunk，累积到 fileOut）
+                    aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, null,
+                            fileOut::append);
+                    long duration = System.currentTimeMillis() - start;
+                    fileOutput = fileOut.toString();
+                    historyService.completeHistory(historyId, fileOutput, (int) duration);
+                    successCount++;
+                    fileOk = true;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(fileOutput) + "\"}";
+                } catch (Exception e) {
+                    log.error("批量 OCR 失败：{}", fileName, e);
+                    historyService.failHistory(historyId, e.getMessage());
+                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    failCount++;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
+                }
+            }
+
+            // 累积到 resultJson
+            if (i > 0) resultJson.append(",");
+            resultJson.append(fileResultJson);
+
+            // 立即入库（前端轮询可见这张完成）
+            try {
+                batchTaskService.appendItem(batchId, fileResultJson, fileOk);
+            } catch (Exception e) {
+                log.error("[B2-OCR] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
+            }
+            processedIndex++;
+        }
+
+        resultJson.append("]");
+
+        return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, processedIndex, resultJson.toString(), "");
+    }
+
+    /**
+     * 批量流式文档重点提取（B2）：逐文件解析 + AI 整理
+     * 单文件完成立即调 batchTaskService.appendItem 入库（前端轮询可见），最后由 Controller 调 completeBatch
+     * 单文件失败不影响整体
+     */
+    @Override
+    public com.example.aitools.dto.BatchProcessResult aiDocumentSummaryBatchStream(Long userId, List<BatchFilePayload> files,
                                               String promptFormat, String promptGenerate, Long promptId,
-                                              Consumer<String> onChunk) {
+                                              String batchId) {
         if (files == null || files.isEmpty()) {
             throw new BusinessException("请至少上传 1 个文件");
         }
@@ -174,74 +260,72 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
         }
 
         Long toolId = findToolIdByCode(TOOL_CODE_DOC_SUMMARY);
-        long batchStart = System.currentTimeMillis();
         int successCount = 0;
         int failCount = 0;
-        StringBuilder batchOutput = new StringBuilder();
+        int processedIndex = 0;
         // 文件结果用 JSON 字符串累积，结尾一次性入库
         StringBuilder resultJson = new StringBuilder("[");
 
-        // 推送批次开始
-        onChunk.accept("--- [批量开始，共 " + files.size() + " 个文件] ---\n");
-
         for (int i = 0; i < files.size(); i++) {
-            MultipartFile file = files.get(i);
-            String fileName = (file != null && file.getOriginalFilename() != null) ? file.getOriginalFilename() : "未命名-" + (i + 1);
+            BatchFilePayload payload = files.get(i);
+            String fileName = (payload != null && payload.getOriginalFilename() != null) ? payload.getOriginalFilename() : "未命名-" + (i + 1);
             String fileResultJson;
-            // 文件开始标记
-            onChunk.accept("--- [" + (i + 1) + "/" + files.size() + ": " + fileName + "] ---\n");
+            boolean fileOk = false;
+            String fileOutput = "";
 
-            if (file == null || file.isEmpty()) {
+            // 字节流已在内存（controller 进异步线程前已读到 bytes），避开 Tomcat 临时文件被清理问题
+            if (payload == null || payload.getContent() == null || payload.getContent().length == 0) {
                 String err = "文件为空";
-                onChunk.accept("--- [" + (i + 1) + "/" + files.size() + " 失败: " + err + "] ---\n\n");
                 failCount++;
-                fileResultJson = "{\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"FAIL\",\"output\":\"" + escapeJson(err) + "\"}";
+                fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"errorMsg\":\"" + escapeJson(err) + "\",\"output\":\"\"}";
             } else {
                 long start = System.currentTimeMillis();
                 // 每个文件单独建"处理中"历史（便于回溯）
                 Long historyId = historyService.createPendingHistory(userId, toolId, null,
                         TOOL_CODE_DOC_SUMMARY, "批量上传（" + (i + 1) + "/" + files.size() + "）：" + fileName);
-                StringBuilder fileOutput = new StringBuilder();
+                StringBuilder fileOut = new StringBuilder();
                 try {
-                    String docText = documentParser.parse(file);
+                    // 把字节流重新包成内存版 MultipartFile 给 documentParser（DocumentParser 签名是 MultipartFile，不动它）
+                    String docText = documentParser.parse(payload.toMultipartFile());
                     String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, TOOL_CODE_DOC_SUMMARY);
                     String generatePrompt = resolvePrompt(promptGenerate, promptId, PROMPT_USE_GENERATE, TOOL_CODE_DOC_SUMMARY);
                     validatePrompts(formatPrompt, generatePrompt);
                     String systemPrompt = buildSystemPrompt(formatPrompt, docText);
                     String userPrompt = generatePrompt + "\n\n文档内容：\n" + docText;
-                    // 流式推 chunk（前端打字机）
-                    aiClient.chatStream(systemPrompt, userPrompt, chunk -> {
-                        fileOutput.append(chunk);
-                        // 给前端 onChunk 加前缀标记（但这里 onChunk 接收的是原始 chunk）
-                        onChunk.accept(chunk);
-                    });
+                    // 流式调 AI，累积到 fileOut（不再 onChunk 推 SSE 帧）
+                    aiClient.chatStream(systemPrompt, userPrompt, fileOut::append);
                     long duration = System.currentTimeMillis() - start;
-                    historyService.completeHistory(historyId, fileOutput.toString(), (int) duration);
-                    onChunk.accept("\n--- [" + (i + 1) + "/" + files.size() + " 完成，耗时 " + duration + "ms] ---\n\n");
+                    fileOutput = fileOut.toString();
+                    historyService.completeHistory(historyId, fileOutput, (int) duration);
                     successCount++;
-                    fileResultJson = "{\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"OK\",\"output\":\"" + escapeJson(fileOutput.toString()) + "\"}";
-                    batchOutput.append("=== ").append(fileName).append(" ===\n").append(fileOutput).append("\n\n");
+                    fileOk = true;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(fileOutput) + "\"}";
                 } catch (Exception e) {
                     log.error("批量文档处理失败：{}", fileName, e);
                     historyService.failHistory(historyId, e.getMessage());
                     String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-                    onChunk.accept("--- [" + (i + 1) + "/" + files.size() + " 失败: " + errMsg + "] ---\n\n");
                     failCount++;
-                    fileResultJson = "{\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"FAIL\",\"output\":\"" + escapeJson(errMsg) + "\"}";
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
                 }
             }
 
+            // 累积到 resultJson（Controller 会拿去做最后 completeBatch）
             if (i > 0) resultJson.append(",");
             resultJson.append(fileResultJson);
+
+            // 立即入库（前端轮询可见这张完成）
+            try {
+                batchTaskService.appendItem(batchId, fileResultJson, fileOk);
+            } catch (Exception e) {
+                log.error("[B2-DOC] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
+            }
+            processedIndex++;
         }
 
         resultJson.append("]");
 
-        // 批量结束标记
-        onChunk.accept("--- [批量完成：" + successCount + " 成功 / " + failCount + " 失败，总耗时 " + (System.currentTimeMillis() - batchStart) + "ms] ---\n");
-
-        // 把汇总结果给调用方（Controller 会把 resultJson / successCount / failCount 入库）
-        return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, resultJson.toString(), batchOutput.toString());
+        // 把汇总结果给调用方（Controller 会调 completeBatch 写终态）
+        return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, processedIndex, resultJson.toString(), "");
     }
 
     /** JSON 字符串转义 */
