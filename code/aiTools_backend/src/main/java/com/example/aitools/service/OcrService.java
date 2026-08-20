@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Base64;
-import java.util.List;
 
 /**
  * 腾讯云 OCR 服务：上传图片 → 调 GeneralAccurateOCR → 返回原始文字
@@ -58,17 +57,17 @@ public class OcrService {
             // req.setImageUrl(null);  // 二选一，这里走 base64
 
             GeneralAccurateOCRResponse resp = client.GeneralAccurateOCR(req);
-            List<TextDetection> detections = resp.getTextDetections();
-            if (detections == null || detections.isEmpty()) {
+            TextDetection[] detections = resp.getTextDetections();
+            if (detections == null || detections.length == 0) {
                 return "";
             }
             StringBuilder sb = new StringBuilder();
             for (TextDetection d : detections) {
-                if (d.getDetectedText() != null) {
+                if (d != null && d.getDetectedText() != null) {
                     sb.append(d.getDetectedText()).append("\n");
                 }
             }
-            log.info("OCR 识别完成，行数：{}", detections.size());
+            log.info("OCR 识别完成，行数：{}", detections.length);
             return sb.toString().trim();
         } catch (TencentCloudSDKException e) {
             log.error("腾讯云 OCR 调用失败", e);
