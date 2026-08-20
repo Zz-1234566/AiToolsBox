@@ -3,6 +3,7 @@ package com.example.aitools.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
+import com.example.aitools.config.CosConfig;
 import com.example.aitools.dto.ChangePasswordRequest;
 import com.example.aitools.dto.FindAccountRequest;
 import com.example.aitools.dto.FindAccountResponse;
@@ -36,15 +37,17 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final JwtUtil jwtUtil;
     private final CodeService codeService;
+    private final CosConfig cosConfig;
 
     /** In-memory token store (replace with Redis in production) */
     private final Map<String, Long> tokenStore = new ConcurrentHashMap<>();
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    /** 默认头像 */
-    private static final String DEFAULT_AVATAR_URL =
-            "https://ai-tools-box-1419900334.cos.ap-guangzhou.myqcloud.com/avatar/defaultAvator.png";
+    /** 默认头像 URL：从 CosConfig 拼出（bucket + region + defaultAvatarKey） */
+    private String defaultAvatarUrl() {
+        return "https://" + cosConfig.getBucket() + ".cos." + cosConfig.getRegion() + ".myqcloud.com/" + cosConfig.getDefaultAvatarKey();
+    }
 
     @Override
     public LoginResponse login(LoginRequest request) {
@@ -113,7 +116,7 @@ public class UserServiceImpl implements UserService {
 
         // 创建用户
         User user = new User();
-        user.setAvatar(DEFAULT_AVATAR_URL);
+        user.setAvatar(defaultAvatarUrl());
         user.setAccount(account);
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());

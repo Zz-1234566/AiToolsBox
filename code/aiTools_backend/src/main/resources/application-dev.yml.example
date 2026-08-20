@@ -47,6 +47,8 @@ cos:
   secret-key: ${COS_SECRET_KEY:your-cos-secret-key}
   region: ap-guangzhou
   bucket: your-cos-bucket-name
+  # 默认头像在桶内的 key 路径；URL 由 bucket + region 拼出
+  default-avatar-key: ${DEFAULT_AVATAR_KEY:avatar/defaultAvator.png}
 
 # 验证码配置
 verify-code:
