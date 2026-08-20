@@ -188,7 +188,14 @@ export const streamUpload = (options) => {
             }, 600)
             return
           }
-          if (options.onError) options.onError(new Error('请求失败（' + xhr.status + '）'))
+          // 解析后端 message，弹窗给用户看
+          let msg = '请求失败（' + xhr.status + '）'
+          try {
+            const body = JSON.parse(xhr.responseText || '{}')
+            if (body && (body.message || body.msg)) msg = body.message || body.msg
+            // Result 结构 { code, message, data }，取 message
+          } catch (e) { /* 解析失败就用默认 */ }
+          if (options.onError) options.onError(new Error(msg))
           return
         }
         parseNewChunks(xhr.responseText, true)
@@ -199,6 +206,7 @@ export const streamUpload = (options) => {
         if (options.onError) options.onError(err)
       }
 
+      // xhr 完整发送后再 attach load 监听（保持原有行为）
       xhr.send(formData)
     })
     .catch((err) => {

@@ -464,6 +464,8 @@ const handleGenerate = async () => {
           },
           onError: (err) => {
             if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+            // 弹窗显示后端真实错误信息（OCR 未启用 / 上传失败等）
+            uni.showModal({ title: '请求失败', content: err && err.message ? err.message : '未知错误', showCancel: false })
             reject(err)
           }
         })
