@@ -64,7 +64,6 @@ public class AiOfficeToolController {
         Long userId = authUtil.getUserIdFromRequest(request);
         SseEmitter emitter = new SseEmitter(120000L); // 2分钟超时
 
-        // 异步执行流式，不阻塞请求线程
         executor.execute(() -> {
             try {
                 aiOfficeToolService.aiWorkSummaryStream(userId, dto.getContent(),
@@ -93,7 +92,6 @@ public class AiOfficeToolController {
         Long userId = authUtil.getUserIdFromRequest(request);
         SseEmitter emitter = new SseEmitter(120000L); // 2分钟超时
 
-        // 异步执行流式，不阻塞请求线程
         executor.execute(() -> {
             try {
                 aiOfficeToolService.aiWeeklyReportStream(userId, dto.getContent(),
@@ -122,7 +120,6 @@ public class AiOfficeToolController {
         Long userId = authUtil.getUserIdFromRequest(request);
         SseEmitter emitter = new SseEmitter(120000L); // 2分钟超时
 
-        // 异步执行流式，不阻塞请求线程
         executor.execute(() -> {
             try {
                 aiOfficeToolService.aiMeetingMinutesStream(userId, dto.getContent(),
@@ -152,7 +149,6 @@ public class AiOfficeToolController {
         Long userId = authUtil.getUserIdFromRequest(request);
         SseEmitter emitter = new SseEmitter(120000L); // 2分钟超时
 
-        // 异步执行流式，不阻塞请求线程
         executor.execute(() -> {
             try {
                 aiOfficeToolService.aiDocumentSummaryStream(userId, file,
@@ -211,11 +207,9 @@ public class AiOfficeToolController {
         return dto.getPrompt();
     }
 
-    // ==================== 批量文档处理（逐文件入库 + 前端轮询方案） ====================
-    // 流程：upload 端点同步建任务 + 启异步线程跑批（不再开 SSE）
-    //      service 内每文件完成立即调 batchTaskService.appendItem 入库
-    //      全部跑完调 completeBatch 写终态
-    //      前端用 GET /batch/{batchId}/completed?since=N 轮询拉增量 items
+    // 批量处理：upload 端点同步建任务 + 启异步线程跑批
+    // service 内每文件完成立即 appendItem 入库，全部跑完 Controller 调 completeBatch
+    // 前端用 GET /batch/{batchId}/completed?since=N 轮询拉增量 items
 
     /** 批量上传文档（1-10 个）：立即建任务 + 异步处理 + 立即返回 batchId */
     @PostMapping(value = "/document-summary/batch-upload", produces = "application/json;charset=UTF-8")
@@ -236,11 +230,11 @@ public class AiOfficeToolController {
             throw new com.example.aitools.exception.BusinessException("批量文件总大小超过 200MB");
         }
 
-        // 1) 立即建任务（HTTP 同步返回的关键）
+        // 1) 同步建任务（HTTP 必须立即返回 batchId，前端拿去轮询）
         String batchId = batchTaskService.createTask(userId, "doc-keypoint-extract", files.size());
         log.info("[B2] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
 
-        // 2) 同步阶段先把每个 MultipartFile 读到 byte[]（关键！避开 Tomcat 异步线程跑批时临时文件已被清理）
+        // 2) 同步把 MultipartFile 读到 byte[]（避开 Tomcat 异步线程跑批时临时文件已被清理）
         java.util.List<BatchFilePayload> payloads;
         try {
             payloads = files.stream().map(f -> {
@@ -254,13 +248,12 @@ public class AiOfficeToolController {
             throw e;
         }
 
-        // 3) 异步跑批量处理（service 内部单文件完即 appendItem，全部跑完调 completeBatch）
+        // 3) 异步跑批（service 内每文件完即 appendItem，全部跑完 Controller 调 completeBatch）
         executor.execute(() -> {
             try {
                 batchTaskService.markRunning(batchId);
                 com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiDocumentSummaryBatchStream(
                         userId, payloads, promptFormat, promptGenerate, promptId, batchId);
-                // 全部跑完入库（终态 + result_summary）
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
                 log.info("[B2] 批量任务完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
             } catch (Exception e) {
@@ -271,7 +264,6 @@ public class AiOfficeToolController {
             }
         });
 
-        // 3) 同步返回 batchId（前端拿这个去轮询 /completed）
         BatchUploadResponse resp = new BatchUploadResponse();
         resp.setBatchId(batchId);
         resp.setFileCount(files.size());
@@ -301,7 +293,7 @@ public class AiOfficeToolController {
         String batchId = batchTaskService.createTask(userId, "ocr-recognize", files.size());
         log.info("[OCR-B2] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
 
-        // 同步阶段先把每个 MultipartFile 读到 byte[]（关键！避开 Tomcat 异步线程跑批时临时文件已被清理）
+        // 同步阶段先把每个 MultipartFile 读到 byte[]（避开 Tomcat 异步线程跑批时临时文件已被清理）
         java.util.List<BatchFilePayload> payloads;
         try {
             payloads = files.stream().map(f -> {
