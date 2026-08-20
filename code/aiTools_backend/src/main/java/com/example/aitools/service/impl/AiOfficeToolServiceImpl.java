@@ -10,6 +10,7 @@ import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.service.HistoryService;
+import com.example.aitools.service.OcrService;
 import com.example.aitools.service.document.DocumentParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,9 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     /** 会议纪要工具编码 */
     private static final String TOOL_CODE_MEETING_MINUTES = "meeting-minutes";
 
+    /** OCR 智能识别工具编码 */
+    private static final String TOOL_CODE_AI_OCR = "ocr-recognize";
+
     /** 提示词用途：格式 */
     private static final String PROMPT_USE_FORMAT = "format";
 
@@ -46,6 +50,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private final AiToolMapper aiToolMapper;
     private final AiPromptTemplateService aiPromptTemplateService;
     private final DocumentParser documentParser;
+    private final OcrService ocrService;
 
     /**
      * 工作总结
@@ -126,6 +131,30 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             historyService.failHistory(historyId, e.getMessage());
             throw e;
         }
+    }
+
+    /**
+     * 流式 OCR 智能识别（SSE）：上传图片 → 腾讯云 OCR 提取文字 → 调 AI 整理成结构化结果
+     * 复用 aiTextProcessStream：把 OCR 出的文字当 content，prompt 走 ai-ocr 系统提示词
+     */
+    @Override
+    public String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
+        // 图片拦截
+        if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+            throw new BusinessException("请上传图片文件");
+        }
+
+        long start = System.currentTimeMillis();
+        Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
+        String fileName = file.getOriginalFilename();
+        // 走通用方法：先 OCR 出文字作为 content，再走 aiTextProcessStream 流式输出
+        String ocrText = ocrService.recognizeText(file);
+        if (ocrText == null || ocrText.isBlank()) {
+            throw new BusinessException("OCR 未识别出文字，请换一张更清晰的图片");
+        }
+        // 输入用 OCR 结果 + 文件名作为占位，便于历史回溯
+        String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
+        return aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId, onChunk);
     }
 
     /**

@@ -405,9 +405,70 @@ const handleGenerate = async () => {
       resultContent.value = formatAiResult(fullText)
 
     } else if (id === 'ocr-recognize') {
-      // OCR 识别：后端暂未实现
-      uni.showToast({ title: '该工具开发中', icon: 'none' })
-      return
+      // OCR 智能识别：上传图片 → 腾讯云 OCR → 调 AI 整理（SSE 流式）
+      if (currentInputType.value !== 'file' && currentInputType.value !== 'image') {
+        uni.showToast({ title: '该工具请上传图片', icon: 'none' })
+        return
+      }
+      if (!uni.getStorageSync('token')) {
+        uni.showToast({ title: '请先登录', icon: 'none' })
+        setTimeout(() => {
+          uni.navigateTo({ url: '/pages/login' })
+        }, 600)
+        return
+      }
+      if (!filePath.value) {
+        uni.showToast({ title: '请先上传图片', icon: 'none' })
+        return
+      }
+      if (!promptFormatText.value.trim() && !promptGenerateText.value.trim()) {
+        uni.showToast({ title: '请填写格式或生成内容提示词', icon: 'none' })
+        return
+      }
+
+      // 流式：multipart 上传 + SSE 增量读
+      let fullText = ''
+      resultContent.value = ''
+      const charQueue = []
+      let streamDone = false
+      let typeTimer = null
+
+      await new Promise((resolve, reject) => {
+        const flushChar = () => {
+          if (charQueue.length > 0) {
+            resultContent.value += charQueue.shift()
+          }
+          if (streamDone && charQueue.length === 0) {
+            if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+            resolve()
+          }
+        }
+        streamUpload({
+          url: '/api/ai-office/ocr-recognize/stream',
+          file: filePath.value,
+          fields: {
+            promptFormat: promptFormatText.value,
+            promptGenerate: promptGenerateText.value
+          },
+          onChunk: (chunk) => {
+            fullText += chunk
+            for (const ch of chunk) charQueue.push(ch)
+            if (!typeTimer) typeTimer = setInterval(flushChar, 20)
+          },
+          onDone: () => {
+            streamDone = true
+            if (charQueue.length === 0) {
+              if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+              resolve()
+            }
+          },
+          onError: (err) => {
+            if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+            reject(err)
+          }
+        })
+      })
+      resultContent.value = formatAiResult(fullText)
 
     } else if (id === 'work-summary') {
       // 工作总结：SSE 流式输出（打字机效果）；仅文字输入方式走 SSE

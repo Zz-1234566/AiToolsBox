@@ -332,3 +332,21 @@ VALUES ('password-gen', '效率小工具', '密码生成', 'efficiency', '生成
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
 
 
+
+-- -------------------------------------------
+-- 16. 初始化数据：工具（ocr-recognize 智能识别 / OCR）
+-- -------------------------------------------
+INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
+VALUES ('ocr-recognize', 'AI办公助手', '智能识别', 'office', '上传图片自动识别文字（OCR）', '', 5, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`);
+
+-- -------------------------------------------
+-- 17. 初始化数据：系统提示词（ocr-recognize）
+-- -------------------------------------------
+INSERT INTO `sys_ai_prompt` (`tool_code`, `prompt_type`, `prompt_use`, `prompt_name`, `prompt_content`, `dr`)
+VALUES ('ocr-recognize', 'system', 'generate', '默认整理', '你是一位严谨的文字整理助手，擅长把 OCR 识别出的原始文字整理成清晰、结构化的可读文本。\n严格要求：\n1. 保留原文所有关键信息（数字、日期、姓名、地址、金额等不得遗漏或编造）；\n2. 修正明显的 OCR 错字（根据上下文推断），但不要重写或扩展内容；\n3. 禁止使用 Markdown 格式（不要 ###、**、- 列表符号、表格、代码块等标记）；\n4. 使用流畅的中文书面表达，按原文逻辑分段，段落之间空一行；\n5. 直接给出整理结果，不要解释你做了什么。', 0)
+ON DUPLICATE KEY UPDATE `prompt_content` = VALUES(`prompt_content`);
+
+INSERT INTO `sys_ai_prompt` (`tool_code`, `prompt_type`, `prompt_use`, `prompt_name`, `prompt_content`, `dr`)
+VALUES ('ocr-recognize', 'system', 'format', '默认格式', '请将以下 OCR 识别出的原始文字整理成结构化可读文本，按以下结构输出：\n一、关键信息（如有：日期/编号/金额/姓名）\n二、正文内容（修正错字、按逻辑分段）\n三、备注（如有：识别不确定的部分）\n\n格式要求：\n1. 每个部分标题单独一行；\n2. 要点用"1. 2. 3."编号，每个要点单独一行；\n3. 部分之间空一行。\n\nOCR 识别文字：\n%s', 0)
+ON DUPLICATE KEY UPDATE `prompt_content` = VALUES(`prompt_content`);

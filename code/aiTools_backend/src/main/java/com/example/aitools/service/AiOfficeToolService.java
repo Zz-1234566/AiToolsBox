@@ -64,4 +64,16 @@ public interface AiOfficeToolService {
      * @return 完整结果
      */
     String aiDocumentSummaryStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
+
+    /**
+     * 流式 OCR 智能识别（SSE）：上传图片 → 腾讯云 OCR 提取文字 → 调 AI 整理成结构化结果
+     * @param userId 用户ID
+     * @param file 上传的图片（jpg/png/pdf）
+     * @param promptFormat 用户自定义格式提示词（可空）
+     * @param promptGenerate 用户自定义生成内容提示词（可空）
+     * @param promptId 系统提示词ID（可空）
+     * @param onChunk 每收到一段内容回调
+     * @return 完整结果
+     */
+    String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
 }

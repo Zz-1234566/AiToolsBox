@@ -50,6 +50,15 @@ cos:
   # 默认头像在桶内的 key 路径；URL 由 bucket + region 拼出
   default-avatar-key: ${DEFAULT_AVATAR_KEY:avatar/defaultAvator.png}
 
+# 腾讯云 OCR（ai-ocr 工具用）。密钥默认复用 cos.*，留空即用 COS 密钥
+# 不需要 OCR 时设 ocr.enabled=false
+ocr:
+  enabled: ${OCR_ENABLED:false}
+  secret-id: ${OCR_SECRET_ID:}
+  secret-key: ${OCR_SECRET_KEY:}
+  region: ${OCR_REGION:}
+  model: ${OCR_MODEL:GeneralAccurateOCR}
+
 # 验证码配置
 verify-code:
   expire-minutes: 5          # 验证码有效期（分钟）
