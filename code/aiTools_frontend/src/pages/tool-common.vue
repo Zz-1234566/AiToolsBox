@@ -109,7 +109,7 @@
               class="prompt-picker-item press-scale"
               @click="selectPrompt(item)"
             >
-              <text class="prompt-picker-text">{{ item.promptText }}</text>
+              <text class="prompt-picker-text">{{ item.promptName || '（未命名）' }}</text>
             </view>
             <view v-if="userPromptList.length === 0" class="prompt-empty">
               <text>暂无该类型我的提示词</text>
@@ -125,7 +125,7 @@
                 v-model="aiRequirement"
                 :placeholder="aiRequirementPlaceholder"
                 placeholder-class="textarea-placeholder"
-                maxlength="300"
+                maxlength="1000"
                 :disabled="aiLoading"
               />
               <button
@@ -151,7 +151,7 @@
                   <view class="ai-gen-action-btn secondary press-scale" @click="applyGenerated(false)">
                     <text>应用</text>
                   </view>
-                  <view class="ai-gen-action-btn primary press-scale" @click="applyGenerated(true)">
+                  <view class="ai-gen-action-btn primary press-scale" @click="openSaveNameModal">
                     <text>应用并保存</text>
                   </view>
                 </view>
@@ -162,6 +162,30 @@
 
         <view class="prompt-picker-close" @click="closePromptPicker">
           <text>关闭</text>
+        </view>
+      </view>
+
+      <!-- 保存命名弹窗（应用并保存时弹出，让用户编辑提示词名称） -->
+      <view v-if="showSaveNameModal" class="save-name-mask" @click="cancelSaveName">
+        <view class="save-name-modal" @click.stop>
+          <text class="save-name-title">为提示词命名</text>
+          <text class="save-name-hint">同一工具下名称不可重复，可修改后保存</text>
+          <input
+            class="save-name-input"
+            v-model="saveNameInput"
+            placeholder="请输入名称"
+            placeholder-class="textarea-placeholder"
+            :maxlength="64"
+            focus
+          />
+          <view class="save-name-actions">
+            <view class="save-name-btn secondary press-scale" @click="cancelSaveName">
+              <text>取消</text>
+            </view>
+            <view class="save-name-btn primary press-scale" @click="confirmSaveName">
+              <text>保存</text>
+            </view>
+          </view>
         </view>
       </view>
     </view>
@@ -212,6 +236,9 @@ const currentTab = ref('system')    // 弹窗当前 tab：system / user / ai
 const aiRequirement = ref('')        // AI 生成 tab 的需求输入
 const aiGeneratedText = ref('')      // AI 生成的提示词预览
 const aiLoading = ref(false)         // AI 生成中（防重复点）
+const showSaveNameModal = ref(false) // 应用并保存时弹出的命名小窗
+const saveNameInput = ref('')        // 命名小窗的输入
+const saveNameSaving = ref(false)    // 命名保存中（防重复点）
 
 const pickerTabs = [
   { key: 'system', label: '系统提示词' },
@@ -300,6 +327,9 @@ const openPromptPicker = async (target = 'generate') => {
   aiRequirement.value = ''
   aiGeneratedText.value = ''
   aiLoading.value = false
+  showSaveNameModal.value = false
+  saveNameInput.value = ''
+  saveNameSaving.value = false
   try {
     // 用户自定义提示词（过滤用途，按当前工具 toolCode 隔离）
     const userRes = await promptListApi(toolId.value)
@@ -317,6 +347,8 @@ const openPromptPicker = async (target = 'generate') => {
 // 关闭弹窗：点遮罩或关闭按钮
 const closePromptPicker = () => {
   showPromptPicker.value = false
+  showSaveNameModal.value = false
+  saveNameInput.value = ''
   // 注意：textarea 已填内容（promptFormatText/promptGenerateText）保留，不清
 }
 
@@ -368,28 +400,88 @@ const handleAiGenerate = async () => {
   }
 }
 
-// 应用生成结果：save=true 同时存到我的提示词表
-const applyGenerated = async (save = false) => {
+// 应用生成结果（只填入，不保存）
+const applyGenerated = () => {
   const text = aiGeneratedText.value
   if (!text) return
-  // AI 生成的内容无 id，清空 selectedPromptId（不影响后续可重新选）
+  // AI 生成的内容无 id，清空 selectedPromptId
   selectedPromptId.value = ''
   if (promptPickerTarget.value === 'format') {
     promptFormatText.value = text
   } else {
     promptGenerateText.value = text
   }
-  // 应用并保存：异步存库（不阻塞关闭弹窗）
-  if (save) {
-    try {
-      await promptAddApi(text, promptPickerTarget.value, toolId.value)
-      uni.showToast({ title: '已保存到我的提示词', icon: 'success' })
-    } catch (e) {
-      // request.js 已 toast 错误，这里不重复
-      console.error('Save generated prompt failed:', e)
+  showPromptPicker.value = false
+}
+
+// 打开"应用并保存"命名弹窗：默认值 = 工具名 + 用途 + 提示词 + 自增数字
+const openSaveNameModal = () => {
+  if (!aiGeneratedText.value) return
+  const baseName = buildDefaultPromptName()
+  saveNameInput.value = baseName
+  showSaveNameModal.value = true
+}
+
+const cancelSaveName = () => {
+  showSaveNameModal.value = false
+  saveNameInput.value = ''
+}
+
+// 计算默认提示词名：{工具名}{用途}提示词{自增数字}
+// 例：智能识别 + 格式 + 提示词1；下次新增 → 智能识别格式提示词2
+// 自增范围：仅匹配同工具同用途的现有命名
+const buildDefaultPromptName = () => {
+  const toolName = (toolInfo.value && toolInfo.value.name) || '提示词'
+  const useLabel = promptPickerTarget.value === 'format' ? '格式' : '生成内容'
+  const prefix = toolName + useLabel + '提示词'
+  const re = new RegExp('^' + escapeRegExp(prefix) + '(\d+)$')
+  let maxNum = 0
+  for (const p of userPromptList.value) {
+    const n = (p.promptName || '').match(re)
+    if (n) {
+      const num = parseInt(n[1], 10)
+      if (num > maxNum) maxNum = num
     }
   }
-  showPromptPicker.value = false
+  return prefix + (maxNum + 1)
+}
+
+// RegExp 转义辅助
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// 确认保存：填入 textarea + 调 promptAddApi
+const confirmSaveName = async () => {
+  if (saveNameSaving.value) return
+  const text = aiGeneratedText.value
+  const name = saveNameInput.value.trim()
+  if (!name) {
+    uni.showToast({ title: '请输入名称', icon: 'none' })
+    return
+  }
+  saveNameSaving.value = true
+  try {
+    await promptAddApi(text, promptPickerTarget.value, toolId.value, name)
+    // 填入 textarea
+    selectedPromptId.value = ''
+    if (promptPickerTarget.value === 'format') {
+      promptFormatText.value = text
+    } else {
+      promptGenerateText.value = text
+    }
+    // 刷新 userPromptList（让用户能看到新保存的）
+    try {
+      const userRes = await promptListApi(toolId.value)
+      userPromptList.value = (userRes.data || []).filter(p => p.promptUse === promptPickerTarget.value)
+    } catch (e) { /* 刷新失败不影响主流程 */ }
+    uni.showToast({ title: '已保存到我的提示词', icon: 'success' })
+    showSaveNameModal.value = false
+    showPromptPicker.value = false
+  } catch (e) {
+    // request.js 已 toast 错误（同名会提示"该工具下已存在同名提示词"）
+    console.error('Save generated prompt failed:', e)
+  } finally {
+    saveNameSaving.value = false
+  }
 }
 
 // 通用 SSE 文本流式输出（打字机效果）：work-summary / weekly-report / meeting-minutes 共用
@@ -841,6 +933,82 @@ const handleGenerate = async () => {
       text-align: center;
       color: $text-secondary;
       font-size: $font-size-sm;
+    }
+  }
+
+  // ============ "应用并保存"命名小窗样式 ============
+  .save-name-mask {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+
+    .save-name-modal {
+      width: 80%;
+      background-color: $bg-white;
+      border-radius: $radius-lg;
+      padding: $spacing-lg;
+      display: flex;
+      flex-direction: column;
+
+      .save-name-title {
+        font-size: $font-size-md;
+        font-weight: 600;
+        color: $text-primary;
+        margin-bottom: $spacing-xs;
+      }
+
+      .save-name-hint {
+        font-size: $font-size-xs;
+        color: $text-tertiary;
+        margin-bottom: $spacing-md;
+      }
+
+      .save-name-input {
+        width: 100%;
+        height: 80rpx;
+        background-color: $bg-color;
+        border-radius: $radius-md;
+        padding: 0 $spacing-md;
+        font-size: $font-size-sm;
+        color: $text-primary;
+        border: 1rpx solid $border-color;
+        box-sizing: border-box;
+        margin-bottom: $spacing-md;
+      }
+
+      .save-name-actions {
+        display: flex;
+        gap: $spacing-sm;
+
+        .save-name-btn {
+          flex: 1;
+          height: 80rpx;
+          border-radius: $radius-pill;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: $font-size-sm;
+
+          &.secondary {
+            background-color: $bg-color;
+            color: $text-primary;
+            border: 1rpx solid $border-color;
+          }
+
+          &.primary {
+            background-color: $text-primary;
+            color: $bg-white;
+          }
+
+          &:active {
+            opacity: 0.8;
+          }
+        }
+      }
     }
   }
 }

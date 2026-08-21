@@ -4,10 +4,10 @@ import { request } from './request'
 export const promptListApi = (toolCode) => request({ url: '/api/prompt/list', method: 'GET', data: { toolCode } })
 
 // 新增提示词（promptUse: format 格式 / generate 生成内容；toolCode 所属工具）
-export const promptAddApi = (promptText, promptUse, toolCode) => request({ url: '/api/prompt/add', method: 'POST', data: { promptText, promptUse, toolCode } })
+export const promptAddApi = (promptText, promptUse, toolCode, promptName) => request({ url: '/api/prompt/add', method: 'POST', data: { promptText, promptUse, toolCode, promptName } })
 
 // 更新提示词（promptUse: format 格式 / generate 生成内容；toolCode 所属工具）
-export const promptUpdateApi = (id, promptText, promptUse, toolCode) => request({ url: `/api/prompt/${id}`, method: 'PUT', data: { promptText, promptUse, toolCode } })
+export const promptUpdateApi = (id, promptText, promptUse, toolCode, promptName) => request({ url: `/api/prompt/${id}`, method: 'PUT', data: { promptText, promptUse, toolCode, promptName } })
 
 // 删除提示词
 export const promptDeleteApi = (id) => request({ url: `/api/prompt/${id}`, method: 'DELETE' })
