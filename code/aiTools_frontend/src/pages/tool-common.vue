@@ -204,7 +204,7 @@ import AudioInputArea from '@/components/AudioInputArea.vue'
 import PromptInputArea from '@/components/PromptInputArea.vue'
 import ResultArea from '@/components/ResultArea.vue'
 import BatchFilePicker from '@/components/BatchFilePicker.vue'
-import { uploadFileApi, batchUpload, ocrBatchUpload, batchCompleted } from '@/api/ai.js'
+import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, batchCompleted } from '@/api/ai.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
 import { request } from '@/api/request'
@@ -650,6 +650,21 @@ const handleGenerate = async () => {
       batchTotal.value = fileCount
       await pollBatchCompleted(batchId, 'doc-keypoint-extract')
 
+    } else if (id === 'ai-file-reader') {
+      // AI 文件解读：B2 多文件批量（轮询方案），后端只接单个 prompt 字符串
+      // 格式提示词 + 生成内容提示词拼接后传入；两者皆空时后端用默认解读提示词
+      const readerFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
+      const promptParts = []
+      if (promptFormatText.value.trim()) promptParts.push(promptFormatText.value.trim())
+      if (promptGenerateText.value.trim()) promptParts.push(promptGenerateText.value.trim())
+      const { batchId, fileCount } = await aiFileReaderBatchUpload({
+        files: readerFiles,
+        fields: {
+          prompt: promptParts.join('\n\n')
+        }
+      })
+      batchTotal.value = fileCount
+      await pollBatchCompleted(batchId, 'ai-file-reader')
     } else if (id === 'weekly-report') {
       // 周报生成：SSE 流式输出（前置校验已统一处理）
       const fullText = await runTextStream('/api/ai-office/weekly-report/stream')
