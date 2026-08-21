@@ -156,3 +156,12 @@ export const batchUpload = (options) => {
 export const ocrBatchUpload = (options) => {
   return batchCreate('/api/ai-office/ocr-recognize/batch-upload', options.files, options.fields)
 }
+
+/**
+ * 批量上传多文件（AI 文件解读）— 第 1 步：创建任务拿 batchId
+ * @param {Object} options { files, fields } - fields 传 { prompt }
+ * @returns {Promise<{ batchId, fileCount }>}
+ */
+export const aiFileReaderBatchUpload = (options) => {
+  return batchCreate('/api/ai-office/ai-file-reader/batch-upload', options.files, options.fields)
+}

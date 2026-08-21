@@ -92,6 +92,7 @@ import { requireLogin } from '@/utils/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import UploadArea from '@/components/UploadArea.vue'
 import ResultArea from '@/components/ResultArea.vue'
+import { request } from '@/api/request'
 
 const toolName = ref('')
 const promptText = ref('')
@@ -100,6 +101,7 @@ const inputText = ref('')
 const fileName = ref('')
 const loading = ref(false)
 const resultContent = ref('')
+const resultItems = ref([])
 
 const inputTypes = [
   { label: '文字输入', value: 'text' },
@@ -111,7 +113,7 @@ const onFileChoose = (info) => {
   fileName.value = filePath ? (filePath.split('/').pop() || '已选择文件') : ''
 }
 
-const handleGenerate = () => {
+const handleGenerate = async () => {
   if (!toolName.value.trim()) {
     uni.showToast({ title: '请输入工具名称', icon: 'none' })
     return
@@ -130,12 +132,68 @@ const handleGenerate = () => {
   }
   
   loading.value = true
-  
-  // 模拟 AI 处理
-  setTimeout(() => {
-    resultContent.value = `【${toolName.value || '自定义工具'}】\n\n提示词：${promptText.value}\n\n输入内容：${inputType.value === 'text' ? inputText.value : fileName.value}\n\n这是模拟运行结果。实际开发时，会把工具名称、提示词和输入内容一起传给后端，由 DeepSeek 等大模型按你的提示词处理。`
+  resultContent.value = ''
+  resultItems.value = []
+
+  // 文本输入包装成 Blob（后端 batchUpload 只接 multipart files）
+  const formData = new FormData()
+  if (inputType.value === 'text') {
+    const blob = new Blob([inputText.value], { type: 'text/plain' })
+    formData.append('files', blob, 'input.txt')
+  } else {
+    formData.append('files', inputText.value, fileName.value || 'upload')
+  }
+  // 工具名 + 提示词 拼成后端 prompt
+  const fullPrompt = `[工具名称] ${toolName.value}
+[任务] ${promptText.value}`
+  formData.append('prompt', fullPrompt)
+
+  try {
+    const res = await request({
+      url: '/api/ai-office/ai-file-reader/batch-upload',
+      method: 'POST',
+      data: formData,
+      header: { 'Content-Type': 'multipart/form-data' }
+    })
+    if (res && res.code === 200 && res.data) {
+      pollBatchTask(res.data.batchId, res.data.fileCount || 1)
+    } else {
+      uni.showToast({ title: res?.message || '提交失败', icon: 'none' })
+      loading.value = false
+    }
+  } catch (e) {
+    uni.showToast({ title: '请求失败：' + (e?.message || '未知错误'), icon: 'none' })
     loading.value = false
-  }, 1500)
+  }
+}
+
+// 轮询批量任务
+const pollBatchTask = async (batchId, fileCount) => {
+  try {
+    const res = await request({
+      url: `/api/ai-office/batch/${batchId}/completed?since=0`,
+      method: 'GET'
+    })
+    if (res && res.code === 200 && res.data) {
+      const items = res.data.results || []
+      resultItems.value = items
+      const lines = []
+      for (const item of items) {
+        if (item.output) lines.push(item.output)
+      }
+      resultContent.value = lines.join('\n\n')
+      const status = res.data.status
+      if (status === 2 || status === 3 || status === 4) {
+        loading.value = false
+      } else {
+        setTimeout(() => pollBatchTask(batchId, fileCount), 2000)
+      }
+    } else {
+      setTimeout(() => pollBatchTask(batchId, fileCount), 2000)
+    }
+  } catch (e) {
+    setTimeout(() => pollBatchTask(batchId, fileCount), 3000)
+  }
 }
 
 onLoad(() => {

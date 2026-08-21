@@ -24,6 +24,14 @@
             </svg>
           </view>
         </view>
+          <view v-if="item.status !== 'failed' && hasContent(item)" class="action-btn" @click="onCopyAllFields(item)" title="全量复制字段">
+            <svg class="action-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 3H16C17.1046 3 18 3.89543 18 5V19C18 20.1046 17.1046 21 16 21H8C6.89543 21 6 20.1046 6 19V5C6 3.89543 6.89543 3 8 3Z" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M9 7H15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M9 11H15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M9 15H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </view>
       </view>
 
       <!-- 失败：显示错误 -->
@@ -174,6 +182,21 @@ const fallbackCopy = (text) => {
 // 复制整张卡片 output
 const onCopyAll = (item) => {
   doCopy(item.output || '')
+}
+
+// 复制整张卡片的所有字段对（原始 label：value，换行拼接，不加 markdown 前缀）
+const onCopyAllFields = (item) => {
+  const sections = parsedSections(item)
+  if (!sections.length) return
+  const lines = []
+  for (const sec of sections) {
+    if (sec.fields && sec.fields.length) {
+      for (const f of sec.fields) {
+        lines.push(`${f.label}：${f.value}`)
+      }
+    }
+  }
+  doCopy(lines.join('\n'))
 }
 
 // 复制单个 section：把字段对重新拼成 markdown 格式（保持原文风）
