@@ -99,12 +99,14 @@ const parsedSections = (item) => {
 
 /**
  * 解析 AI 输出文本成 sections 列表
- * 规则：
- *   1. 按 "---" 水平线切大段（去掉前导空行）
- *   2. 每段内识别 "###" / "####" 作为子标题（去掉 markdown 符号）
- *   3. 识别 "- **字段**：值" 或 "**字段**：值" 作为字段对
- *   4. 识别不到结构的段：原样保留为 rawText
- *   5. 段首的"好的，已根据您提供的OCR..."等客套话作为 intro 段（无字段，原样）
+ * 通用规则（不硬编码字段名，兼容多行"字段名：值"格式）：
+ *   1. 不再按 --- 切大段、按 ### 取子标题（AI 输出已结构化）
+ *   2. 通用字段对正则：匹配"字段名：值"
+ *      - 兼容 **字段** 强调（前缀后缀 `*` 可选）
+ *      - 兼容中英文冒号"："和":"
+ *      - 字段缺失时输出"字段名："（冒号后留空）
+ *   3. 匹配不到字段对的行：原样保留为 rawText
+ *   4. 整个 AI 输出作为单一 section 返回
  */
 const parseSections = (text) => {
   if (!text) return []
@@ -112,50 +114,34 @@ const parseSections = (text) => {
   const normalized = String(text).replace(/\r\n/g, '\n').trim()
   if (!normalized) return []
 
-  // 按 --- 切（保留 --- 上下文本；--- 自身丢弃）
-  const rawParts = normalized.split(/^\s*---\s*$/m)
-  const sections = []
+  // 通用字段对正则：
+  //   ^\s*         行首允许空格
+  //   \*?\*?       可选 0-2 个 `*`（吃 **强调**）
+  //   ([^*\n：:：]+?)  字段名（非贪婪，不含 `*`/换行/冒号）
+  //   \*?\*?       可选尾部 `*`
+  //   \s*[：:]\s*   中英文冒号 + 空格
+  //   (.*?)\s*$     值到行末（去尾空格）
+  const FIELD_RE = /^\s*\*?\*?([^*\n：:：]+?)\*?\*?\s*[：:]\s*(.*?)\s*$/
 
-  for (let i = 0; i < rawParts.length; i++) {
-    const part = rawParts[i].trim()
-    if (!part) continue
-
-    // 找子标题（### 或 #### 开头的那一行）
-    const lines = part.split('\n')
-    let title = ''
-    const bodyLines = []
-    for (const line of lines) {
-      const m = /^\s*#{1,6}\s+(.+?)\s*#*\s*$/.exec(line)
-      if (m && !title) {
-        title = m[1].trim()
-      } else {
-        bodyLines.push(line)
-      }
+  const lines = normalized.split('\n')
+  const fields = []
+  const textOnlyLines = []
+  for (const line of lines) {
+    if (!line.trim()) continue
+    const fm = FIELD_RE.exec(line)
+    if (fm) {
+      fields.push({ label: fm[1].trim(), value: fm[2].trim() })
+    } else {
+      textOnlyLines.push(line)
     }
-
-    // 字段对： "- **字段**：值"  或  "**字段**：值"
-    const fields = []
-    const textOnlyLines = []
-    for (const line of bodyLines) {
-      // 优先匹配 "- **X**：Y" / "**X**：Y" / "**X** ：Y"
-      const fm = /^\s*[-*]?\s*\*\*\s*([^*]+?)\s*\*\*\s*[：:]\s*(.+?)\s*$/.exec(line)
-      if (fm) {
-        fields.push({ label: fm[1].trim(), value: fm[2].trim() })
-      } else {
-        textOnlyLines.push(line)
-      }
-    }
-
-    const rawText = textOnlyLines.join('\n').trim()
-    sections.push({
-      title,
-      fields,
-      rawText
-    })
   }
 
-  // 过滤完全空白的 section
-  return sections.filter(s => s.title || (s.fields && s.fields.length) || s.rawText)
+  const rawText = textOnlyLines.join('\n').trim()
+  return [{
+    title: '',
+    fields,
+    rawText
+  }].filter(s => s.fields.length || s.rawText)
 }
 
 // ========== 复制逻辑 ==========

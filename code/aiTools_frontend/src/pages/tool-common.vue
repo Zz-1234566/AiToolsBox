@@ -32,7 +32,7 @@
       <audio-input-area v-if="currentInputType === 'audio'" />
 
       <!-- 提示词区域（可选）：格式提示词 + 生成内容提示词 -->
-      <prompt-input-area v-model:formatText="promptFormatText" v-model:generateText="promptGenerateText" @pickFormat="openPromptPicker('format')" @pickGenerate="openPromptPicker('generate')" />
+      <prompt-input-area v-model:formatText="promptFormatText" :formatPromptDisplay="formatPromptDisplay" v-model:generateText="promptGenerateText" @pickFormat="openPromptPicker('format')" @pickGenerate="openPromptPicker('generate')" />
       
       <!-- 操作按钮 -->
       <view class="action-section">
@@ -207,6 +207,7 @@ import BatchFilePicker from '@/components/BatchFilePicker.vue'
 import { uploadFileApi, batchUpload, ocrBatchUpload, batchCompleted } from '@/api/ai.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
+import { request } from '@/api/request'
 import { promptListApi, systemPromptListApi, generatePromptApi, promptAddApi } from '@/api/prompt'
 import { getTool, validate } from '@/config/tools'
 import BatchResultCards from '@/components/BatchResultCards.vue'
@@ -227,6 +228,7 @@ const batchTotal = ref(0)          // 批量任务总文件数（用于卡片显
 const batchProgress = ref(0)       // 批量任务已处理数（用于 loading 提示）
 const promptFormatText = ref('')    // 用户自定义格式提示词
 const promptGenerateText = ref('')  // 用户自定义生成内容提示词
+const formatPromptDisplay = ref('')  // 系统统一管理的格式提示词（只读）
 const promptPickerTarget = ref('generate') // 选择弹窗当前填充的目标输入框（format/generate）
 const selectedPromptId = ref('')      // 最近选中的提示词 id（可随 document-summary 一并提交）
 const userPromptList = ref([])    // 用户自定义提示词（按用途过滤）
@@ -270,6 +272,23 @@ const runValidation = () => validate(toolId.value, currentInputType.value, {
   token: !!uni.getStorageSync('token')
 })
 
+// 拉取系统格式提示词（只读展示用）
+const fetchSystemFormat = async () => {
+  if (!toolId.value) return
+  try {
+    const res = await request({
+      url: '/api/prompt/system/format',
+      method: 'GET',
+      data: { toolCode: toolId.value }
+    })
+    if (res && res.code === 200) {
+      formatPromptDisplay.value = (res.data && typeof res.data === 'string') ? res.data : ''
+    }
+  } catch (e) {
+    console.error('拉取系统格式提示词失败:', e)
+  }
+}
+
 onLoad((option) => {
   if (!requireLogin()) return
   toolId.value = option.id || ''
@@ -277,6 +296,8 @@ onLoad((option) => {
   currentInputType.value = toolInfo.value.defaultInput
     || (toolInfo.value.inputTypes && toolInfo.value.inputTypes[0])
     || 'text'
+  // 拉取系统统一管理的格式提示词（只读展示）
+  fetchSystemFormat()
 })
 
 // 切换输入方式时重置状态
