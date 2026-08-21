@@ -1,5 +1,6 @@
 package com.example.aitools.controller;
 
+import com.example.aitools.common.Constants;
 import com.example.aitools.common.Result;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.FileUploadResponse;
@@ -14,70 +15,50 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Locale;
-import java.util.Set;
-
+/**
+ * 通用文件上传 Controller。
+ * 只做：参数校验（类型 / 大小 / 目录） + 鉴权（file 前缀需登录） + 调 service。
+ * 公共字段 → Constants；扩展名提取 / baseUrl 拼装 / file 路由 → FileStorageService 的 default 方法。
+ */
 @RestController
 @RequestMapping("/api/file")
 @RequiredArgsConstructor
 public class FileController {
 
-    /** 单文件大小上限：20MB */
-    private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
-
-    /** 支持的文件类型：图片 + 文档 */
-    private static final Set<String> ALLOWED_EXTENSIONS =
-            Set.of("jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "txt");
-
-    /** 支持的存储前缀（目录）：头像 / AI 图片 / 去背景 / 通用用户文件区，空串表示根目录 */
-    private static final Set<String> ALLOWED_PREFIXES = Set.of("", "avatar", "ai-image", "ai-bg", "file");
-
     private final FileStorageService fileStorageService;
-
     private final AuthUtil authUtil;
 
     @PostMapping("/upload")
     public Result<FileUploadResponse> upload(@RequestParam("file") MultipartFile file,
                                              @RequestParam(value = "prefix", required = false, defaultValue = "avatar") String prefix,
                                              HttpServletRequest request) {
+        // 1) 参数校验
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "请选择要上传的文件");
         }
-        if (file.getSize() > MAX_FILE_SIZE) {
+        if (file.getSize() > Constants.MAX_FILE_SIZE) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "文件大小不能超过20MB");
         }
         String originalFilename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
-        String ext = extractExtension(originalFilename);
-        if (!ALLOWED_EXTENSIONS.contains(ext)) {
+        String ext = FileStorageService.extractExtension(originalFilename).replaceFirst("^\\.", "");
+        if (!Constants.ALLOWED_FILE_EXTENSIONS.contains(ext)) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
                     "不支持的文件类型，仅支持 jpg/png/gif/webp/pdf/doc/docx/txt");
         }
+
+        // 2) 目录校验 + 用户文件区路由
         String normalizedPrefix = FileStorageService.normalizePrefix(prefix);
-        if (!ALLOWED_PREFIXES.contains(normalizedPrefix)) {
+        if (!Constants.ALLOWED_FILE_PREFIXES.contains(normalizedPrefix)) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "不支持的上传目录");
         }
+        Long userId = Constants.FILE_PREFIX_USER_FILE.equals(normalizedPrefix)
+                ? authUtil.getUserIdFromRequest(request) : null;
+        String actualPrefix = FileStorageService.resolveUserFilePrefix(normalizedPrefix, userId);
 
-        // file 前缀为通用用户文件区：强制登录，并拼 userId 目录（file/{userId}/），其它前缀保持现状
-        String actualPrefix = normalizedPrefix;
-        if ("file".equals(normalizedPrefix)) {
-            Long userId = authUtil.getUserIdFromRequest(request);
-            actualPrefix = "file/" + userId;
-        }
-
+        // 3) 调 service 存文件，把返回的 pathOrUrl 拼成完整 URL
         FileUploadResponse response = fileStorageService.store(file, actualPrefix);
+        response.setFileUrl(FileStorageService.resolveFullUrl(response.getFileUrl(), request));
 
-        // 本地存储返回相对路径（/uploads/xxx），拼装成完整访问地址；COS 返回的已是完整地址
-        if (response.getFileUrl().startsWith("/")) {
-            String baseUrl = request.getScheme() + "://" + request.getServerName()
-                    + (request.getServerPort() == 80 || request.getServerPort() == 443
-                    ? "" : ":" + request.getServerPort());
-            response.setFileUrl(baseUrl + response.getFileUrl());
-        }
         return Result.success("上传成功", response);
-    }
-
-    private String extractExtension(String originalFilename) {
-        int dot = originalFilename.lastIndexOf('.');
-        return dot >= 0 ? originalFilename.substring(dot + 1).toLowerCase(Locale.ROOT) : "";
     }
 }

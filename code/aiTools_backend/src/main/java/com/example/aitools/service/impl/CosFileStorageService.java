@@ -22,7 +22,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -56,7 +55,7 @@ public class CosFileStorageService implements FileStorageService {
     @Override
     public FileUploadResponse store(MultipartFile file, String prefix) {
         String originalFilename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
-        String ext = extractExtension(originalFilename);
+        String ext = FileStorageService.extractExtension(originalFilename);
         String fileId = UUID.randomUUID().toString().replace("-", "");
         String key = buildKey(prefix, fileId, ext);
         try (InputStream in = file.getInputStream()) {
@@ -83,11 +82,6 @@ public class CosFileStorageService implements FileStorageService {
     private String buildKey(String prefix, String fileId, String ext) {
         String normalized = FileStorageService.normalizePrefix(prefix);
         return normalized.isEmpty() ? fileId + ext : normalized + "/" + fileId + ext;
-    }
-
-    private String extractExtension(String originalFilename) {
-        int dot = originalFilename.lastIndexOf('.');
-        return dot >= 0 ? originalFilename.substring(dot).toLowerCase(Locale.ROOT) : "";
     }
 
     private boolean isBlank(String s) {

@@ -1,6 +1,8 @@
 package com.example.aitools.service;
 
+import com.example.aitools.dto.PromptGenerateRequest;
 import com.example.aitools.dto.PromptRequest;
+import com.example.aitools.vo.PromptGenerateVO;
 import com.example.aitools.vo.PromptVO;
 import com.example.aitools.vo.ToolOptionVO;
 
@@ -22,4 +24,10 @@ public interface AiPromptService {
 
     /** 查询已启用工具列表（前端按 tool_type 分组展示） */
     List<ToolOptionVO> listTools();
+
+    /**
+     * AI 生成提示词：调 DeepSeek 按用户需求生成一段提示词
+     * 失败（AI 服务异常、JSON 解析失败）抛 BusinessException，由全局异常统一封装
+     */
+    PromptGenerateVO generatePrompt(PromptGenerateRequest request);
 }

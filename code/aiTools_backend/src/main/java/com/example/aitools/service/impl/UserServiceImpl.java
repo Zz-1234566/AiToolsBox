@@ -3,6 +3,7 @@ package com.example.aitools.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
+import com.example.aitools.config.CosConfig;
 import com.example.aitools.dto.ChangePasswordRequest;
 import com.example.aitools.dto.FindAccountRequest;
 import com.example.aitools.dto.FindAccountResponse;
@@ -36,15 +37,17 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final JwtUtil jwtUtil;
     private final CodeService codeService;
+    private final CosConfig cosConfig;
 
     /** In-memory token store (replace with Redis in production) */
     private final Map<String, Long> tokenStore = new ConcurrentHashMap<>();
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    /** 默认头像 */
-    private static final String DEFAULT_AVATAR_URL =
-            "https://ai-tools-box-1419900334.cos.ap-guangzhou.myqcloud.com/avatar/defaultAvator.png";
+    /** 默认头像 URL：从 CosConfig 拼出（bucket + region + defaultAvatarKey） */
+    private String defaultAvatarUrl() {
+        return "https://" + cosConfig.getBucket() + ".cos." + cosConfig.getRegion() + ".myqcloud.com/" + cosConfig.getDefaultAvatarKey();
+    }
 
     @Override
     public LoginResponse login(LoginRequest request) {
@@ -81,11 +84,11 @@ public class UserServiceImpl implements UserService {
     @Override
     public RegisterResponse register(RegisterRequest request) {
         // 校验邮箱验证码
-        if (!codeService.verify("register", request.getEmail().trim(), request.getCode())) {
+        if (!codeService.verify(com.example.aitools.common.Constants.CODE_TYPE_REGISTER, request.getEmail().trim(), request.getCode())) {
             throw new BusinessException(ResultCode.CODE_ERROR);
         }
         // 校验通过后删除验证码（一次性使用）
-        codeService.delete("register", request.getEmail().trim());
+        codeService.delete(com.example.aitools.common.Constants.CODE_TYPE_REGISTER, request.getEmail().trim());
 
         // 校验两次密码是否一致
         if (!request.getPassword().equals(request.getConfirmPassword())) {
@@ -113,7 +116,7 @@ public class UserServiceImpl implements UserService {
 
         // 创建用户
         User user = new User();
-        user.setAvatar(DEFAULT_AVATAR_URL);
+        user.setAvatar(defaultAvatarUrl());
         user.setAccount(account);
         user.setUsername(request.getUsername());
         user.setEmail(request.getEmail());
@@ -228,10 +231,10 @@ public class UserServiceImpl implements UserService {
         }
 
         // 校验验证码（用账号绑定邮箱做 target）
-        if (!codeService.verify("reset-password", user.getEmail(), request.getCode())) {
+        if (!codeService.verify(com.example.aitools.common.Constants.CODE_TYPE_RESET_PASSWORD, user.getEmail(), request.getCode())) {
             throw new BusinessException(ResultCode.CODE_ERROR);
         }
-        codeService.delete("reset-password", user.getEmail());
+        codeService.delete(com.example.aitools.common.Constants.CODE_TYPE_RESET_PASSWORD, user.getEmail());
 
         // 更新密码
         user.setPassword(BCrypt.hashpw(request.getNewPassword(), BCrypt.gensalt()));

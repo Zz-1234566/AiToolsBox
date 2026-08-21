@@ -16,7 +16,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -44,7 +43,7 @@ public class LocalFileStorageService implements FileStorageService {
     @Override
     public FileUploadResponse store(MultipartFile file, String prefix) {
         String originalFilename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
-        String ext = extractExtension(originalFilename);
+        String ext = FileStorageService.extractExtension(originalFilename);
         String fileId = UUID.randomUUID().toString().replace("-", "");
         String storedName = fileId + ext;
         String prefixPath = FileStorageService.normalizePrefix(prefix);
@@ -60,10 +59,5 @@ public class LocalFileStorageService implements FileStorageService {
         // 返回相对路径，由 Controller 拼装完整访问地址
         String urlPath = prefixPath.isEmpty() ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
         return new FileUploadResponse(fileId, urlPath, originalFilename);
-    }
-
-    private String extractExtension(String originalFilename) {
-        int dot = originalFilename.lastIndexOf('.');
-        return dot >= 0 ? originalFilename.substring(dot).toLowerCase(Locale.ROOT) : "";
     }
 }

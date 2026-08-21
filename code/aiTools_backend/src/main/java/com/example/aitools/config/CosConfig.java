@@ -23,4 +23,7 @@ public class CosConfig {
 
     /** COS Bucket，如 example-1250000000 */
     private String bucket;
+
+    /** 默认头像在桶内的 key 路径（如 avatar/defaultAvator.png），URL 由 bucket + region 拼出 */
+    private String defaultAvatarKey = "avatar/defaultAvator.png";
 }

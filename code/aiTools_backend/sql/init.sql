@@ -142,6 +142,14 @@ CREATE TABLE IF NOT EXISTS `sys_ai_user_prompt` (
   KEY `idx_user_tool` (`user_id`, `tool_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户自定义提示词表';
 
+-- 升级记录（历史，新装环境无需执行）：
+-- 1) 新增 prompt_name 字段（用户自定义命名，用于前端列表展示）
+--    ALTER TABLE sys_ai_user_prompt ADD COLUMN prompt_name VARCHAR(64) DEFAULT NULL COMMENT '提示词名称（用户自定义命名，用于列表展示）' AFTER prompt_text;
+-- 2) 唯一性约束：同一用户同一工具下 prompt_name 不可重复（NULL 不参与）
+--    ALTER TABLE sys_ai_user_prompt ADD UNIQUE KEY uk_user_tool_name (user_id, tool_code, prompt_name);
+--    -- 配套：service.delete 软删时把 prompt_name 改为 {原名}__del_{id}，避免名字占位阻塞复用
+--    -- 升级前需清理现有重名数据，否则 ALTER 会失败
+
 -- -------------------------------------------
 -- 9. 系统提示词库表（按工具+类型存提示词）
 -- -------------------------------------------
@@ -331,4 +339,120 @@ INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `componen
 VALUES ('password-gen', '效率小工具', '密码生成', 'efficiency', '生成安全随机密码', '', 12, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
 
+
+
+-- -------------------------------------------
+-- 16. 初始化数据：工具（ocr-recognize 智能识别 / OCR）
+-- -------------------------------------------
+INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
+VALUES ('ocr-recognize', 'AI办公助手', '智能识别', 'office', '上传图片自动识别文字（OCR）', '', 5, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`);
+
+-- -------------------------------------------
+-- 17. 初始化数据：系统提示词（ocr-recognize）
+-- -------------------------------------------
+INSERT INTO `sys_ai_prompt` (`tool_code`, `prompt_type`, `prompt_use`, `prompt_name`, `prompt_content`, `dr`)
+VALUES ('ocr-recognize', 'system', 'generate', '默认整理', '你是一位严谨的文字整理助手，擅长把 OCR 识别出的原始文字整理成清晰、结构化的可读文本。\n严格要求：\n1. 保留原文所有关键信息（数字、日期、姓名、地址、金额等不得遗漏或编造）；\n2. 修正明显的 OCR 错字（根据上下文推断），但不要重写或扩展内容；\n3. 禁止使用 Markdown 格式（不要 ###、**、- 列表符号、表格、代码块等标记）；\n4. 使用流畅的中文书面表达，按原文逻辑分段，段落之间空一行；\n5. 直接给出整理结果，不要解释你做了什么。', 0)
+ON DUPLICATE KEY UPDATE `prompt_content` = VALUES(`prompt_content`);
+
+INSERT INTO `sys_ai_prompt` (`tool_code`, `prompt_type`, `prompt_use`, `prompt_name`, `prompt_content`, `dr`)
+VALUES ('ocr-recognize', 'system', 'format', '默认格式', '请将以下 OCR 识别出的原始文字整理成结构化可读文本，按以下结构输出：\n一、关键信息（如有：日期/编号/金额/姓名）\n二、正文内容（修正错字、按逻辑分段）\n三、备注（如有：识别不确定的部分）\n\n格式要求：\n1. 每个部分标题单独一行；\n2. 要点用"1. 2. 3."编号，每个要点单独一行；\n3. 部分之间空一行。\n\nOCR 识别文字：\n%s', 0)
+ON DUPLICATE KEY UPDATE `prompt_content` = VALUES(`prompt_content`);
+
+-- -------------------------------------------
+-- 18. 初始化数据：工具（bank-receipt-recognize 银行回单识别）
+-- -------------------------------------------
+INSERT INTO sys_aitools_tool (	tool_code, 	tool_type, 	tool_name, component_type, description, icon, sort_no, status, dr)
+VALUES ('bank-receipt-recognize', 'AI办公助手', '银行回单识别', 'office', '上传银行回单图片自动识别并结构化整理', '', 6, 1, 0)
+ON DUPLICATE KEY UPDATE 	tool_name = VALUES(	tool_name);
+
+-- -------------------------------------------
+-- 19. 初始化数据：系统提示词（bank-receipt-recognize）
+-- -------------------------------------------
+INSERT INTO sys_ai_prompt (	tool_code, prompt_type, prompt_use, prompt_name, prompt_content, dr)
+VALUES ('bank-receipt-recognize', 'system', 'generate', '默认整理', '你是一位严谨的银行单据整理助手，擅长把 OCR 识别出的银行回单原始文字整理成结构化、字段清晰、可直接归档的标准格式。\n严格要求：\n1. 只整理 OCR 识别出的文字，不补充、不编造任何数字、日期、金额、账户、户名等信息；识别不到就标"未识别"；\n2. 数字必须保留原始精度（金额保留 2 位小数，账号/卡号保留所有位数，不四舍五入、不省略）；\n3. 修正明显的 OCR 错字（如"0/O"、"1/l/I"、"元/园"等），根据上下文合理推断，但不要重写或意译；\n4. 禁止使用 Markdown 格式（不要 ###、**、-、表格、代码块等任何标记）；\n5. 使用流畅的中文书面表达，按字段分类组织，字段之间空一行；\n6. 同一字段出现多次（如对手方信息）时按原文保留全部内容。', 0)
+ON DUPLICATE KEY UPDATE prompt_content = VALUES(prompt_content);
+
+INSERT INTO sys_ai_prompt (	tool_code, prompt_type, prompt_use, prompt_name, prompt_content, dr)
+VALUES ('bank-receipt-recognize', 'system', 'format', '默认格式', '请将以下 OCR 识别出的银行回单原始文字整理为结构化格式，按以下结构输出：\n\n一、单据类型\n（自动识别：电子回单 / 业务回单 / 交易明细 / 进账单 / 跨行转账回单 等）\n\n二、关键信息\n1. 回单编号：\n2. 交易日期：\n3. 交易时间：\n4. 业务类型：（如：转账汇款、跨行实时汇出、货款结算等）\n5. 币种：（如：人民币 CNY）\n\n三、付款方信息\n1. 付款方名称：\n2. 付款方账号：\n3. 付款方开户行：\n\n四、收款方信息\n1. 收款方名称：\n2. 收款方账号：\n3. 收款方开户行：\n\n五、金额信息\n1. 小写金额：（格式：¥XXX.XX）\n2. 大写金额：（如：壹仟贰佰叁拾肆元伍角陆分）\n3. 手续费：（如有）\n4. 实际到账金额：（如有）\n\n六、附言与备注\n（保留原文所有备注信息）\n\n七、关键 OCR 修正说明\n（如有错字修正，简单列出"原文 X → 修正 Y"；无可不输出此段）\n\n格式要求：\n1. 每个部分标题单独一行；\n2. 字段用"1. 2. 3."编号，每个字段单独一行；\n3. 字段值为空时写"未识别"（不要省略字段）；\n4. 部分之间空一行。\n\nOCR 识别文字：\n%s', 0)
+ON DUPLICATE KEY UPDATE prompt_content = VALUES(prompt_content);
+
+-- -------------------------------------------
+-- 20. 初始化数据：工具（invoice-recognize 发票识别）
+-- -------------------------------------------
+INSERT INTO sys_aitools_tool (	tool_code, 	tool_type, 	tool_name, component_type, description, icon, sort_no, status, dr)
+VALUES ('invoice-recognize', 'AI办公助手', '发票识别', 'office', '上传发票图片自动识别并结构化整理', '', 7, 1, 0)
+ON DUPLICATE KEY UPDATE 	tool_name = VALUES(	tool_name);
+
+-- -------------------------------------------
+-- 21. 初始化数据：系统提示词（invoice-recognize）
+-- -------------------------------------------
+INSERT INTO sys_ai_prompt (	tool_code, prompt_type, prompt_use, prompt_name, prompt_content, dr)
+VALUES ('invoice-recognize', 'system', 'generate', '默认整理', '你是一位严谨的财务单据整理助手，擅长把 OCR 识别出的发票原始文字整理成结构化、字段清晰、可直接用于报销和记账的标准格式。\n严格要求：\n1. 只整理 OCR 识别出的文字，不补充、不编造任何数字、金额、税率、税号等信息；识别不到就标"未识别"；\n2. 数字必须保留原始精度（金额保留 2 位小数，税率保留百分比格式，税号/发票号保留所有位数，不四舍五入、不省略）；\n3. 修正明显的 OCR 错字（如"0/O"、"1/l/I"、"元/园"、"税/悦"等），根据上下文合理推断，但不要重写或意译；\n4. 禁止使用 Markdown 格式（不要 ###、**、-、表格、代码块等任何标记）；\n5. 使用流畅的中文书面表达，按字段分类组织，字段之间空一行；\n6. 同类项有多个时（如多行明细）按原文顺序全部保留，不要合并或省略；\n7. 大写金额必须从数字金额换算后输出（壹贰叁肆伍陆柒捌玖零元角分），不要照搬 OCR 可能写错的大写。', 0)
+ON DUPLICATE KEY UPDATE prompt_content = VALUES(prompt_content);
+
+INSERT INTO sys_ai_prompt (	tool_code, prompt_type, prompt_use, prompt_name, prompt_content, dr)
+VALUES ('invoice-recognize', 'system', 'format', '默认格式', '请将以下 OCR 识别出的发票原始文字整理为结构化格式，按以下结构输出：\n\n一、发票类型\n（自动识别：增值税专用发票 / 增值税普通发票 / 电子发票 / 卷式发票 / 定额发票 / 全电发票 等）\n\n二、发票基础信息\n1. 发票代码：\n2. 发票号码：\n3. 开票日期：\n4. 校验码：\n5. 发票章戳：（如"发票专用章"已盖、是否有电子签章）\n\n三、购买方信息\n1. 名称：\n2. 纳税人识别号（统一社会信用代码）：\n3. 地址、电话：\n4. 开户行及账号：\n\n四、销售方信息\n1. 名称：\n2. 纳税人识别号（统一社会信用代码）：\n3. 地址、电话：\n4. 开户行及账号：\n\n五、金额与税额\n1. 价税合计（小写）：¥\n2. 价税合计（大写）：零壹贰叁肆伍陆柒捌玖元角分\n3. 不含税金额（小写）：¥\n4. 税率：\n5. 税额（小写）：¥\n6. 税额（大写）：\n7. 税种：（如：增值税）\n\n六、明细项目\n（每行一项，格式："1. 商品名称 规格型号 单位 数量 单价 金额 税率 税额"）\n（如无明细写"未提供明细"）\n\n七、备注\n（保留原文所有备注、附加说明）\n\n八、关键 OCR 修正说明\n（如有错字修正，简单列出"原文 X → 修正 Y"；特别是大写金额；无可不输出此段）\n\n格式要求：\n1. 每个部分标题单独一行；\n2. 字段用"1. 2. 3."编号，每个字段单独一行；\n3. 字段值为空时写"未识别"（不要省略字段）；\n4. 明细项目每行独立，不要用表格符号；\n5. 部分之间空一行。\n\nOCR 识别文字：\n%s', 0)
+ON DUPLICATE KEY UPDATE prompt_content = VALUES(prompt_content);
+
+
+
+-- -------------------------------------------
+-- 22. 初始化数据：批量任务表（多文件上传 B2 方案用）
+-- -------------------------------------------
+CREATE TABLE IF NOT EXISTS sys_batch_task (
+  id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+  batch_id VARCHAR(64) NOT NULL COMMENT '对外 batchId（UUID）',
+  user_id BIGINT NOT NULL COMMENT '所属用户 ID',
+  tool_code VARCHAR(32) NOT NULL COMMENT '工具编码（如 doc-keypoint-extract）',
+  file_count INT NOT NULL COMMENT '文件总数',
+  success_count INT DEFAULT 0 COMMENT '成功数',
+  fail_count INT DEFAULT 0 COMMENT '失败数',
+  processed_index INT DEFAULT 0 COMMENT '已处理文件数（成功+失败，用于前端轮询 since 增量）',
+  status TINYINT NOT NULL DEFAULT 0 COMMENT '0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED',
+  result_summary MEDIUMTEXT COMMENT '汇总结果（所有文件 AI 输出拼接，JSON 数组）',
+  create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+  update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  finished_at DATETIME DEFAULT NULL COMMENT '完成时间',
+  dr TINYINT DEFAULT 0 COMMENT '逻辑删除：0正常 1删除',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_batch_id (batch_id),
+  KEY idx_user_id (user_id),
+  KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';
+
+ALTER TABLE sys_batch_task ADD COLUMN processed_index INT DEFAULT 0 COMMENT '已处理文件数（成功+失败，用于前端轮询 since 增量）' AFTER fail_count;
+
+CREATE TABLE IF NOT EXISTS sys_batch_task (
+                                              id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+                                              batch_id VARCHAR(64) NOT NULL COMMENT '对外 batchId（UUID）',
+                                              user_id BIGINT NOT NULL COMMENT '所属用户 ID',
+                                              tool_code VARCHAR(32) NOT NULL COMMENT '工具编码',
+                                              file_count INT NOT NULL COMMENT '文件总数',
+                                              success_count INT DEFAULT 0 COMMENT '成功数',
+                                              fail_count INT DEFAULT 0 COMMENT '失败数',
+                                              processed_index INT DEFAULT 0 COMMENT '已处理文件数',
+                                              status TINYINT NOT NULL DEFAULT 0 COMMENT '0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED',
+                                              result_summary MEDIUMTEXT COMMENT '汇总结果',
+                                              create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                              update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                              finished_at DATETIME DEFAULT NULL,
+                                              dr TINYINT DEFAULT 0 COMMENT '逻辑删除：0正常 1删除',
+                                              PRIMARY KEY (id),
+                                              UNIQUE KEY uk_batch_id (batch_id),
+                                              KEY idx_user_id (user_id),
+                                              KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';
+
+ALTER TABLE `sys_ai_user_prompt`
+    ADD COLUMN `prompt_name` VARCHAR(64) DEFAULT NULL
+        COMMENT '提示词名称（用户自定义命名，用于列表展示）'
+        AFTER `prompt_text`;
+
+-- 升级记录：老数据暂不强制命名（应用层兜底"未命名"）
+
+ALTER TABLE `sys_ai_user_prompt`
+    ADD UNIQUE KEY `uk_user_tool_name` (`user_id`, `tool_code`, `prompt_name`);
+
+USE ai_toolbox;
 

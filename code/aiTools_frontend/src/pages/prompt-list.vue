@@ -38,10 +38,9 @@
           class="prompt-item animate-fade-in-up"
         >
           <view class="item-main">
-            <text class="item-text">{{ item.promptText }}</text>
+            <text class="item-text">{{ item.promptName || item.promptText || '（无名称）' }}</text>
             <view class="item-meta">
               <text class="item-tag">{{ item.promptUse === 'format' ? '格式' : '生成内容' }}</text>
-              <text v-if="toolNameOf(item)" class="item-tool-tag">{{ toolNameOf(item) }}</text>
               <text class="item-time">{{ formatTime(item.createTime) }}</text>
             </view>
           </view>
@@ -85,6 +84,13 @@
             @click="modalUse = 'generate'"
           >生成内容</view>
         </view>
+        <input
+          class="modal-name-input"
+          v-model="modalName"
+          placeholder="提示词名称（必填，同一工具下不可重复）"
+          placeholder-class="textarea-placeholder"
+          maxlength="64"
+        />
         <textarea
           class="modal-input"
           v-model="modalText"
@@ -158,6 +164,7 @@ const toolNameOf = (item) => {
 const showModal = ref(false)
 const modalTitle = ref('')
 const modalText = ref('')
+const modalName = ref('')   // 提示词名称
 const modalUse = ref('generate') // 类型：format 格式 / generate 生成内容
 const editingId = ref(null)
 
@@ -231,6 +238,7 @@ const openAddModal = () => {
   modalTitle.value = '新增提示词'
   editingId.value = null
   modalText.value = ''
+  modalName.value = ''
   modalUse.value = 'generate'
 }
 
@@ -239,20 +247,27 @@ const openEditModal = (item) => {
   modalTitle.value = '编辑提示词'
   editingId.value = item.id
   modalText.value = item.promptText || ''
+  modalName.value = item.promptName || ''
   modalUse.value = item.promptUse === 'format' ? 'format' : 'generate'
 }
 
 const closeModal = () => {
   showModal.value = false
   modalText.value = ''
+  modalName.value = ''
   editingId.value = null
   modalUse.value = 'generate'
 }
 
 const saveModal = async () => {
   const text = modalText.value.trim()
+  const name = modalName.value.trim()
   if (!text) {
     uni.showToast({ title: '请输入提示词内容', icon: 'none' })
+    return
+  }
+  if (!name) {
+    uni.showToast({ title: '请输入提示词名称', icon: 'none' })
     return
   }
   if (!selectedToolCode.value) {
@@ -261,16 +276,16 @@ const saveModal = async () => {
   }
   try {
     if (editingId.value) {
-      await promptUpdateApi(editingId.value, text, modalUse.value, selectedToolCode.value)
+      await promptUpdateApi(editingId.value, text, modalUse.value, selectedToolCode.value, name)
       uni.showToast({ title: '修改成功', icon: 'none' })
     } else {
-      await promptAddApi(text, modalUse.value, selectedToolCode.value)
+      await promptAddApi(text, modalUse.value, selectedToolCode.value, name)
       uni.showToast({ title: '新增成功', icon: 'none' })
     }
     closeModal()
     fetchList()
   } catch (err) {
-    // request.js 已统一提示错误
+    // request.js 已统一提示错误（同名将提示"该工具下已存在同名提示词"）
   }
 }
 
@@ -475,6 +490,18 @@ const onDelete = (item) => {
       }
     }
 
+    .modal-name-input {
+      width: 100%;
+      box-sizing: border-box;
+      height: 80rpx;
+      background-color: $bg-gray;
+      border-radius: $radius-md;
+      padding: 0 $spacing-md;
+      font-size: $font-size-sm;
+      color: $text-primary;
+      margin-bottom: $spacing-md;
+    }
+
     .modal-input {
       width: 100%;
       box-sizing: border-box;
@@ -561,20 +588,6 @@ const onDelete = (item) => {
       margin-left: $spacing-xs;
     }
   }
-}
-
-// 列表项所属工具标签
-.item-tool-tag {
-  font-size: $font-size-xs;
-  color: $text-secondary;
-  background-color: $divider-color;
-  border-radius: $radius-pill;
-  padding: 2rpx 14rpx;
-  margin-right: $spacing-xs;
-  max-width: 200rpx;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 // 弹窗内所属工具展示行

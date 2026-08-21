@@ -1,5 +1,6 @@
 package com.example.aitools.controller;
 
+import com.example.aitools.common.Constants;
 import com.example.aitools.common.Result;
 import com.example.aitools.service.HistoryService;
 import com.example.aitools.vo.HistoryVO;
@@ -19,12 +20,12 @@ public class HistoryController {
     private final AuthUtil authUtil;
 
     /**
-     * 查询最近历史记录（默认 10 条）
+     * 查询最近历史记录（默认 Constants.HISTORY_LIST_DEFAULT_LIMIT 条）
      */
     @GetMapping("/list")
     public Result<List<HistoryVO>> list(HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
-        return Result.success(historyService.listRecent(userId, 10));
+        return Result.success(historyService.listRecent(userId, Constants.HISTORY_LIST_DEFAULT_LIMIT));
     }
 
     /**

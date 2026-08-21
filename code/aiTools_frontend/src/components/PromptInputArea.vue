@@ -1,21 +1,9 @@
 <template>
   <view class="input-section prompt-area">
     <view class="prompt-field">
-      <text class="prompt-label">格式提示词（可选）</text>
-      <textarea
-        class="prompt-textarea"
-        :value="formatText"
-        @input="$emit('update:formatText', $event.detail.value)"
-        :placeholder="formatPlaceholder || '例如：请用英文输出'"
-        placeholder-class="textarea-placeholder"
-        maxlength="1000"
-      />
-      <view class="prompt-select-link press-scale" @click="$emit('pickFormat')">
-        <svg class="prompt-select-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M4 7C4 6.44772 4.44772 6 5 6H14C14.5523 6 15 6.44772 15 7V17C15 17.5523 14.5523 18 14 18H5C4.44772 18 4 17.5523 4 17V7Z" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M15 9H18L20 11V17C20 17.5523 19.5523 18 19 18H15" stroke="currentColor" stroke-width="1.5"/>
-        </svg>
-        <text class="prompt-select-text">选择提示词</text>
+      <text class="prompt-label">格式提示词（系统统一管理，不可修改）</text>
+      <view class="readonly-prompt-box">
+        <text class="readonly-prompt-text">{{ formatPromptDisplay || '暂未配置' }}</text>
       </view>
     </view>
     <view class="prompt-field">
@@ -29,8 +17,8 @@
         maxlength="1000"
       />
       <view class="prompt-select-link press-scale" @click="$emit('pickGenerate')">
-        <svg class="prompt-select-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M4 7C4 6.44772 4.44772 6 5 6H14C14.5523 6 15 6.44772 15 7V17C15 17.5523 14.5523 18 14 18H5C4.44772 18 4 17.5523 4 17V7Z" stroke="currentColor" stroke-width="1.5"/>
+        <svg class="prompt-select-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 7C4 6.44772 4.44772 6 5 6H14C14.5523 6 15 6.44772 15 7V17C15 17.5523 14.4477 18 14 18H5C4.44772 18 4 17.5523 4 17V7Z" stroke="currentColor" stroke-width="1.5"/>
           <path d="M15 9H18L20 11V17C20 17.5523 19.5523 18 19 18H15" stroke="currentColor" stroke-width="1.5"/>
         </svg>
         <text class="prompt-select-text">选择提示词</text>
@@ -41,12 +29,11 @@
 
 <script setup>
 defineProps({
-  formatText: { type: String, default: '' },
+  formatPromptDisplay: { type: String, default: '' },
   generateText: { type: String, default: '' },
-  formatPlaceholder: { type: String, default: '' },
   generatePlaceholder: { type: String, default: '' }
 })
-defineEmits(['update:formatText', 'update:generateText', 'pickFormat', 'pickGenerate'])
+defineEmits(['update:generateText', 'pickGenerate'])
 </script>
 
 <style lang="scss" scoped>
@@ -77,6 +64,25 @@ defineEmits(['update:formatText', 'update:generateText', 'pickFormat', 'pickGene
     font-size: $font-size-sm;
     color: $text-primary;
     border: 2rpx dashed $border-color;
+  }
+
+  .readonly-prompt-box {
+    width: 100%;
+    min-height: 120rpx;
+    max-height: 240rpx;
+    background-color: $bg-gray;
+    border-radius: $radius-md;
+    padding: $spacing-sm $spacing-md;
+    border: 2rpx solid $border-color;
+    overflow-y: auto;
+  }
+
+  .readonly-prompt-text {
+    font-size: $font-size-sm;
+    color: $text-primary;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
 
   .prompt-select-link {

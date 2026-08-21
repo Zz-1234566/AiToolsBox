@@ -9,6 +9,15 @@ const lightVars = {
   '--text-tertiary': '#8E8B8B',
   '--border-color': '#E8E8E8',
   '--divider-color': '#F0F0F0',
+  // 语义色：浅色版（绿/红/橙）
+  '--color-success': '#19be6b',
+  '--color-success-bg': '#e8f7ed',
+  '--color-danger': '#e54d42',
+  '--color-danger-bg': '#fff5f5',
+  '--color-danger-soft': '#fde9e9',
+  '--color-warning': '#ff9900',
+  '--color-warning-bg': '#fff8e6',
+  '--color-warning-text': '#8a6300',
 }
 
 const darkVars = {
@@ -20,6 +29,15 @@ const darkVars = {
   '--text-tertiary': '#6B6B6B',
   '--border-color': '#2C2C2C',
   '--divider-color': '#252525',
+  // 语义色：深色版（亮度提一档，深底上仍能看清）
+  '--color-success': '#3dd683',
+  '--color-success-bg': '#14331f',
+  '--color-danger': '#ff6b62',
+  '--color-danger-bg': '#3a1a1a',
+  '--color-danger-soft': '#2c1414',
+  '--color-warning': '#ffb84d',
+  '--color-warning-bg': '#3a2a14',
+  '--color-warning-text': '#ffd599',
 }
 
 function setCSSVars(vars) {
