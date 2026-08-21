@@ -142,6 +142,14 @@ CREATE TABLE IF NOT EXISTS `sys_ai_user_prompt` (
   KEY `idx_user_tool` (`user_id`, `tool_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户自定义提示词表';
 
+-- 升级记录（历史，新装环境无需执行）：
+-- 1) 新增 prompt_name 字段（用户自定义命名，用于前端列表展示）
+--    ALTER TABLE sys_ai_user_prompt ADD COLUMN prompt_name VARCHAR(64) DEFAULT NULL COMMENT '提示词名称（用户自定义命名，用于列表展示）' AFTER prompt_text;
+-- 2) 唯一性约束：同一用户同一工具下 prompt_name 不可重复（NULL 不参与）
+--    ALTER TABLE sys_ai_user_prompt ADD UNIQUE KEY uk_user_tool_name (user_id, tool_code, prompt_name);
+--    -- 配套：service.delete 软删时把 prompt_name 改为 {原名}__del_{id}，避免名字占位阻塞复用
+--    -- 升级前需清理现有重名数据，否则 ALTER 会失败
+
 -- -------------------------------------------
 -- 9. 系统提示词库表（按工具+类型存提示词）
 -- -------------------------------------------
@@ -414,3 +422,34 @@ CREATE TABLE IF NOT EXISTS sys_batch_task (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';
 
 ALTER TABLE sys_batch_task ADD COLUMN processed_index INT DEFAULT 0 COMMENT '已处理文件数（成功+失败，用于前端轮询 since 增量）' AFTER fail_count;
+
+CREATE TABLE IF NOT EXISTS sys_batch_task (
+                                              id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+                                              batch_id VARCHAR(64) NOT NULL COMMENT '对外 batchId（UUID）',
+                                              user_id BIGINT NOT NULL COMMENT '所属用户 ID',
+                                              tool_code VARCHAR(32) NOT NULL COMMENT '工具编码',
+                                              file_count INT NOT NULL COMMENT '文件总数',
+                                              success_count INT DEFAULT 0 COMMENT '成功数',
+                                              fail_count INT DEFAULT 0 COMMENT '失败数',
+                                              processed_index INT DEFAULT 0 COMMENT '已处理文件数',
+                                              status TINYINT NOT NULL DEFAULT 0 COMMENT '0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED',
+                                              result_summary MEDIUMTEXT COMMENT '汇总结果',
+                                              create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                              update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                              finished_at DATETIME DEFAULT NULL,
+                                              dr TINYINT DEFAULT 0 COMMENT '逻辑删除：0正常 1删除',
+                                              PRIMARY KEY (id),
+                                              UNIQUE KEY uk_batch_id (batch_id),
+                                              KEY idx_user_id (user_id),
+                                              KEY idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';
+
+ALTER TABLE `sys_ai_user_prompt`
+    ADD COLUMN `prompt_name` VARCHAR(64) DEFAULT NULL
+        COMMENT '提示词名称（用户自定义命名，用于列表展示）'
+        AFTER `prompt_text`;
+
+-- 升级记录：老数据暂不强制命名（应用层兜底"未命名"）
+
+ALTER TABLE `sys_ai_user_prompt`
+    ADD UNIQUE KEY `uk_user_tool_name` (`user_id`, `tool_code`, `prompt_name`);

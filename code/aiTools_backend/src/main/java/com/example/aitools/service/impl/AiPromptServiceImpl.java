@@ -47,6 +47,7 @@ public class AiPromptServiceImpl implements AiPromptService {
             PromptVO vo = new PromptVO();
             vo.setId(p.getId());
             vo.setPromptText(p.getPromptText());
+            vo.setPromptName(p.getPromptName());
             vo.setPromptUse(p.getPromptUse());
             vo.setToolCode(p.getToolCode());
             vo.setCreateTime(p.getCreateTime());
@@ -56,6 +57,10 @@ public class AiPromptServiceImpl implements AiPromptService {
 
     @Override
     public Long add(Long userId, PromptRequest request) {
+        // 同名校验（仅在 promptName 非空时校验；NULL 不参与唯一性）
+        if (request.getPromptName() != null && !request.getPromptName().isBlank()) {
+            checkDuplicateName(userId, request.getToolCode(), request.getPromptName(), null);
+        }
         AiUserPrompt prompt = new AiUserPrompt();
         BeanUtils.copyProperties(request, prompt);
         prompt.setUserId(userId);
@@ -66,6 +71,10 @@ public class AiPromptServiceImpl implements AiPromptService {
 
     @Override
     public void update(Long id, Long userId, PromptRequest request) {
+        // 同名校验（排除自己）
+        if (request.getPromptName() != null && !request.getPromptName().isBlank()) {
+            checkDuplicateName(userId, request.getToolCode(), request.getPromptName(), id);
+        }
         LambdaUpdateWrapper<AiUserPrompt> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(AiUserPrompt::getId, id)
                 .eq(AiUserPrompt::getUserId, userId)
@@ -73,6 +82,7 @@ public class AiPromptServiceImpl implements AiPromptService {
                 .set(AiUserPrompt::getPromptText, request.getPromptText())
                 .set(AiUserPrompt::getPromptUse, request.getPromptUse())
                 .set(AiUserPrompt::getToolCode, request.getToolCode())
+                .set(AiUserPrompt::getPromptName, request.getPromptName())
                 .set(AiUserPrompt::getUpdateTime, LocalDateTime.now());
         if (aiUserPromptMapper.update(null, wrapper) == 0) {
             throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "提示词不存在或无权操作");
@@ -81,14 +91,50 @@ public class AiPromptServiceImpl implements AiPromptService {
 
     @Override
     public void delete(Long id, Long userId) {
+        // 删除时把 prompt_name 改为 {原名}__del_{id}，释放唯一约束，避免同工具下同名复用阻塞
+        // 软删 dr=1，但 prompt_name 仍占唯一索引，故改名
+        AiUserPrompt exist = aiUserPromptMapper.selectById(id);
+        if (exist == null || !userId.equals(exist.getUserId()) || exist.getDr() == null || exist.getDr().intValue() != Constants.DR_NORMAL) {
+            throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "提示词不存在或无权操作");
+        }
         LambdaUpdateWrapper<AiUserPrompt> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(AiUserPrompt::getId, id)
                 .eq(AiUserPrompt::getUserId, userId)
                 .eq(AiUserPrompt::getDr, Constants.DR_NORMAL)
-                .set(AiUserPrompt::getDr, Constants.DR_DELETED);
+                .set(AiUserPrompt::getDr, Constants.DR_DELETED)
+                .set(AiUserPrompt::getPromptName, buildDeletedName(exist.getPromptName(), id))
+                .set(AiUserPrompt::getUpdateTime, LocalDateTime.now());
         if (aiUserPromptMapper.update(null, wrapper) == 0) {
             throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "提示词不存在或无权操作");
         }
+    }
+
+    /**
+     * 同名校验：同 user_id + tool_code + 非空 prompt_name 不能重复（排除已删除和自己）
+     * @param excludeId 排除自己（update 时传当前 id；add 时传 null）
+     */
+    private void checkDuplicateName(Long userId, String toolCode, String promptName, Long excludeId) {
+        LambdaQueryWrapper<AiUserPrompt> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AiUserPrompt::getUserId, userId)
+                .eq(AiUserPrompt::getToolCode, toolCode)
+                .eq(AiUserPrompt::getPromptName, promptName)
+                .eq(AiUserPrompt::getDr, Constants.DR_NORMAL);
+        if (excludeId != null) {
+            wrapper.ne(AiUserPrompt::getId, excludeId);
+        }
+        if (aiUserPromptMapper.selectCount(wrapper) > 0) {
+            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "该工具下已存在同名提示词");
+        }
+    }
+
+    /**
+     * 构造被删除后的名字：{原名}__del_{id}（如果原本就空，直接 __del_{id}）
+     */
+    private String buildDeletedName(String original, Long id) {
+        if (original == null || original.isBlank()) {
+            return "__del_" + id;
+        }
+        return original + "__del_" + id;
     }
 
     @Override

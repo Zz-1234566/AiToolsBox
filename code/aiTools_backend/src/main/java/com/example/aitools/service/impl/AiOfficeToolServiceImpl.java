@@ -409,14 +409,22 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
         if (formatPrompt == null || formatPrompt.isBlank()) {
             return null;
         }
-        return formatPrompt.contains("%s") ? formatPrompt.replace("%s", content) : formatPrompt;
+        // format prompt 原样下发，不替换 %s（避免多个占位符被同一段 OCR 文字重复填充破坏 prompt 结构）
+        log.info("[DEBUG-PROMPT] systemPrompt 长度={} 前200字={}", formatPrompt.length(), formatPrompt.substring(0, Math.min(200, formatPrompt.length())).replace("\n", "\\n"));
+        return formatPrompt;
     }
 
     /**
      * 拼接 user 提示词：generate 提示词（规定生成内容）+ 实际工作记录
+     * 含 %s 占位符时用工作内容填充（与 buildSystemPrompt 行为一致）
      */
     private String buildUserPrompt(String generatePrompt, String content) {
-        return generatePrompt + "\n\n工作记录：\n" + content;
+        // generate prompt 原样下发（不替换 %s），末尾追加"原文"段做兜底：
+        // 即使用户 prompt 不规范，AI 也能从"原文"段拿到 OCR/工作内容并提取
+        String result = (generatePrompt != null ? generatePrompt : "")
+                + "\n\n原文：\n" + content;
+        log.info("[DEBUG-PROMPT] userPrompt 长度={} 前300字={}", result.length(), result.substring(0, Math.min(300, result.length())).replace("\n", "\\n"));
+        return result;
     }
 
     /**
