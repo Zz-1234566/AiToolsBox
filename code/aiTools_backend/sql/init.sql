@@ -453,3 +453,6 @@ ALTER TABLE `sys_ai_user_prompt`
 
 ALTER TABLE `sys_ai_user_prompt`
     ADD UNIQUE KEY `uk_user_tool_name` (`user_id`, `tool_code`, `prompt_name`);
+
+USE ai_toolbox;
+

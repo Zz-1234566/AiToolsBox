@@ -277,6 +277,7 @@ public class AiOfficeToolController {
     public Result<BatchUploadResponse> batchOcrUpload(@RequestParam("files") List<MultipartFile> files,
                                      @RequestParam(value = "promptFormat", required = false) String promptFormat,
                                      @RequestParam(value = "promptGenerate", required = false) String promptGenerate,
+                                     @RequestParam(value = "promptId", required = false) Long promptId,
                                      HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         if (files == null || files.isEmpty()) {
@@ -311,7 +312,7 @@ public class AiOfficeToolController {
             try {
                 batchTaskService.markRunning(batchId);
                 com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiOcrBatchStream(
-                        userId, payloads, promptFormat, promptGenerate, batchId);
+                        userId, payloads, promptFormat, promptGenerate, promptId, batchId);
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
                 log.info("[OCR-B2] 完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
             } catch (Exception e) {

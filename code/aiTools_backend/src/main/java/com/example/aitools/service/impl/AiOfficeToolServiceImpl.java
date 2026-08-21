@@ -174,7 +174,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
      */
     @Override
     public com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files,
-                                                String promptFormat, String promptGenerate, String batchId) {
+                                                String promptFormat, String promptGenerate, Long promptId, String batchId) {
         if (files == null || files.isEmpty()) {
             throw new BusinessException("请至少上传 1 个文件");
         }
@@ -211,7 +211,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                         throw new BusinessException("OCR 未识别出文字");
                     }
                     String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
-                    aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, null,
+                    aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId,
                             fileOut::append);
                     long duration = System.currentTimeMillis() - start;
                     fileOutput = fileOut.toString();

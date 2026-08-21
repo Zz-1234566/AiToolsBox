@@ -93,7 +93,7 @@ public interface AiOfficeToolService {
      * 单文件失败不影响整体。
      * @param batchId 批量任务 ID（必传）
      */
-    com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files, String promptFormat, String promptGenerate, String batchId);
+    com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files, String promptFormat, String promptGenerate, Long promptId, String batchId);
 
     /**
      * 批量 AI 文件解读（B2）：MiniMax M3 多模态
