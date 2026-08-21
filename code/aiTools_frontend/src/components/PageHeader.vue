@@ -28,12 +28,14 @@ const props = defineProps({
 })
 
 const onBack = () => {
-  uni.navigateBack({
-    delta: 1,
-    fail: () => {
-      switchTab('/pages/index')
-    }
-  })
+  // H5 模式下 navigateBack 依赖 fail 兜底不可靠（H5 走 history.back()，浏览器栈空时不报错也不走 fail），
+  // 必须主动判断栈深度：栈底时（H5 刷新/直接打开非 tabBar 页面）切到首页 tabBar
+  const pages = getCurrentPages()
+  if (pages.length > 1) {
+    uni.navigateBack({ delta: 1 })
+  } else {
+    switchTab('/pages/index')
+  }
 }
 </script>
 
