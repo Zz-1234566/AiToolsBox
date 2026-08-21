@@ -21,3 +21,19 @@ export const systemPromptListApi = (toolCode) => request({
 
 // 工具列表（按 tool_type 分组，用于提示词管理页工具下拉）
 export const toolListApi = () => request({ url: '/api/prompt/tools', method: 'GET' })
+
+/**
+ * AI 生成提示词：调后端 DeepSeek 按用户需求生成一段提示词
+ * @param {Object} params { toolCode, toolName, toolDesc, promptUse, requirement }
+ *   - toolCode: 工具编码（如 work-summary）
+ *   - toolName: 工具名称（如 工作总结），从 tools.js 传入，避免后端再查表
+ *   - toolDesc: 工具描述（可空）
+ *   - promptUse: 用途（format 格式 / generate 生成内容）
+ *   - requirement: 用户填的"参考需求"
+ * @returns {Promise<{ promptText: string }>}
+ */
+export const generatePromptApi = (params) => request({
+  url: '/api/prompt/generate',
+  method: 'POST',
+  data: params
+})

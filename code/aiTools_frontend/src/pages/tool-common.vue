@@ -65,37 +65,102 @@
       <view class="safe-area-bottom"></view>
     </scroll-view>
     
-    <!-- 提示词选择弹窗（用户自定义 + 系统） -->
-    <view v-if="showPromptPicker" class="prompt-mask" @click="showPromptPicker = false">
+    <!-- 提示词选择弹窗（系统提示词 + 我的提示词 + AI 生成三 tab） -->
+    <view v-if="showPromptPicker" class="prompt-mask" @click="closePromptPicker">
       <view class="prompt-picker" @click.stop>
         <text class="prompt-picker-title">选择{{ promptPickerTarget === 'format' ? '格式' : '生成内容' }}提示词</text>
+
+        <!-- Tab 切换栏 -->
+        <view class="prompt-tabs">
+          <view
+            v-for="t in pickerTabs"
+            :key="t.key"
+            class="prompt-tab"
+            :class="{ active: currentTab === t.key }"
+            @click="switchTab(t.key)"
+          >
+            <text>{{ t.label }}</text>
+          </view>
+        </view>
+
         <scroll-view scroll-y class="prompt-picker-list">
-          <!-- 系统提示词组 -->
-          <view v-if="systemPromptList.length" class="prompt-group-title">系统提示词</view>
-          <view 
-            v-for="item in systemPromptList" 
-            :key="'sys-' + item.id"
-            class="prompt-picker-item press-scale"
-            @click="selectPrompt(item)"
-          >
-            <text class="prompt-picker-text">{{ item.promptName || '默认' }}</text>
-          </view>
-          <!-- 用户提示词组 -->
-          <view v-if="userPromptList.length" class="prompt-group-title">我的提示词</view>
-          <view 
-            v-for="item in userPromptList" 
-            :key="'user-' + item.id"
-            class="prompt-picker-item press-scale"
-            @click="selectPrompt(item)"
-          >
-            <text class="prompt-picker-text">{{ item.promptText }}</text>
-          </view>
-          <!-- 空态 -->
-          <view v-if="systemPromptList.length === 0 && userPromptList.length === 0" class="prompt-empty">
-            <text>暂无该类型提示词</text>
-          </view>
+          <!-- ============ Tab 1：系统提示词 ============ -->
+          <template v-if="currentTab === 'system'">
+            <view v-if="systemPromptList.length" class="prompt-group-title">系统提示词</view>
+            <view
+              v-for="item in systemPromptList"
+              :key="'sys-' + item.id"
+              class="prompt-picker-item press-scale"
+              @click="selectPrompt(item)"
+            >
+              <text class="prompt-picker-text">{{ item.promptName || '默认' }}</text>
+            </view>
+            <view v-if="systemPromptList.length === 0" class="prompt-empty">
+              <text>暂无该类型系统提示词</text>
+            </view>
+          </template>
+
+          <!-- ============ Tab 2：我的提示词 ============ -->
+          <template v-if="currentTab === 'user'">
+            <view v-if="userPromptList.length" class="prompt-group-title">我的提示词</view>
+            <view
+              v-for="item in userPromptList"
+              :key="'user-' + item.id"
+              class="prompt-picker-item press-scale"
+              @click="selectPrompt(item)"
+            >
+              <text class="prompt-picker-text">{{ item.promptText }}</text>
+            </view>
+            <view v-if="userPromptList.length === 0" class="prompt-empty">
+              <text>暂无该类型我的提示词</text>
+            </view>
+          </template>
+
+          <!-- ============ Tab 3：AI 生成 ============ -->
+          <template v-if="currentTab === 'ai'">
+            <view class="ai-gen-form">
+              <text class="ai-gen-label">参考需求（描述你想要的提示词风格/场景）</text>
+              <textarea
+                class="ai-gen-textarea"
+                v-model="aiRequirement"
+                :placeholder="aiRequirementPlaceholder"
+                placeholder-class="textarea-placeholder"
+                maxlength="300"
+                :disabled="aiLoading"
+              />
+              <button
+                class="ai-gen-btn press-scale"
+                :disabled="aiLoading || !aiRequirement.trim()"
+                @click="handleAiGenerate"
+              >
+                <view v-if="aiLoading" class="loading-dots">
+                  <view class="dot"></view>
+                  <view class="dot"></view>
+                  <view class="dot"></view>
+                </view>
+                <text v-else>去生成</text>
+              </button>
+
+              <!-- 生成结果预览 -->
+              <view v-if="aiGeneratedText" class="ai-gen-preview">
+                <text class="ai-gen-label">生成结果（可应用或应用并保存）</text>
+                <view class="ai-gen-preview-box">
+                  <text class="ai-gen-preview-text">{{ aiGeneratedText }}</text>
+                </view>
+                <view class="ai-gen-actions">
+                  <view class="ai-gen-action-btn secondary press-scale" @click="applyGenerated(false)">
+                    <text>应用</text>
+                  </view>
+                  <view class="ai-gen-action-btn primary press-scale" @click="applyGenerated(true)">
+                    <text>应用并保存</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </template>
         </scroll-view>
-        <view class="prompt-picker-close" @click="showPromptPicker = false">
+
+        <view class="prompt-picker-close" @click="closePromptPicker">
           <text>关闭</text>
         </view>
       </view>
@@ -118,7 +183,7 @@ import BatchFilePicker from '@/components/BatchFilePicker.vue'
 import { uploadFileApi, batchUpload, ocrBatchUpload, batchCompleted } from '@/api/ai.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
-import { promptListApi, systemPromptListApi } from '@/api/prompt'
+import { promptListApi, systemPromptListApi, generatePromptApi, promptAddApi } from '@/api/prompt'
 import { getTool, validate } from '@/config/tools'
 import BatchResultCards from '@/components/BatchResultCards.vue'
 
@@ -138,11 +203,29 @@ const batchTotal = ref(0)          // 批量任务总文件数（用于卡片显
 const batchProgress = ref(0)       // 批量任务已处理数（用于 loading 提示）
 const promptFormatText = ref('')    // 用户自定义格式提示词
 const promptGenerateText = ref('')  // 用户自定义生成内容提示词
-const promptPickerTarget = ref('generate') // 选择弹窗当前填充的目标输入框
+const promptPickerTarget = ref('generate') // 选择弹窗当前填充的目标输入框（format/generate）
 const selectedPromptId = ref('')      // 最近选中的提示词 id（可随 document-summary 一并提交）
 const userPromptList = ref([])    // 用户自定义提示词（按用途过滤）
 const systemPromptList = ref([])  // 系统提示词（按用途过滤）
 const showPromptPicker = ref(false) // 是否显示选择弹窗
+const currentTab = ref('system')    // 弹窗当前 tab：system / user / ai
+const aiRequirement = ref('')        // AI 生成 tab 的需求输入
+const aiGeneratedText = ref('')      // AI 生成的提示词预览
+const aiLoading = ref(false)         // AI 生成中（防重复点）
+
+const pickerTabs = [
+  { key: 'system', label: '系统提示词' },
+  { key: 'user', label: '我的提示词' },
+  { key: 'ai', label: 'AI 生成' }
+]
+
+// AI 生成 tab 的需求占位提示（按 target 给场景化示例）
+const aiRequirementPlaceholder = computed(() => {
+  if (promptPickerTarget.value === 'format') {
+    return '例如：按四段式输出：已完成/进行中/问题/下一步'
+  }
+  return '例如：语气正式，结构化，使用项目符号'
+})
 
 const toolInfo = computed(() => getTool(toolId.value))
 
@@ -212,6 +295,11 @@ const onFileChoose = async (info) => {
 // 打开选择弹窗：同时拉取该用途下的用户自定义 + 系统提示词，target 指定填充哪个输入框（format/generate）
 const openPromptPicker = async (target = 'generate') => {
   promptPickerTarget.value = target
+  // 默认显示系统提示词 tab；重置 AI 生成 tab 的状态（避免上次残留）
+  currentTab.value = 'system'
+  aiRequirement.value = ''
+  aiGeneratedText.value = ''
+  aiLoading.value = false
   try {
     // 用户自定义提示词（过滤用途，按当前工具 toolCode 隔离）
     const userRes = await promptListApi(toolId.value)
@@ -226,6 +314,18 @@ const openPromptPicker = async (target = 'generate') => {
   showPromptPicker.value = true
 }
 
+// 关闭弹窗：点遮罩或关闭按钮
+const closePromptPicker = () => {
+  showPromptPicker.value = false
+  // 注意：textarea 已填内容（promptFormatText/promptGenerateText）保留，不清
+}
+
+// Tab 切换（不重新请求，只换显示）
+const switchTab = (key) => {
+  if (currentTab.value === key) return
+  currentTab.value = key
+}
+
 // 选中一条提示词填入对应输入框（用户/系统提示词均带 promptText）
 const selectPrompt = (item) => {
   selectedPromptId.value = (item && item.id != null) ? item.id : ''
@@ -233,6 +333,61 @@ const selectPrompt = (item) => {
     promptFormatText.value = item.promptText
   } else {
     promptGenerateText.value = item.promptText
+  }
+  showPromptPicker.value = false
+}
+
+// AI 生成：调后端 DeepSeek，按用户需求生成提示词
+const handleAiGenerate = async () => {
+  const requirement = aiRequirement.value.trim()
+  if (!requirement) {
+    uni.showToast({ title: '请输入参考需求', icon: 'none' })
+    return
+  }
+  if (aiLoading.value) return
+  aiLoading.value = true
+  try {
+    const res = await generatePromptApi({
+      toolCode: toolId.value,
+      toolName: toolInfo.value.name || '',
+      toolDesc: toolInfo.value.desc || '',
+      promptUse: promptPickerTarget.value,
+      requirement
+    })
+    const text = (res && res.data && res.data.promptText) || ''
+    if (!text) {
+      uni.showToast({ title: '生成结果为空，请重试', icon: 'none' })
+      return
+    }
+    aiGeneratedText.value = text
+  } catch (e) {
+    // request.js 已经 uni.showToast 错误消息，这里仅记日志
+    console.error('AI generate failed:', e)
+  } finally {
+    aiLoading.value = false
+  }
+}
+
+// 应用生成结果：save=true 同时存到我的提示词表
+const applyGenerated = async (save = false) => {
+  const text = aiGeneratedText.value
+  if (!text) return
+  // AI 生成的内容无 id，清空 selectedPromptId（不影响后续可重新选）
+  selectedPromptId.value = ''
+  if (promptPickerTarget.value === 'format') {
+    promptFormatText.value = text
+  } else {
+    promptGenerateText.value = text
+  }
+  // 应用并保存：异步存库（不阻塞关闭弹窗）
+  if (save) {
+    try {
+      await promptAddApi(text, promptPickerTarget.value, toolId.value)
+      uni.showToast({ title: '已保存到我的提示词', icon: 'success' })
+    } catch (e) {
+      // request.js 已 toast 错误，这里不重复
+      console.error('Save generated prompt failed:', e)
+    }
   }
   showPromptPicker.value = false
 }
@@ -524,6 +679,39 @@ const handleGenerate = async () => {
       text-align: center;
       margin-bottom: $spacing-md;
     }
+
+    // Tab 切换栏
+    .prompt-tabs {
+      display: flex;
+      border-bottom: 1rpx solid $divider-color;
+      margin-bottom: $spacing-sm;
+
+      .prompt-tab {
+        flex: 1;
+        text-align: center;
+        padding: $spacing-sm 0;
+        font-size: $font-size-sm;
+        color: $text-secondary;
+        position: relative;
+
+        &.active {
+          color: $text-primary;
+          font-weight: 600;
+
+          &::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: 0;
+            transform: translateX(-50%);
+            width: 40rpx;
+            height: 4rpx;
+            background-color: $text-primary;
+            border-radius: 2rpx;
+          }
+        }
+      }
+    }
     
     .prompt-picker-list {
       max-height: 50vh;
@@ -550,6 +738,101 @@ const handleGenerate = async () => {
         font-size: $font-size-sm;
         color: $text-primary;
         white-space: pre-wrap;
+      }
+    }
+
+    // ============ AI 生成 tab 样式 ============
+    .ai-gen-form {
+      padding: $spacing-sm $spacing-md;
+
+      .ai-gen-label {
+        display: block;
+        font-size: $font-size-sm;
+        color: $text-secondary;
+        margin-bottom: $spacing-xs;
+      }
+
+      .ai-gen-textarea {
+        width: 100%;
+        min-height: 160rpx;
+        background-color: $bg-color;
+        border-radius: $radius-md;
+        padding: $spacing-sm $spacing-md;
+        font-size: $font-size-sm;
+        color: $text-primary;
+        border: 2rpx solid $border-color;
+        box-sizing: border-box;
+      }
+
+      .ai-gen-btn {
+        width: 100%;
+        height: 80rpx;
+        margin-top: $spacing-md;
+        border-radius: $radius-pill;
+        background-color: $text-primary;
+        color: $bg-white;
+        font-size: $font-size-md;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+
+        &[disabled] {
+          opacity: 0.5;
+        }
+      }
+
+      .ai-gen-preview {
+        margin-top: $spacing-md;
+
+        .ai-gen-preview-box {
+          background-color: $bg-color;
+          border-radius: $radius-md;
+          padding: $spacing-md;
+          max-height: 400rpx;
+          overflow-y: auto;
+          border: 1rpx solid $border-color;
+
+          .ai-gen-preview-text {
+            font-size: $font-size-sm;
+            color: $text-primary;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.6;
+          }
+        }
+
+        .ai-gen-actions {
+          display: flex;
+          gap: $spacing-sm;
+          margin-top: $spacing-md;
+
+          .ai-gen-action-btn {
+            flex: 1;
+            height: 80rpx;
+            border-radius: $radius-pill;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: $font-size-sm;
+
+            &.secondary {
+              background-color: $bg-color;
+              color: $text-primary;
+              border: 1rpx solid $border-color;
+            }
+
+            &.primary {
+              background-color: $text-primary;
+              color: $bg-white;
+            }
+
+            &:active {
+              opacity: 0.8;
+            }
+          }
+        }
       }
     }
     

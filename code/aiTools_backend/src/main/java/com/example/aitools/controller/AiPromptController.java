@@ -1,10 +1,12 @@
 package com.example.aitools.controller;
 
 import com.example.aitools.common.Result;
+import com.example.aitools.dto.PromptGenerateRequest;
 import com.example.aitools.dto.PromptRequest;
 import com.example.aitools.service.AiPromptService;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.utils.AuthUtil;
+import com.example.aitools.vo.PromptGenerateVO;
 import com.example.aitools.vo.PromptVO;
 import com.example.aitools.vo.SystemPromptVO;
 import com.example.aitools.vo.ToolOptionVO;
@@ -70,5 +72,16 @@ public class AiPromptController {
     public Result<List<ToolOptionVO>> tools(HttpServletRequest request) {
         authUtil.getUserIdFromRequest(request); // 校验登录
         return Result.success(aiPromptService.listTools());
+    }
+
+    /**
+     * AI 生成提示词：调 DeepSeek 按用户需求生成一段提示词
+     * 前端从 tools.js 读出 toolName/toolDesc 传入，无需后端查表
+     */
+    @PostMapping("/generate")
+    public Result<PromptGenerateVO> generate(@Valid @RequestBody PromptGenerateRequest request,
+                                              HttpServletRequest httpRequest) {
+        authUtil.getUserIdFromRequest(httpRequest); // 校验登录
+        return Result.success("生成成功", aiPromptService.generatePrompt(request));
     }
 }
