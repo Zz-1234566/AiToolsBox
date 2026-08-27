@@ -359,7 +359,7 @@ const goToLogin = () => {
   border-radius: $radius-md;
   border: none;
   margin-top: $spacing-md;
-  transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: opacity 0.2s, transform 0.2s ease;
 
   &:active {
     opacity: 0.8;
@@ -456,7 +456,7 @@ const goToLogin = () => {
     background-color: $text-primary;
     border-radius: $radius-md;
     border: none;
-    transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: opacity 0.2s, transform 0.2s ease;
 
     &:active {
       opacity: 0.8;

@@ -6,12 +6,10 @@
 
 /* ---------- 点击反馈 ---------- */
 
-// 按压缩放（带弹性回弹）
+// 按压缩放（已废弃：按用户要求去掉所有 :active 下的 transform，
+// 保留 class 名以避免改动 30 处引用，行为上等同 noop）
 .press-scale {
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  &:active {
-    transform: scale(0.97);
-  }
+  // 无样式：之前是 :active { transform: scale(0.97) }，已移除
 }
 
 // 透明度变化
@@ -55,7 +53,7 @@
   to { opacity: 1; transform: scale(1); }
 }
 .animate-scale-in {
-  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: scaleIn 0.3s ease both;
 }
 
 /* ---------- 错落入场（列表） ---------- */

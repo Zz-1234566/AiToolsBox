@@ -53,12 +53,7 @@ const onClick = () => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  
-  &:active {
-    transform: scale(0.97);
-  }
-  
+
   .card-icon {
     width: 88rpx;
     height: 88rpx;
