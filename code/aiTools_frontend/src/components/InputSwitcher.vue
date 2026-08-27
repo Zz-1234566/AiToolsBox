@@ -19,7 +19,8 @@ const props = defineProps({
 })
 defineEmits(['change'])
 
-const label = (t) => ({ text: '文字', file: '文件', image: '图片', audio: '音频' }[t] || t)
+// audio 类型已从 inputTypes 中移除（2026-08 按用户要求砍掉），label 暂留作 fallback
+const label = (t) => ({ text: '文字', file: '文件', image: '图片' }[t] || t)
 </script>
 
 <style lang="scss" scoped>

@@ -28,8 +28,7 @@
       <!-- 图片上传（非多文件工具，单文件） -->
       <file-input-area v-if="currentInputType === 'image' && !isBatchTool" :title="toolInfo.uploadTitle || '上传图片'" :desc="toolInfo.uploadDesc || '支持 JPG、PNG 格式'" fileType="image" :fileName="fileName" :uploading="uploading" @choose="onFileChoose" />
 
-      <!-- 音频输入（占位） -->
-      <audio-input-area v-if="currentInputType === 'audio'" />
+      <!-- 音频输入（已移除 2026-08） -->
 
       <!-- 提示词区域（可选）：格式提示词 + 生成内容提示词 -->
       <prompt-input-area v-model:formatText="promptFormatText" :formatPromptDisplay="formatPromptDisplay" v-model:generateText="promptGenerateText" @pickFormat="openPromptPicker('format')" @pickGenerate="openPromptPicker('generate')" />
@@ -200,7 +199,6 @@ import PageHeader from '@/components/PageHeader.vue'
 import InputSwitcher from '@/components/InputSwitcher.vue'
 import TextInputArea from '@/components/TextInputArea.vue'
 import FileInputArea from '@/components/FileInputArea.vue'
-import AudioInputArea from '@/components/AudioInputArea.vue'
 import PromptInputArea from '@/components/PromptInputArea.vue'
 import ResultArea from '@/components/ResultArea.vue'
 import BatchFilePicker from '@/components/BatchFilePicker.vue'
