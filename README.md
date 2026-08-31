@@ -59,7 +59,7 @@ Graduation project/
 mysql -u root -p < code/aiTools_backend/sql/init.sql
 ```
 
-脚本会创建 `ai_toolbox` 库及全部业务表，并写入 2 个初始化工具（`work-summary`、`ai-summary`）及对应系统提示词。
+脚本会创建 `ai_toolbox` 库及全部业务表，并写入 14 个初始化工具（详见 sys_aitools_tool 表，sort_no 1-14 唯一连续）及对应系统提示词。
 
 ### 3. 配置后端
 
@@ -131,9 +131,14 @@ npm run dev:h5
 | 工具编码 | 名称 | 输入 | 接口 |
 |---|---|---|---|
 | `work-summary` | 工作总结 | 文本 | `POST /api/ai-office/work-summary`（同步）<br>`POST /api/ai-office/work-summary/stream`（SSE 流式） |
-| `ai-summary` | 文档重点提取 | 文档（PDF/Word/TXT） | `POST /api/ai-office/document-summary/stream`（SSE 流式 + multipart 上传） |
+| `doc-keypoint-extract` | 文档重点提取 | 文档（PDF/Word/TXT） | `POST /api/ai-office/document-summary/stream`（SSE 流式，单文件）<br>`POST /api/ai-office/document-summary/batch-upload` + `GET /api/ai-office/batch/{batchId}/completed`（多文件批量 + 增量轮询） |
+| `weekly-report` | 周报生成 | 文本 | `POST /api/ai-office/weekly-report/stream`（SSE 流式） |
+| `meeting-minutes` | 会议纪要 | 文本 | `POST /api/ai-office/meeting-minutes/stream`（SSE 流式） |
+| `ocr-recognize` | 智能识别 | 图片（多张） | `POST /api/ai-office/ocr-recognize/stream`（SSE 流式）<br>`POST /api/ai-office/ocr-recognize/batch-upload`（多文件批量） |
 
-首页其余工具（周报生成、会议纪要、智能识别、图片类、效率小工具）**前端预留了 UI，后端未实现**，点击会提示"该工具开发中"。
+其余工具（`bank-receipt-recognize` / `invoice-recognize` / `id-photo-bg-change` / `portrait-bg-replace` / `image-compress` / `qr-code-gen` / `todo-list` / `pomodoro` / `password-gen`）**已入库（sort_no 6-14），但后端流式接口未提供**，前端未启用 `realized: true` 标记，点击会提示"该工具开发中"。
+
+`ai-file-reader` 由独立的 `AiFileReaderController` 提供（`/api/ai-office/ai-file-reader/batch-upload`），使用多模态 AI 解读任意文件。
 
 ## ⚠️ 密钥安全提醒
 

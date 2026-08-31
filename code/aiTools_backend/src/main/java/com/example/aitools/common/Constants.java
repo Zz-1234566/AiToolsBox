@@ -10,6 +10,9 @@ public class Constants {
     /** Token prefix */
     public static final String TOKEN_PREFIX = "Bearer ";
 
+    /** request attribute key：JwtAuthFilter 写入当前用户 ID，AuthUtil 从这里读 */
+    public static final String REQ_ATTR_USER_ID = "aitoolbox.currentUserId";
+
     /** Account prefix */
     public static final String ACCOUNT_PREFIX = "AIT";
 
@@ -36,11 +39,26 @@ public class Constants {
 
     // ==================== 批量任务（B2 多文件上传） ====================
 
-    /** 单次批量最多文件数 */
-    public static final int BATCH_MAX_FILE_COUNT = 10;
+    // ==================== 鉴权路径白名单（P0-A2 终极修复）====================
+    // 不在白名单内的所有路径都要求登录。AuthInterceptor 强制拦截。
+    // 新加 Controller 端点**不需要在 Controller 写任何鉴权代码**，只要不在白名单就自动鉴权。
+    // 注意：白名单里的路径是真正公开的（不需要登录也能访问）
 
-    /** 批量文件总大小上限（字节）：200MB */
-    public static final long BATCH_MAX_TOTAL_SIZE = 200L * 1024 * 1024;
+    /** 公开路径前缀（不需要登录）；精确匹配（不是 startsWith） */
+    public static final java.util.Set<String> PUBLIC_PATH_PATTERNS = java.util.Set.of(
+            // 用户注册 / 登录 / 找回密码
+            "/api/user/login",
+            "/api/user/register",
+            "/api/user/find-account",
+            "/api/user/reset-password",
+            // 邮件验证码
+            "/api/mail/send-code",
+            // 系统提示词（公开给所有用户看默认 prompt）
+            "/api/prompt/system/list",
+            "/api/prompt/system/format"
+    );
+
+    /** 单次批量最多文件数（与文件末尾的 BATCH_MAX_FILE_COUNT 重复，本处 P0 移除，避免编译错误） */
 
     /** 单文件大小上限（字节）：20MB（与 spring.servlet.multipart.max-file-size 保持一致） */
     public static final long BATCH_SINGLE_FILE_MAX_SIZE = 20L * 1024 * 1024;
@@ -76,8 +94,27 @@ public class Constants {
     public static final java.util.Set<String> CODE_TYPE_ALLOWED =
             java.util.Set.of(CODE_TYPE_REGISTER, CODE_TYPE_RESET_PASSWORD);
 
+    // ==================== 验证码失败锁定 ====================
+
+    /** 单 target 连续失败上限（达到后锁 10 分钟，期间不再校验验证码） */
+    public static final int VERIFY_CODE_MAX_FAIL_COUNT = 5;
+
+    /** 失败计数与锁定时长（分钟） */
+    public static final int VERIFY_CODE_FAIL_LOCK_MINUTES = 10;
+
     // ==================== 历史记录（/api/history） ====================
 
     /** 默认历史记录查询条数 */
     public static final int HISTORY_LIST_DEFAULT_LIMIT = 10;
+
+    // ==================== SSE 流式 / 批量任务 ====================
+
+    /** SSE emitter 超时（毫秒）：2 分钟。流式 AI 调用超过此时间视为超时 */
+    public static final long SSE_TIMEOUT_MS = 120_000L;
+
+    /** 单次批量上传文件数上限 */
+    public static final int BATCH_MAX_FILE_COUNT = 10;
+
+    /** 单次批量上传总大小上限（字节）：200MB */
+    public static final long BATCH_MAX_TOTAL_SIZE = 200L * 1024 * 1024;
 }

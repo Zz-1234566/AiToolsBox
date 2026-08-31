@@ -1,6 +1,5 @@
 package com.example.aitools.service.document;
 
-import cn.hutool.core.io.IoUtil;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
@@ -57,15 +56,36 @@ public class DocumentParser {
             log.error("Document parse failed: {}", originalFilename, e);
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "文档解析失败，请检查文件是否损坏");
         }
-        // 截断
+        // 截断：按 codepoint 切，避免辅助平面字符（emoji / 罕用汉字）被切到一半
         if (text.length() > MAX_TEXT_LENGTH) {
-            text = text.substring(0, MAX_TEXT_LENGTH);
+            int end = text.offsetByCodePoints(0, MAX_TEXT_LENGTH);
+            // offsetByCodePoints 在 end > length() 时抛 IndexOutOfBoundsException，这里安全（end ≤ length()）
+            text = text.substring(0, end);
         }
         return text;
     }
 
     private String parseTxt(MultipartFile file) throws IOException {
-        return IoUtil.readUtf8(file.getInputStream());
+        // P2-B3: 自动检测编码，避免 GBK/GB18030 用户上传后整段乱码
+        // 实现策略：先按 UTF-8 读，发现替换字符 U+FFFD 比例超过阈值（>5%）则回退到 GBK
+        // 不引入 Tika 等新依赖（项目规范：未经允许不引入新依赖）
+        byte[] bytes = file.getBytes();
+        String utf8 = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        int replacementCount = countReplacementChars(utf8);
+        if (replacementCount > utf8.length() * 0.05) {
+            // UTF-8 解析失败率高，回退 GBK
+            return new String(bytes, java.nio.charset.Charset.forName("GBK"));
+        }
+        return utf8;
+    }
+
+    /** 统计 U+FFFD 替换字符数（UTF-8 解码失败时会产生） */
+    private int countReplacementChars(String s) {
+        int count = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\uFFFD') count++;
+        }
+        return count;
     }
 
     private String parsePdf(MultipartFile file) throws IOException {

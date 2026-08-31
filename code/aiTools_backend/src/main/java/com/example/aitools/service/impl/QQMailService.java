@@ -25,6 +25,7 @@ public class QQMailService implements MailService {
     @Override
     public void sendVerifyCode(String to, String code, int expireMinutes) {
         // 使用 HTML 模板发送验证码邮件
+        // 注意：code 不写入日志（避免明文验证码落盘，泄露到 ELK / 日志收集 / 运维终端）
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -33,7 +34,7 @@ public class QQMailService implements MailService {
             helper.setSubject("【智汇工具箱】验证码");
             helper.setText(buildVerifyCodeHtml(code, expireMinutes), true);
             mailSender.send(message);
-            log.info("验证码邮件已发送 to={}, code={}", to, code);
+            log.info("验证码邮件已发送 to={}", to);
         } catch (Exception e) {
             log.error("验证码邮件发送失败 to={}", to, e);
             throw new RuntimeException("邮件发送失败，请稍后重试", e);

@@ -78,4 +78,22 @@ public interface FileStorageService {
         }
         return normalizedPrefix;
     }
+
+    /**
+     * 是否私有前缀（仅 file/ 用户文件区）。
+     * 私有前缀 → 走临时签名 URL，5 分钟有效；前端不能缓存。
+     * 其他前缀（avatar/ai-image/ai-bg）公开读，返回直链。
+     */
+    static boolean isPrivatePrefix(String prefix) {
+        if (prefix == null || prefix.isEmpty()) return false;
+        // 处理过的 prefix 形如 "file/123"（带 userId 子目录）
+        return prefix.startsWith(Constants.FILE_PREFIX_USER_FILE + "/") || prefix.equals(Constants.FILE_PREFIX_USER_FILE);
+    }
+
+    /**
+     * 是否公开前缀（默认 true，保持原有行为）
+     */
+    static boolean isPublicPrefix(String prefix) {
+        return !isPrivatePrefix(prefix);
+    }
 }

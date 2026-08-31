@@ -58,6 +58,7 @@ public class CosFileStorageService implements FileStorageService {
         String ext = FileStorageService.extractExtension(originalFilename);
         String fileId = UUID.randomUUID().toString().replace("-", "");
         String key = buildKey(prefix, fileId, ext);
+        boolean isPrivate = FileStorageService.isPrivatePrefix(prefix);
         try (InputStream in = file.getInputStream()) {
             ObjectMetadata metadata = new ObjectMetadata();
             metadata.setContentLength(file.getSize());
@@ -65,15 +66,55 @@ public class CosFileStorageService implements FileStorageService {
                 metadata.setContentType(file.getContentType());
             }
             cosClient.putObject(new PutObjectRequest(cosConfig.getBucket(), key, in, metadata));
-            // 设置公开读权限，保证返回的 URL 可直接访问
-            cosClient.setObjectAcl(cosConfig.getBucket(), key, CannedAccessControlList.PublicRead);
+            // 公开前缀：setObjectAcl 设为 PublicRead，URL 可直接访问
+            // 私有前缀：不 setAcl，默认私有读，URL 必须带签名
+            if (!isPrivate) {
+                try {
+                    cosClient.setObjectAcl(cosConfig.getBucket(), key, CannedAccessControlList.PublicRead);
+                } catch (Exception aclEx) {
+                    // P2-B12: put 成功但 setAcl 失败 → 文件保持私有但 URL 公开，访问会 403
+                    // 修复：删掉这个文件 + 抛错，避免返回"看似可用但实际 403"的 URL
+                    log.error("setObjectAcl failed after put, deleting orphan key={}", key, aclEx);
+                    try {
+                        cosClient.deleteObject(cosConfig.getBucket(), key);
+                    } catch (Exception delEx) {
+                        log.error("Failed to delete orphan after setAcl failure: key={}", key, delEx);
+                    }
+                    throw new BusinessException(ResultCode.SYSTEM_ERROR.getCode(), "文件上传失败（权限设置异常），请重试");
+                }
+            }
         } catch (IOException e) {
             log.error("Failed to store file to COS: key={}", key, e);
             throw new BusinessException(ResultCode.SYSTEM_ERROR.getCode(), "文件上传失败，请重试");
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Unexpected error storing to COS: key={}", key, e);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR.getCode(), "文件上传失败，请重试");
         }
-        log.info("File stored to COS: {} -> {}", originalFilename, key);
-        String fileUrl = "https://" + cosConfig.getBucket() + ".cos." + cosConfig.getRegion() + ".myqcloud.com/" + key;
+        log.info("File stored to COS: {} -> {} (private={})", originalFilename, key, isPrivate);
+        String fileUrl = buildAccessUrl(key, isPrivate);
         return new FileUploadResponse(fileId, fileUrl, originalFilename);
+    }
+
+    /**
+     * 构造访问 URL：
+     * - 公开：直链
+     * - 私有：生成 cosClient.generatePresignedUrl 临时签名 URL
+     */
+    private String buildAccessUrl(String key, boolean isPrivate) {
+        String baseUrl = "https://" + cosConfig.getBucket() + ".cos." + cosConfig.getRegion() + ".myqcloud.com/" + key;
+        if (!isPrivate) {
+            return baseUrl;
+        }
+        // 私有：生成临时签名 URL
+        long ttl = cosConfig.getSignedUrlTtlSeconds() == null ? 300L : cosConfig.getSignedUrlTtlSeconds();
+        java.util.Date expiration = new java.util.Date(System.currentTimeMillis() + ttl * 1000L);
+        com.qcloud.cos.model.GeneratePresignedUrlRequest req =
+                new com.qcloud.cos.model.GeneratePresignedUrlRequest(cosConfig.getBucket(), key);
+        req.setExpiration(expiration);
+        req.setMethod(com.qcloud.cos.http.HttpMethodName.GET);
+        return cosClient.generatePresignedUrl(req).toString();
     }
 
     /**
