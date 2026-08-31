@@ -1,5 +1,6 @@
 import { ERROR_CODE } from './errorCode'
 import { BASE_URL } from '../config/env'
+import { handleBusiness401, handleAuthError } from '../utils/auth-error-handler'
 
 /**
  * 通用请求封装
@@ -30,19 +31,15 @@ export const request = (options) => {
           if (data.code === ERROR_CODE.SUCCESS) {
             resolve(data)
           } else if (data.code === 401) {
-            uni.removeStorageSync('token')
-            uni.removeStorageSync('userInfo')
-            uni.showToast({ title: data.message || '登录已过期', icon: 'none' })
-            reject(new Error(data.message))
+            handleBusiness401(data.message)
+            reject(new Error(data.message || '未登录'))
           } else {
             // 其他业务错误，显示后端返回的消息
             uni.showToast({ title: data.message || '操作失败', icon: 'none' })
             reject(new Error(data.message))
           }
         } else if (res.statusCode === 401) {
-          uni.removeStorageSync('token')
-          uni.removeStorageSync('userInfo')
-          uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+          handleAuthError('登录已过期，请重新登录')
           reject(new Error('未登录'))
         } else {
           uni.showToast({ title: '请求失败', icon: 'none' })

@@ -15,10 +15,15 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     private final JwtUtil jwtUtil;
     private final FileConfig fileConfig;
+    private final AuthInterceptor authInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        // TODO: Add JWT interceptor when auth filter is implemented
+        // P0-A2 终极修复：注册 AuthInterceptor
+        // JwtAuthFilter 写 userId attribute；AuthInterceptor 校验 attribute 是否存在
+        // 不在 PUBLIC_PATH_PATTERNS 的路径全部要求登录
+        registry.addInterceptor(authInterceptor)
+                .addPathPatterns("/**");
     }
 
     @Override

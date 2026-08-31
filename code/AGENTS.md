@@ -103,6 +103,7 @@ public SseEmitter xxxStream(@PathVariable String id, HttpServletRequest req) {
 | `/document-summary/batch-upload` | POST multipart | **唯一入口**：建任务 → 立即返回 SseEmitter → 线程池异步跑 service → 跑完入库 → 推完成帧 |
 | `/document-summary/batch-stream/{batchId}` | GET SSE | **补发 / 心跳**：任务已完成则补发 result_summary；进行中则提示改用 upload 订阅或 batch-status 轮询 |
 | `/document-summary/batch-status/{batchId}` | GET | 轮询 / 断线重连：返回 BatchStatusVO（code + label + 计数） |
+| `/batch/{batchId}/completed` | GET | **增量轮询**：since=N 返回 since 之后新完成的 items，前端每 1-2s 拉一次。返回 BatchStatusVO（含 items 数组） |
 
 SSE 数据帧约定（前端按 --- 标记分块渲染）：
 

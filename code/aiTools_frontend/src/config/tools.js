@@ -84,7 +84,7 @@ export const TOOLS = {
     }
   },
   'weekly-report': {
-    name: '周报生成', icon: 'weekly', category: 'AI办公助手', realized: false,
+    name: '周报生成', icon: 'weekly', category: 'AI办公助手', realized: true,
     desc: '输入本周工作内容，一键生成结构化的工作周报。',
     inputTypes: ['text', 'file'], defaultInput: 'text',
     placeholder: '请输入本周完成的工作内容...',
@@ -96,7 +96,7 @@ export const TOOLS = {
     }
   },
   'meeting-minutes': {
-    name: '会议纪要', icon: 'meeting', category: 'AI办公助手', realized: false,
+    name: '会议纪要', icon: 'meeting', category: 'AI办公助手', realized: true,
     desc: '输入会议内容，AI 帮你整理会议核心结论和行动项。',
     inputTypes: ['text', 'file'], defaultInput: 'text',
     placeholder: '请输入会议内容或语音转写文字...',

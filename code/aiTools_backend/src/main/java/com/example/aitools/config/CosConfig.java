@@ -24,6 +24,9 @@ public class CosConfig {
     /** COS Bucket，如 example-1250000000 */
     private String bucket;
 
-    /** 默认头像在桶内的 key 路径（如 avatar/defaultAvator.png），URL 由 bucket + region 拼出 */
-    private String defaultAvatarKey = "avatar/defaultAvator.png";
+    /** 默认头像在桶内的 key 路径（如 avatar/defaultAvatar.png），URL 由 bucket + region 拼出 */
+    private String defaultAvatarKey = "avatar/defaultAvatar.png";
+
+    /** 私有文件签名 URL 有效期（秒）。仅 file/ 前缀下的用户文件区使用。 */
+    private Integer signedUrlTtlSeconds = 300;
 }
