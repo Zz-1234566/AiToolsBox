@@ -1,119 +1,124 @@
 <template>
   <view class="page-container animate-fade-in">
     <page-header :title="t('my.title')" :showBack="false"></page-header>
-    
+
     <scroll-view scroll-y class="page-content">
-      <!-- 用户信息卡片 - 已登录 -->
-      <view v-if="isLoggedIn" class="user-card animate-fade-in-up" @click="goToProfile">
-        <view class="avatar">
-          <image v-if="userInfo.avatar" class="avatar-img" :src="userInfo.avatar" mode="aspectFill"></image>
-          <svg v-else class="avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M4 20C4 15.5817 7.58172 12 12 12C16.4183 12 20 15.5817 20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
+      <!-- 用户信息卡片 - 已登录（按设计稿：渐变背景 + 头像 + VIP 卡叠加） -->
+      <view v-if="isLoggedIn" class="user-hero">
+        <view class="user-row" @click="goToProfile">
+          <view class="avatar">
+            <image v-if="userInfo.avatar" class="avatar-img" :src="userInfo.avatar" mode="aspectFill"></image>
+            <svg v-else class="avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M4 20C4 15.5817 7.58172 12 12 12C16.4183 12 20 15.5817 20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </view>
+          <view class="user-info">
+            <text class="user-name">{{ userInfo.username || userInfo.account }}</text>
+            <text class="user-desc">ID: {{ userInfo.account }}</text>
+          </view>
         </view>
-        <view class="user-info">
-          <text class="user-name">{{ userInfo.username || userInfo.account }}</text>
-          <text class="user-desc">ID: {{ userInfo.account }}</text>
+        <!-- VIP 卡（深色叠加在 Hero 底部） -->
+        <view class="vip-card press-scale" @click="showToast('vip')">
+          <view class="vip-text">
+            <text class="vip-title">会员特权</text>
+            <text class="vip-sub">解锁更多高级工具和功能</text>
+          </view>
+          <view class="vip-btn">立即开通</view>
         </view>
-        <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
       </view>
-      
+
       <!-- 用户信息卡片 - 未登录 -->
-      <view v-else class="user-card animate-fade-in-up" @click="goToLogin">
-        <view class="avatar">
-          <svg class="avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
-            <path d="M4 20C4 15.5817 7.58172 12 12 12C16.4183 12 20 15.5817 20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
-        </view>
-        <view class="user-info">
-          <text class="user-name">{{ t('my.loginBtn') }}</text>
-          <text class="user-desc">{{ t('my.loginHint') }}</text>
-        </view>
-        <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </view>
-      
-      <!-- 常用功能入口 -->
-      <view class="quick-actions">
-        <view class="action-item" @click="goToHistory">
-          <view class="action-icon">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 8V12L15 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12Z" stroke="currentColor" stroke-width="1.5"/>
+      <view v-else class="user-hero user-hero--empty">
+        <view class="user-row" @click="goToLogin">
+          <view class="avatar">
+            <svg class="avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M4 20C4 15.5817 7.58172 12 12 12C16.4183 12 20 15.5817 20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
           </view>
-          <text class="action-text">{{ t('my.history') }}</text>
-        </view>
-        <view class="action-item" @click="goToPrompt">
-          <view class="action-icon">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M4 5C4 3.89543 4.89543 3 6 3H18C19.1046 3 20 3.89543 20 5V15C20 16.1046 19.1046 17 18 17H11L6 21V17H6C4.89543 17 4 16.1046 4 15V5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+          <view class="user-info">
+            <text class="user-name">{{ t('my.loginBtn') }}</text>
+            <text class="user-desc">{{ t('my.loginHint') }}</text>
           </view>
-          <text class="action-text">{{ t('my.prompts') }}</text>
-        </view>
-        <view class="action-item" @click="goToFavorites">
-          <view class="action-icon">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M5 5C5 3.34315 6.34315 2 8 2H16C17.6569 2 19 3.34315 19 5V21L12 17.5L5 21V5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </view>
-          <text class="action-text">{{ t('my.favorites') }}</text>
-        </view>
-        <view class="action-item" @click="goToSettings">
-          <view class="action-icon">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M19.4 15C19.2669 15.3016 19.2272 15.6362 19.286 15.9606C19.3448 16.285 19.4995 16.5843 19.73 16.82L19.79 16.88C19.976 17.0657 20.1235 17.2863 20.2241 17.5291C20.3248 17.7719 20.3766 18.0322 20.3766 18.295C20.3766 18.5578 20.3248 18.8181 20.2241 19.0609C20.1235 19.3037 19.976 19.5243 19.79 19.71C19.6043 19.896 19.3837 20.0435 19.1409 20.1441C18.8981 20.2448 18.6378 20.2966 18.375 20.2966C18.1122 20.2966 17.8519 20.2448 17.6091 20.1441C17.3663 20.0435 17.1457 19.896 16.96 19.71L16.9 19.65C16.6643 19.4195 16.365 19.2648 16.0406 19.206C15.7162 19.1472 15.3816 19.1869 15.08 19.32C14.7843 19.4467 14.532 19.6572 14.3553 19.9253C14.1786 20.1934 14.0853 20.5072 14.0867 20.8278L14.09 21.5C14.09 22.0304 13.8793 22.5391 13.5042 22.9142C13.1291 23.2934 12.6204 23.504 12.09 23.504C11.5596 23.504 11.0509 23.2934 10.6758 22.9142C10.3007 22.5391 10.09 22.0304 10.09 21.5L10.0867 20.8278C10.0881 20.5072 9.9948 20.1934 9.8181 19.9253C9.6414 19.6572 9.3891 19.4467 9.0933 19.32C8.7919 19.1869 8.4574 19.1472 8.133 19.206C7.8086 19.2648 7.5093 19.4195 7.2736 19.65L7.21 19.71C7.0243 19.896 6.8037 20.0435 6.5609 20.1441C6.3181 20.2448 6.0578 20.2966 5.795 20.2966C5.5322 20.2966 5.2719 20.2448 5.0291 20.1441C4.7863 20.0435 4.5657 19.896 4.38 19.71C4.194 19.5243 4.0465 19.3037 3.9459 19.0609C3.8452 18.8181 3.7934 18.5578 3.7934 18.295C3.7934 18.0322 3.8452 17.7719 3.9459 17.5291C4.0465 17.2863 4.194 17.0657 4.38 16.88L4.44 16.82C4.6705 16.5843 4.8252 16.285 4.884 15.9606C4.9428 15.6362 4.9031 15.3016 4.77 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </view>
-          <text class="action-text">{{ t('my.settings') }}</text>
         </view>
       </view>
-      
-      <!-- 设置列表 -->
+
+      <!-- 数据统计（4 项一行，按设计稿：我的收藏 / 最近使用 / 我的工作流 / 使用记录） -->
+      <view class="stats">
+        <view class="stat-item press-scale" @click="goToFavorites">
+          <text class="stat-icon">⭐</text>
+          <text class="stat-label">{{ t('my.favorites') }}</text>
+          <text class="stat-num">12</text>
+        </view>
+        <view class="stat-item press-scale" @click="goToHistory">
+          <text class="stat-icon">🕘</text>
+          <text class="stat-label">{{ t('my.history') }}</text>
+          <text class="stat-num">23</text>
+        </view>
+        <view class="stat-item press-scale" @click="goToPrompt">
+          <text class="stat-icon">📋</text>
+          <text class="stat-label">{{ t('my.prompts') }}</text>
+          <text class="stat-num">5</text>
+        </view>
+        <view class="stat-item stat-item--link press-scale" @click="goToHistory">
+          <text class="stat-icon">📜</text>
+          <text class="stat-label">使用记录</text>
+          <text class="stat-chev">›</text>
+        </view>
+      </view>
+
+      <!-- 设置列表（按设计稿：图标 + 文字 + chevron / Switch） -->
       <view class="menu-list">
+        <view class="menu-item press-scale" @click="goToSettings">
+          <view class="menu-left">
+            <text class="menu-icon">⚙️</text>
+            <text class="menu-text">{{ t('my.settings') }}</text>
+          </view>
+          <text class="menu-chev">›</text>
+        </view>
         <view class="menu-item press-scale" @click="showToast('aboutUs')">
-          <text class="menu-text">{{ t('my.aboutUs') }}</text>
-          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <view class="menu-left">
+            <text class="menu-icon">ℹ️</text>
+            <text class="menu-text">{{ t('my.aboutUs') }}</text>
+          </view>
+          <text class="menu-chev">›</text>
         </view>
         <view class="menu-item press-scale" @click="showToast('privacy')">
-          <text class="menu-text">{{ t('my.privacy') }}</text>
-          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <view class="menu-left">
+            <text class="menu-icon">🔒</text>
+            <text class="menu-text">{{ t('my.privacy') }}</text>
+          </view>
+          <text class="menu-chev">›</text>
         </view>
         <view class="menu-item press-scale" @click="handleClearCache">
-          <text class="menu-text">{{ t('my.clearCache') }}</text>
+          <view class="menu-left">
+            <text class="menu-icon">🧹</text>
+            <text class="menu-text">{{ t('my.clearCache') }}</text>
+          </view>
           <text class="menu-extra">{{ cacheSizeText }}</text>
         </view>
-        <view v-if="isLoggedIn" class="menu-item press-scale" @click="handleLogout">
-          <text class="menu-text logout-text">{{ t('my.logout') }}</text>
-          <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+        <view v-if="isLoggedIn" class="menu-item menu-item--logout press-scale" @click="handleLogout">
+          <view class="menu-left">
+            <text class="menu-icon">↩️</text>
+            <text class="menu-text logout-text">{{ t('my.logout') }}</text>
+          </view>
+          <text class="menu-chev">›</text>
         </view>
       </view>
-      
+
       <!-- 版本信息 -->
       <view class="version-info">
         <text class="version-text">{{ t('common.appName') }} v1.0.0</text>
       </view>
-      
+
       <view class="safe-area-bottom"></view>
     </scroll-view>
   </view>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/PageHeader.vue'
@@ -181,7 +186,7 @@ const handleClearCache = () => {
   uni.showModal({
     title: '清除缓存',
     content: '将清除本地临时缓存，不影响登录状态和历史记录。',
-    confirmColor: '#211E1E',
+    confirmColor: '#3B82F6',
     success: async (res) => {
       if (!res.confirm) return
       try {
@@ -243,6 +248,7 @@ const handleLogout = () => {
   uni.showModal({
     title: t('my.logout'),
     content: t('toast.logoutConfirm'),
+    confirmColor: '#3B82F6',
     success: async (res) => {
       if (res.confirm) {
         try {
@@ -274,164 +280,255 @@ const handleLogout = () => {
 
 .page-content {
   flex: 1;
-  padding: 0 $spacing-md;
+  padding: 0 $spacing-4;
 }
 
-.user-card {
-  background-color: $bg-white;
+/* ============================================================
+   Hero 区（蓝紫渐变 + VIP 卡叠加）
+   ============================================================ */
+.user-hero {
+  position: relative;
+  background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
+  margin: $spacing-3 (-$spacing-4) 0;
+  padding: $spacing-5 $spacing-4 $spacing-10;
   border-radius: $radius-lg;
-  padding: $spacing-lg;
-  margin-top: $spacing-md;
-  margin-bottom: $spacing-md;
+}
+
+.user-row {
   display: flex;
   align-items: center;
-  box-shadow: $shadow-card;
-  
+  transition: opacity 0.1s ease-in-out;
+
   &:active {
-    background-color: $bg-gray;
-  }
-  
-  .avatar {
-    width: 120rpx;
-    height: 120rpx;
-    border-radius: $radius-pill;
-    background-color: $bg-gray;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: $spacing-md;
-    overflow: hidden;
-    
-    .avatar-icon {
-      width: 64rpx;
-      height: 64rpx;
-      color: $text-secondary;
-    }
-    
-    .avatar-img {
-      width: 100%;
-      height: 100%;
-    }
-  }
-  
-  .user-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    
-    .user-name {
-      font-size: $font-size-lg;
-      font-weight: 600;
-      color: $text-primary;
-      margin-bottom: 8rpx;
-    }
-    
-    .user-desc {
-      font-size: $font-size-sm;
-      color: $text-tertiary;
-    }
-  }
-  
-  .arrow-icon {
-    width: 40rpx;
-    height: 40rpx;
-    color: $text-tertiary;
+    opacity: 0.85;
   }
 }
 
-.quick-actions {
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: $radius-pill;
+  background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: $spacing-3;
+  overflow: hidden;
+  flex-shrink: 0;
+  color: #FFFFFF;
+
+  .avatar-icon {
+    width: 56rpx;
+    height: 56rpx;
+  }
+
+  .avatar-img {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+
+  .user-name {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
+    margin-bottom: 4rpx;
+  }
+
+  .user-desc {
+    font-size: $font-size-sm;
+    color: $text-secondary;
+  }
+}
+
+.vip-card {
+  position: absolute;
+  left: $spacing-4;
+  right: $spacing-4;
+  bottom: 0;
+  transform: translateY(50%);
+  background-color: #1F2937;
+  border-radius: $radius-lg;
+  padding: $spacing-3 $spacing-4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: $shadow-float;
+  transition: opacity 0.1s ease-in-out;
+
+  &:active {
+    opacity: 0.85;
+  }
+
+  .vip-text {
+    flex: 1;
+    color: #FFFFFF;
+    min-width: 0;
+
+    .vip-title {
+      display: block;
+      font-size: $font-size-md;
+      font-weight: 600;
+      margin-bottom: 2rpx;
+    }
+
+    .vip-sub {
+      display: block;
+      font-size: $font-size-xs;
+      color: rgba(255, 255, 255, 0.8);
+    }
+  }
+
+  .vip-btn {
+    height: 56rpx;
+    padding: 0 $spacing-3;
+    background-color: $brand-primary;
+    color: #FFFFFF;
+    border-radius: $radius-pill;
+    font-size: $font-size-sm;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+}
+
+/* ============================================================
+   数据统计（4 项）
+   ============================================================ */
+.stats {
+  margin: 80rpx $spacing-2 $spacing-4;
   background-color: $bg-white;
   border-radius: $radius-lg;
-  padding: $spacing-md;
-  margin-bottom: $spacing-md;
-  display: flex;
-  justify-content: space-around;
+  padding: $spacing-3 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   box-shadow: $shadow-card;
-  
-  .action-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: $spacing-sm;
-    
-    &:active {
-      opacity: 0.7;
-    }
-    
-    .action-icon {
-      width: 88rpx;
-      height: 88rpx;
-      border-radius: $radius-pill;
-      background-color: $bg-gray;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: $spacing-sm;
-      
-      .icon {
-        width: 44rpx;
-        height: 44rpx;
-        color: $text-primary;
-      }
-    }
-    
-    .action-text {
-      font-size: $font-size-sm;
-      color: $text-primary;
-    }
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  padding: $spacing-2 0;
+  position: relative;
+  transition: opacity 0.1s ease-in-out;
+
+  &:active {
+    opacity: 0.85;
+  }
+
+  .stat-icon {
+    font-size: 40rpx;
+  }
+
+  .stat-label {
+    font-size: $font-size-xs;
+    color: $text-secondary;
+  }
+
+  .stat-num {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $text-primary;
   }
 }
 
+.stat-item--link {
+  .stat-chev {
+    position: absolute;
+    right: $spacing-1;
+    top: 50%;
+    transform: translateY(-50%);
+    color: $text-tertiary;
+    font-size: $font-size-lg;
+  }
+}
+
+/* ============================================================
+   设置列表
+   ============================================================ */
 .menu-list {
   background-color: $bg-white;
   border-radius: $radius-lg;
-  padding: 0 $spacing-md;
-  margin-bottom: $spacing-md;
+  margin-bottom: $spacing-4;
   box-shadow: $shadow-card;
-  
-  .menu-item {
-    height: 104rpx;
+  overflow: hidden;
+}
+
+.menu-item {
+  height: 104rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 $spacing-4;
+  border-bottom: 1rpx solid $divider-color;
+  transition: opacity 0.1s ease-in-out, background-color 0.1s ease-in-out;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:active {
+    opacity: 0.85;
+    background-color: $bg-gray;
+  }
+
+  .menu-left {
+    flex: 1;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    border-bottom: 1rpx solid $divider-color;
-    
-    &:last-child {
-      border-bottom: none;
-    }
-    
-    &:active {
-      background-color: $bg-gray;
-    }
-    
-    .menu-text {
-      font-size: $font-size-md;
-      color: $text-primary;
-    }
-    
-    .logout-text {
-      color: #e74c3c;
-    }
-    
-    .menu-extra {
-      font-size: $font-size-sm;
-      color: $text-tertiary;
-      margin-right: $spacing-sm;
-    }
-    
-    .arrow-icon {
-      width: 40rpx;
-      height: 40rpx;
-      color: $text-tertiary;
-    }
+    gap: $spacing-3;
+    min-width: 0;
+  }
+
+  .menu-icon {
+    font-size: 36rpx;
+    width: 40rpx;
+    text-align: center;
+  }
+
+  .menu-text {
+    font-size: $font-size-md;
+    color: $text-primary;
+  }
+
+  .logout-text {
+    color: $color_danger;
+  }
+
+  .menu-extra {
+    font-size: $font-size-sm;
+    color: $text-tertiary;
+  }
+
+  .menu-chev {
+    color: $text-tertiary;
+    font-size: $font-size-lg;
   }
 }
 
+.menu-item--logout {
+  .menu-text {
+    color: $color_danger;
+  }
+}
+
+/* ============================================================
+   版本
+   ============================================================ */
 .version-info {
   display: flex;
   justify-content: center;
-  padding: $spacing-xl 0;
-  
+  padding: $spacing-6 0;
+
   .version-text {
     font-size: $font-size-sm;
     color: $text-tertiary;
