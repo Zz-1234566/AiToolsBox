@@ -1,537 +1,298 @@
 <template>
-  <view class="page-container animate-fade-in">
-    <page-header :title="t('my.title')" :showBack="false"></page-header>
-
-    <scroll-view scroll-y class="page-content">
-      <!-- 用户信息卡片 - 已登录（按设计稿：渐变背景 + 头像 + VIP 卡叠加） -->
-      <view v-if="isLoggedIn" class="user-hero">
-        <view class="user-row" @click="goToProfile">
-          <view class="avatar">
-            <image v-if="userInfo.avatar" class="avatar-img" :src="userInfo.avatar" mode="aspectFill"></image>
-            <svg v-else class="avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M4 20C4 15.5817 7.58172 12 12 12C16.4183 12 20 15.5817 20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </view>
-          <view class="user-info">
-            <text class="user-name">{{ userInfo.username || userInfo.account }}</text>
-            <text class="user-desc">ID: {{ userInfo.account }}</text>
-          </view>
+  <view class="page page--no-tabbar" style="padding-bottom: 0;">
+    <!-- Hero：渐变 + 头像 + 名 + 会员有效期 + 高频会员 tag + VIP 卡 -->
+    <section class="me-hero">
+      <view class="me-hero__user">
+        <view class="avatar avatar--lg" style="background: linear-gradient(135deg, #93C5FD, #3B82F6);">
+          <text class="avatar-letter">U</text>
         </view>
-        <!-- VIP 卡（深色叠加在 Hero 底部） -->
-        <view class="vip-card press-scale" @click="showToast('vip')">
-          <view class="vip-text">
-            <text class="vip-title">会员特权</text>
-            <text class="vip-sub">解锁更多高级工具和功能</text>
-          </view>
-          <view class="vip-btn">立即开通</view>
+        <view class="me-hero__info">
+          <text class="me-hero__name">用户123456</text>
+          <text class="me-hero__exp">会员有效期：2025-12-31</text>
+          <text class="vip-tag">🏅 高频会员</text>
         </view>
       </view>
-
-      <!-- 用户信息卡片 - 未登录 -->
-      <view v-else class="user-hero user-hero--empty">
-        <view class="user-row" @click="goToLogin">
-          <view class="avatar">
-            <svg class="avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
-              <path d="M4 20C4 15.5817 7.58172 12 12 12C16.4183 12 20 15.5817 20 20" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </view>
-          <view class="user-info">
-            <text class="user-name">{{ t('my.loginBtn') }}</text>
-            <text class="user-desc">{{ t('my.loginHint') }}</text>
-          </view>
+      <!-- VIP 卡 -->
+      <view class="vip-card">
+        <view class="vip-card__text">
+          <text class="vip-card__title">会员特权</text>
+          <text class="vip-card__sub">解锁更多高级工具和功能</text>
         </view>
+        <button class="vip-card__btn">立即开通</button>
       </view>
+    </section>
 
-      <!-- 数据统计（4 项一行，按设计稿：我的收藏 / 最近使用 / 我的工作流 / 使用记录） -->
-      <view class="stats">
-        <view class="stat-item press-scale" @click="goToFavorites">
-          <text class="stat-icon">⭐</text>
-          <text class="stat-label">{{ t('my.favorites') }}</text>
-          <text class="stat-num">12</text>
-        </view>
-        <view class="stat-item press-scale" @click="goToHistory">
-          <text class="stat-icon">🕘</text>
-          <text class="stat-label">{{ t('my.history') }}</text>
-          <text class="stat-num">23</text>
-        </view>
-        <view class="stat-item press-scale" @click="goToPrompt">
-          <text class="stat-icon">📋</text>
-          <text class="stat-label">{{ t('my.prompts') }}</text>
-          <text class="stat-num">5</text>
-        </view>
-        <view class="stat-item stat-item--link press-scale" @click="goToHistory">
-          <text class="stat-icon">📜</text>
-          <text class="stat-label">使用记录</text>
-          <text class="stat-chev">›</text>
-        </view>
+    <!-- 数据统计（4 项：收藏 / 最近使用 / 工作流 / 使用记录） -->
+    <section class="stats">
+      <view class="stat-item">
+        <text class="stat-item__icon">⭐</text>
+        <text class="stat-item__label">我的收藏</text>
+        <text class="stat-item__num">12</text>
       </view>
-
-      <!-- 设置列表（按设计稿：图标 + 文字 + chevron / Switch） -->
-      <view class="menu-list">
-        <view class="menu-item press-scale" @click="goToSettings">
-          <view class="menu-left">
-            <text class="menu-icon">⚙️</text>
-            <text class="menu-text">{{ t('my.settings') }}</text>
-          </view>
-          <text class="menu-chev">›</text>
-        </view>
-        <view class="menu-item press-scale" @click="showToast('aboutUs')">
-          <view class="menu-left">
-            <text class="menu-icon">ℹ️</text>
-            <text class="menu-text">{{ t('my.aboutUs') }}</text>
-          </view>
-          <text class="menu-chev">›</text>
-        </view>
-        <view class="menu-item press-scale" @click="showToast('privacy')">
-          <view class="menu-left">
-            <text class="menu-icon">🔒</text>
-            <text class="menu-text">{{ t('my.privacy') }}</text>
-          </view>
-          <text class="menu-chev">›</text>
-        </view>
-        <view class="menu-item press-scale" @click="handleClearCache">
-          <view class="menu-left">
-            <text class="menu-icon">🧹</text>
-            <text class="menu-text">{{ t('my.clearCache') }}</text>
-          </view>
-          <text class="menu-extra">{{ cacheSizeText }}</text>
-        </view>
-        <view v-if="isLoggedIn" class="menu-item menu-item--logout press-scale" @click="handleLogout">
-          <view class="menu-left">
-            <text class="menu-icon">↩️</text>
-            <text class="menu-text logout-text">{{ t('my.logout') }}</text>
-          </view>
-          <text class="menu-chev">›</text>
-        </view>
+      <view class="stat-item">
+        <text class="stat-item__icon">🕘</text>
+        <text class="stat-item__label">最近使用</text>
+        <text class="stat-item__num">23</text>
       </view>
-
-      <!-- 版本信息 -->
-      <view class="version-info">
-        <text class="version-text">{{ t('common.appName') }} v1.0.0</text>
+      <view class="stat-item">
+        <text class="stat-item__icon">📋</text>
+        <text class="stat-item__label">我的工作流</text>
+        <text class="stat-item__num">5</text>
       </view>
+      <view class="stat-item stat-item--link">
+        <text class="stat-item__icon">📜</text>
+        <text class="stat-item__label">使用记录</text>
+        <text class="stat-item__chev">›</text>
+      </view>
+    </section>
 
-      <view class="safe-area-bottom"></view>
-    </scroll-view>
+    <!-- 设置列表（账号设置 / 通知 / 深色模式 / 关于） -->
+    <section class="me-list">
+      <view class="me-item">
+        <text class="me-item__icon">⚙️</text>
+        <text class="me-item__label">账号设置</text>
+        <text class="me-item__chev">›</text>
+      </view>
+      <view class="me-item">
+        <text class="me-item__icon">🔔</text>
+        <text class="me-item__label">通知</text>
+        <text class="me-item__chev">›</text>
+      </view>
+      <view class="me-item">
+        <text class="me-item__icon">🌙</text>
+        <text class="me-item__label">深色模式</text>
+        <label class="switch-toggle" @click="toggleDark">
+          <view class="switch-track" :class="{ 'is-on': darkMode }">
+            <view class="switch-thumb"></view>
+          </view>
+        </label>
+      </view>
+      <view class="me-item" style="border-bottom: none;">
+        <text class="me-item__icon">ℹ️</text>
+        <text class="me-item__label">关于 AI Tools Box</text>
+        <text class="me-item__chev">›</text>
+      </view>
+    </section>
   </view>
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import { useI18n } from 'vue-i18n'
-import PageHeader from '@/components/PageHeader.vue'
-import { logoutApi } from '@/api/user'
-
-const { t } = useI18n()
-
-const isLoggedIn = ref(false)
-const userInfo = ref({
-  id: null,
-  account: '',
-  username: '',
-  avatar: ''
-})
-const cacheSizeText = ref('0KB')
-
-// 清除缓存时保留登录态和用户偏好
-const KEYS_TO_KEEP = ['token', 'userInfo', 'language', 'theme']
-
-// 检查登录状态
-const checkLoginStatus = () => {
-  const token = uni.getStorageSync('token')
-  const storedUserInfo = uni.getStorageSync('userInfo')
-  if (token && storedUserInfo) {
-    isLoggedIn.value = true
-    userInfo.value = storedUserInfo
-  } else {
-    isLoggedIn.value = false
-    userInfo.value = { id: null, account: '', username: '', avatar: '' }
-  }
-}
-
-// 每次页面显示都检查登录状态（Tab 切换也会触发，登录后切回本页即可刷新）
-onShow(() => {
-  checkLoginStatus()
-  getStorageSize()
-})
-
-// 从设置页返回时刷新状态（页面每次显示时重新检查）
-uni.$on('loginStatusChanged', () => {
-  checkLoginStatus()
-})
-
-const showToast = (key) => {
-  uni.showToast({ title: t('toast.featureDev', { name: t(`my.${key}`) }), icon: 'none' })
-}
-
-const getStorageSize = () => {
-  try {
-    const info = uni.getStorageInfoSync()
-    const size = info.currentSize || 0 // 单位 KB
-    if (size === 0) {
-      cacheSizeText.value = '0KB'
-    } else if (size < 1024) {
-      cacheSizeText.value = size + 'KB'
-    } else {
-      cacheSizeText.value = (size / 1024).toFixed(1) + 'MB'
-    }
-  } catch (e) {
-    cacheSizeText.value = '0KB'
-  }
-}
-
-const handleClearCache = () => {
-  uni.showModal({
-    title: '清除缓存',
-    content: '将清除本地临时缓存，不影响登录状态和历史记录。',
-    confirmColor: '#3B82F6',
-    success: async (res) => {
-      if (!res.confirm) return
-      try {
-        const info = uni.getStorageInfoSync()
-        const keys = info.keys || []
-        keys.forEach((key) => {
-          if (!KEYS_TO_KEEP.includes(key)) {
-            uni.removeStorageSync(key)
-          }
-        })
-        cacheSizeText.value = '0KB'
-        uni.showToast({ title: '缓存已清除', icon: 'none' })
-      } catch (e) {
-        uni.showToast({ title: '清除失败', icon: 'none' })
-      }
-    }
-  })
-}
-
-const goToLogin = () => {
-  uni.navigateTo({ url: '/pages/login' })
-}
-
-const goToHistory = () => {
-  if (!isLoggedIn.value) {
-    uni.showToast({ title: t('toast.needLogin'), icon: 'none' })
-    setTimeout(() => {
-      uni.navigateTo({ url: '/pages/login' })
-    }, 600)
-    return
-  }
-  uni.navigateTo({ url: '/pages/history' })
-}
-
-const goToPrompt = () => {
-  if (!isLoggedIn.value) {
-    uni.showToast({ title: t('toast.needLogin'), icon: 'none' })
-    setTimeout(() => {
-      uni.navigateTo({ url: '/pages/login' })
-    }, 600)
-    return
-  }
-  uni.navigateTo({ url: '/pages/prompt-list' })
-}
-
-const goToFavorites = () => {
-  uni.navigateTo({ url: '/pages/favorites' })
-}
-
-const goToSettings = () => {
-  uni.navigateTo({ url: '/pages/settings' })
-}
-
-const goToProfile = () => {
-  uni.navigateTo({ url: '/pages/profile' })
-}
-
-const handleLogout = () => {
-  uni.showModal({
-    title: t('my.logout'),
-    content: t('toast.logoutConfirm'),
-    confirmColor: '#3B82F6',
-    success: async (res) => {
-      if (res.confirm) {
-        try {
-          await logoutApi()
-        } catch (e) {
-          // 接口失败也继续本地清理，保证用户能退出登录
-        }
-        uni.removeStorageSync('token')
-        uni.removeStorageSync('userInfo')
-        isLoggedIn.value = false
-        userInfo.value = { id: null, account: '', username: '', avatar: '' }
-        uni.showToast({ title: t('toast.loggedOut'), icon: 'none' })
-        setTimeout(() => {
-          uni.navigateTo({ url: '/pages/login' })
-        }, 600)
-      }
-    }
-  })
+const darkMode = ref(false)
+function toggleDark() {
+  darkMode.value = !darkMode.value
 }
 </script>
 
 <style lang="scss" scoped>
-.page-container {
+.page {
   min-height: 100vh;
-  background-color: $bg-color;
-  display: flex;
-  flex-direction: column;
+  background: var(--bg-page, #F9FAFB);
 }
 
-.page-content {
-  flex: 1;
-  padding: 0 $spacing-4;
-}
-
-/* ============================================================
-   Hero 区（蓝紫渐变 + VIP 卡叠加）
-   ============================================================ */
-.user-hero {
+/* ===== Hero ===== */
+.me-hero {
   position: relative;
   background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
-  margin: $spacing-3 (-$spacing-4) 0;
-  padding: $spacing-5 $spacing-4 $spacing-10;
-  border-radius: $radius-lg;
+  padding: 20rpx 20rpx 0;
+  padding-bottom: 64rpx;
 }
-
-.user-row {
+.me-hero__user {
   display: flex;
-  align-items: center;
-  transition: opacity 0.1s ease-in-out;
-
-  &:active {
-    opacity: 0.85;
-  }
+  gap: 16rpx;
+  margin-bottom: 16rpx;
+}
+.me-hero__info {
+  flex: 1;
+}
+.me-hero__name {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  margin-bottom: 4rpx;
+}
+.me-hero__exp {
+  display: block;
+  font-size: 24rpx;
+  color: var(--text-secondary, #4B5563);
+  margin-bottom: 8rpx;
+}
+.vip-tag {
+  display: inline-block;
+  font-size: 22rpx;
+  font-weight: 500;
+  background: linear-gradient(135deg, #FCD34D, #F59E0B);
+  color: white;
+  padding: 2rpx 16rpx;
+  border-radius: 8rpx;
 }
 
 .avatar {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: $radius-pill;
-  background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%);
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: $spacing-3;
-  overflow: hidden;
+  color: white;
+  font-weight: 600;
   flex-shrink: 0;
-  color: #FFFFFF;
-
-  .avatar-icon {
-    width: 56rpx;
-    height: 56rpx;
-  }
-
-  .avatar-img {
-    width: 100%;
-    height: 100%;
-  }
+}
+.avatar--lg {
+  width: 96rpx;
+  height: 96rpx;
+}
+.avatar-letter {
+  font-size: 32rpx;
+  color: white;
+  font-weight: 600;
 }
 
-.user-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-
-  .user-name {
-    font-size: $font-size-lg;
-    font-weight: 600;
-    color: $text-primary;
-    margin-bottom: 4rpx;
-  }
-
-  .user-desc {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-  }
-}
-
+/* VIP 卡（绝对定位覆盖到 hero 与 stats 之间） */
 .vip-card {
   position: absolute;
-  left: $spacing-4;
-  right: $spacing-4;
+  left: 32rpx;
+  right: 32rpx;
   bottom: 0;
   transform: translateY(50%);
-  background-color: #1F2937;
-  border-radius: $radius-lg;
-  padding: $spacing-3 $spacing-4;
+  background: #1F2937;
+  border-radius: 24rpx;
+  padding: 24rpx;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  box-shadow: $shadow-float;
-  transition: opacity 0.1s ease-in-out;
-
-  &:active {
-    opacity: 0.85;
-  }
-
-  .vip-text {
-    flex: 1;
-    color: #FFFFFF;
-    min-width: 0;
-
-    .vip-title {
-      display: block;
-      font-size: $font-size-md;
-      font-weight: 600;
-      margin-bottom: 2rpx;
-    }
-
-    .vip-sub {
-      display: block;
-      font-size: $font-size-xs;
-      color: rgba(255, 255, 255, 0.8);
-    }
-  }
-
-  .vip-btn {
-    height: 56rpx;
-    padding: 0 $spacing-3;
-    background-color: $brand-primary;
-    color: #FFFFFF;
-    border-radius: $radius-pill;
-    font-size: $font-size-sm;
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-  }
+  gap: 16rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08);
+}
+.vip-card__text {
+  flex: 1;
+}
+.vip-card__title {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 600;
+  color: white;
+  margin-bottom: 4rpx;
+}
+.vip-card__sub {
+  display: block;
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.8);
+}
+.vip-card__btn {
+  height: 64rpx;
+  padding: 0 28rpx;
+  background: var(--brand-primary, #3B82F6);
+  color: white;
+  border: none;
+  border-radius: 9999rpx;
+  font-size: 26rpx;
+  font-weight: 500;
 }
 
-/* ============================================================
-   数据统计（4 项）
-   ============================================================ */
+/* ===== 数据统计 ===== */
 .stats {
-  margin: 80rpx $spacing-2 $spacing-4;
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  padding: $spacing-3 0;
+  margin: 60rpx 32rpx 0;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  padding: 12rpx 0;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  box-shadow: $shadow-card;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
-
 .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4rpx;
-  padding: $spacing-2 0;
+  padding: 8rpx 0;
   position: relative;
-  transition: opacity 0.1s ease-in-out;
-
-  &:active {
-    opacity: 0.85;
-  }
-
-  .stat-icon {
-    font-size: 40rpx;
-  }
-
-  .stat-label {
-    font-size: $font-size-xs;
-    color: $text-secondary;
-  }
-
-  .stat-num {
-    font-size: $font-size-lg;
-    font-weight: 600;
-    color: $text-primary;
-  }
 }
-
+.stat-item__icon {
+  font-size: 40rpx;
+}
+.stat-item__label {
+  font-size: 24rpx;
+  color: var(--text-secondary, #4B5563);
+}
+.stat-item__num {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
 .stat-item--link {
-  .stat-chev {
-    position: absolute;
-    right: $spacing-1;
-    top: 50%;
-    transform: translateY(-50%);
-    color: $text-tertiary;
-    font-size: $font-size-lg;
-  }
+  position: relative;
+}
+.stat-item__chev {
+  position: absolute;
+  right: 8rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary, #9CA3AF);
+  font-size: 36rpx;
 }
 
-/* ============================================================
-   设置列表
-   ============================================================ */
-.menu-list {
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  margin-bottom: $spacing-4;
-  box-shadow: $shadow-card;
+/* ===== 设置列表 ===== */
+.me-list {
+  margin: 32rpx 32rpx 32rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   overflow: hidden;
 }
-
-.menu-item {
-  height: 104rpx;
+.me-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 $spacing-4;
-  border-bottom: 1rpx solid $divider-color;
-  transition: opacity 0.1s ease-in-out, background-color 0.1s ease-in-out;
-
-  &:last-child {
-    border-bottom: none;
-  }
-
-  &:active {
-    opacity: 0.85;
-    background-color: $bg-gray;
-  }
-
-  .menu-left {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: $spacing-3;
-    min-width: 0;
-  }
-
-  .menu-icon {
-    font-size: 36rpx;
-    width: 40rpx;
-    text-align: center;
-  }
-
-  .menu-text {
-    font-size: $font-size-md;
-    color: $text-primary;
-  }
-
-  .logout-text {
-    color: $color_danger;
-  }
-
-  .menu-extra {
-    font-size: $font-size-sm;
-    color: $text-tertiary;
-  }
-
-  .menu-chev {
-    color: $text-tertiary;
-    font-size: $font-size-lg;
-  }
+  gap: 16rpx;
+  padding: 32rpx;
+  border-bottom: 1rpx solid var(--border-light, #F3F4F6);
+}
+.me-item__icon {
+  font-size: 40rpx;
+  width: 48rpx;
+  text-align: center;
+}
+.me-item__label {
+  flex: 1;
+  font-size: 32rpx;
+  color: var(--text-primary, #111827);
+}
+.me-item__chev {
+  color: var(--text-tertiary, #9CA3AF);
+  font-size: 36rpx;
 }
 
-.menu-item--logout {
-  .menu-text {
-    color: $color_danger;
+/* ===== Switch ===== */
+.switch-toggle {
+  position: relative;
+  display: inline-block;
+}
+.switch-track {
+  width: 88rpx;
+  height: 48rpx;
+  background: #E5E7EB;
+  border-radius: 24rpx;
+  position: relative;
+  cursor: pointer;
+  transition: background 200ms ease;
+  display: block;
+
+  &.is-on {
+    background: var(--brand-primary, #3B82F6);
+    .switch-thumb {
+      transform: translateX(40rpx);
+    }
   }
 }
-
-/* ============================================================
-   版本
-   ============================================================ */
-.version-info {
-  display: flex;
-  justify-content: center;
-  padding: $spacing-6 0;
-
-  .version-text {
-    font-size: $font-size-sm;
-    color: $text-tertiary;
-  }
+.switch-thumb {
+  position: absolute;
+  top: 4rpx;
+  left: 4rpx;
+  width: 40rpx;
+  height: 40rpx;
+  background: white;
+  border-radius: 50%;
+  transition: transform 200ms ease;
+  box-shadow: 0 1rpx 3rpx rgba(0, 0, 0, 0.2);
 }
 </style>
