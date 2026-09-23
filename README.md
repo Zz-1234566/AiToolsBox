@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-一个面向移动端 / H5 的 AI 工具箱 App，内置工作总结、文档重点提取等 AI 办公能力，并预留了图片处理、效率小工具的扩展位。AI 调用走 DeepSeek（OpenAI 兼容协议），结果支持 SSE 流式打字机效果。
+一个面向移动端 / H5 的 AI 工具箱 App，内置工作总结、文档重点提取等 AI 办公能力，并预留了图片处理、效率小工具的扩展位。文本类工具调用 MiniMax M2.7（OpenAI 兼容协议），结果支持 SSE 流式打字机效果。
 
 ## 技术栈
 
@@ -105,7 +105,7 @@ npm run dev:h5
 | `JWT_SECRET` | ✅ | JWT 签名密钥 | 本地生成一段 32+ 字节随机字符串 |
 | `COS_SECRET_ID` | ⛔ 可选 | 腾讯云 COS SecretId | 腾讯云控制台 → 访问管理 → API 密钥管理 |
 | `COS_SECRET_KEY` | ⛔ 可选 | 腾讯云 COS SecretKey | 同上 |
-| `AI_DEEPSEEK_API_KEY` | ✅ | DeepSeek（OpenAI 兼容）API Key | DeepSeek / 中转服务控制台 |
+| `AI_MINIMAX_TEXT_API_KEY` | ✅ | MiniMax（OpenAI 兼容）API Key，用于文本类办公工具 | MiniMax 开放平台 → API Keys |
 
 > **PowerShell 临时设置示例**（当前会话有效）：
 > ```powershell
@@ -123,8 +123,8 @@ npm run dev:h5
 - `spring.datasource.url`（MySQL 连接串）
 - `spring.mail.host: smtp.qq.com` / `port: 465`
 - `cos.region: ap-guangzhou`
-- `ai.deepseek.api-url: https://opencode.ai/zen/go/v1/chat/completions`
-- `ai.deepseek.model: deepseek-v4-flash`
+- `ai.minimax-text.api-url: https://api.minimaxi.com/v1/text/chatcompletion_v2`（官方 V2 文本入口）
+- `ai.minimax-text.model: MiniMax-M2.7`
 
 ## 已实现的 AI 工具
 
@@ -146,7 +146,7 @@ npm run dev:h5
 2. **若曾在其他平台 / 旧仓库提交过任何含真实密钥的文件，请立即轮换**：
    - QQ 邮箱授权码
    - 腾讯云 COS SecretId / SecretKey
-   - DeepSeek API Key
+   - MiniMax API Key（文本模型）
    - JWT Secret
 3. **提交后**仍建议轮换一次——GitHub 即使删除 commit，历史中仍可恢复。
 4. 腾讯云子账号请使用 **最小权限策略**（仅授权所需存储桶的读写）。

@@ -69,12 +69,13 @@ verify-code:
   resend-seconds: 60         # 重发间隔（秒）
   length: 6                  # 验证码位数
 
-# DeepSeek AI 配置
+# MiniMax 文本模型配置（办公类工具使用，OpenAI 兼容协议）
 ai:
-  deepseek:
-    api-url: https://opencode.ai/zen/go/v1/chat/completions
-    api-key: ${AI_DEEPSEEK_API_KEY:your-deepseek-api-key}
-    model: deepseek-v4-flash
+  minimax-text:
+    # 官方 V2 文本接口（V2 明确标注为文本入口）
+    api-url: https://api.minimaxi.com/v1/text/chatcompletion_v2
+    api-key: ${AI_MINIMAX_TEXT_API_KEY:your-minimax-api-key}
+    model: MiniMax-M2.7
     timeout-seconds: 60
   # MiniMax M3 多模态配置（AI 文件解读工具用）
   minimax:

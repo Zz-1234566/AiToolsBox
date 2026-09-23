@@ -23,7 +23,7 @@ export const systemPromptListApi = (toolCode) => request({
 export const toolListApi = () => request({ url: '/api/prompt/tools', method: 'GET' })
 
 /**
- * AI 生成提示词：调后端 DeepSeek 按用户需求生成一段提示词
+ * AI 生成提示词：调后端文本模型按用户需求生成一段提示词
  * @param {Object} params { toolCode, toolName, toolDesc, promptUse, requirement }
  *   - toolCode: 工具编码（如 work-summary）
  *   - toolName: 工具名称（如 工作总结），从 tools.js 传入，避免后端再查表

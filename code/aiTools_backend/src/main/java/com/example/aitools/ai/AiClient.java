@@ -20,7 +20,8 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * DeepSeek API 客户端（OpenAI 兼容接口）
+ * 文本模型 API 客户端（OpenAI 兼容接口），用于办公类 AI 工具。
+ * 默认走 MiniMax 文本模型，可由 application*.yml 中 ai.minimax-text.* 切换。
  */
 @Slf4j
 @Component
@@ -32,7 +33,7 @@ public class AiClient {
     private final ObjectMapper objectMapper;
 
     /**
-     * 调用 DeepSeek 对话接口
+     * 调用文本模型对话接口
      * @param systemPrompt 系统提示词
      * @param userPrompt 用户提示词
      * @return AI 返回的文本内容
@@ -41,10 +42,13 @@ public class AiClient {
         try {
             RestTemplate restTemplate = new RestTemplate();
 
-            // 构建请求体（OpenAI 兼容格式）
+            // 构建请求体（OpenAI 兼容格式）。
+            // thinking.type=disabled：官方推荐做法，禁用思考以减少 token 消耗与流式首字延迟；
+            // 视觉客户端 MinimaxClient 同样处理，保持一致。
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", aiConfig.getModel());
             requestBody.put("stream", false);
+            requestBody.put("thinking", Map.of("type", "disabled"));
 
             List<Map<String, String>> messages = new ArrayList<>();
             if (systemPrompt != null && !systemPrompt.isBlank()) {
@@ -86,7 +90,7 @@ public class AiClient {
     }
 
     /**
-     * 流式调用 DeepSeek（SSE），每收到一个内容块回调 onChunk
+     * 流式调用文本模型（SSE），每收到一个内容块回调 onChunk
      * @param systemPrompt 系统提示词
      * @param userPrompt 用户提示词
      * @param onChunk 收到内容块时的回调
@@ -95,10 +99,12 @@ public class AiClient {
         try {
             RestTemplate restTemplate = new RestTemplate();
 
-            // 构建请求体（OpenAI 兼容格式，stream=true）
+            // 构建请求体（OpenAI 兼容格式，stream=true）。
+            // thinking.type=disabled：官方推荐做法，禁用思考以减少 token 消耗与流式首字延迟。
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", aiConfig.getModel());
             requestBody.put("stream", true);
+            requestBody.put("thinking", Map.of("type", "disabled"));
 
             List<Map<String, String>> messages = new ArrayList<>();
             if (systemPrompt != null && !systemPrompt.isBlank()) {

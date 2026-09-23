@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 
 @Data
 @Component
-@ConfigurationProperties(prefix = "ai.deepseek")
+@ConfigurationProperties(prefix = "ai.minimax-text")
 public class AiConfig {
     private String apiUrl;
     private String apiKey;
