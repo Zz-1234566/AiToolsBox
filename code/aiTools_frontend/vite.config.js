@@ -10,8 +10,16 @@ export default defineConfig({
       scss: {
         api: 'modern-compiler',
         silenceDeprecations: ['legacy-js-api', 'import'],
-        // 全局注入 uni.scss，所有 <style lang="scss"> 自动可用 token 变量
-        additionalData: `@use "@/uni.scss" as *;\n`
+        // 全局注入 uni.scss，但跳过 App.vue / animations.scss 等已自管的入口
+        // 函数形式 additionalData：fileName 是不含 .scss 后缀的路径
+        additionalData: (source, filename) => {
+          // 这些入口文件不允许注入（避免"both define a variable"）
+          const skipPatterns = ['App.vue', 'styles/animations', 'uni.scss']
+          if (skipPatterns.some((p) => filename.includes(p))) {
+            return ''
+          }
+          return `@use "@/uni.scss" as *;\n`
+        }
       }
     }
   },
