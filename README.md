@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-一个面向移动端 / H5 的 AI 工具箱 App，内置工作总结、文档重点提取等 AI 办公能力，并预留了图片处理、效率小工具的扩展位。AI 调用走 DeepSeek（OpenAI 兼容协议），结果支持 SSE 流式打字机效果。
+一个面向移动端 / H5 的 AI 工具箱 App，内置工作总结、文档重点提取等 AI 办公能力，并预留了图片处理、效率小工具的扩展位。文本类工具调用 MiniMax M2.7（OpenAI 兼容协议），结果支持 SSE 流式打字机效果。
 
 ## 技术栈
 
@@ -59,7 +59,7 @@ Graduation project/
 mysql -u root -p < code/aiTools_backend/sql/init.sql
 ```
 
-脚本会创建 `ai_toolbox` 库及全部业务表，并写入 2 个初始化工具（`work-summary`、`ai-summary`）及对应系统提示词。
+脚本会创建 `ai_toolbox` 库及全部业务表，并写入 14 个初始化工具（详见 sys_aitools_tool 表，sort_no 1-14 唯一连续）及对应系统提示词。
 
 ### 3. 配置后端
 
@@ -105,7 +105,7 @@ npm run dev:h5
 | `JWT_SECRET` | ✅ | JWT 签名密钥 | 本地生成一段 32+ 字节随机字符串 |
 | `COS_SECRET_ID` | ⛔ 可选 | 腾讯云 COS SecretId | 腾讯云控制台 → 访问管理 → API 密钥管理 |
 | `COS_SECRET_KEY` | ⛔ 可选 | 腾讯云 COS SecretKey | 同上 |
-| `AI_DEEPSEEK_API_KEY` | ✅ | DeepSeek（OpenAI 兼容）API Key | DeepSeek / 中转服务控制台 |
+| `AI_MINIMAX_TEXT_API_KEY` | ✅ | MiniMax（OpenAI 兼容）API Key，用于文本类办公工具 | MiniMax 开放平台 → API Keys |
 
 > **PowerShell 临时设置示例**（当前会话有效）：
 > ```powershell
@@ -123,17 +123,22 @@ npm run dev:h5
 - `spring.datasource.url`（MySQL 连接串）
 - `spring.mail.host: smtp.qq.com` / `port: 465`
 - `cos.region: ap-guangzhou`
-- `ai.deepseek.api-url: https://opencode.ai/zen/go/v1/chat/completions`
-- `ai.deepseek.model: deepseek-v4-flash`
+- `ai.minimax-text.api-url: https://api.minimaxi.com/v1/text/chatcompletion_v2`（官方 V2 文本入口）
+- `ai.minimax-text.model: MiniMax-M2.7`
 
 ## 已实现的 AI 工具
 
 | 工具编码 | 名称 | 输入 | 接口 |
 |---|---|---|---|
 | `work-summary` | 工作总结 | 文本 | `POST /api/ai-office/work-summary`（同步）<br>`POST /api/ai-office/work-summary/stream`（SSE 流式） |
-| `ai-summary` | 文档重点提取 | 文档（PDF/Word/TXT） | `POST /api/ai-office/document-summary/stream`（SSE 流式 + multipart 上传） |
+| `doc-keypoint-extract` | 文档重点提取 | 文档（PDF/Word/TXT） | `POST /api/ai-office/document-summary/stream`（SSE 流式，单文件）<br>`POST /api/ai-office/document-summary/batch-upload` + `GET /api/ai-office/batch/{batchId}/completed`（多文件批量 + 增量轮询） |
+| `weekly-report` | 周报生成 | 文本 | `POST /api/ai-office/weekly-report/stream`（SSE 流式） |
+| `meeting-minutes` | 会议纪要 | 文本 | `POST /api/ai-office/meeting-minutes/stream`（SSE 流式） |
+| `ocr-recognize` | 智能识别 | 图片（多张） | `POST /api/ai-office/ocr-recognize/stream`（SSE 流式）<br>`POST /api/ai-office/ocr-recognize/batch-upload`（多文件批量） |
 
-首页其余工具（周报生成、会议纪要、智能识别、图片类、效率小工具）**前端预留了 UI，后端未实现**，点击会提示"该工具开发中"。
+其余工具（`bank-receipt-recognize` / `invoice-recognize` / `id-photo-bg-change` / `portrait-bg-replace` / `image-compress` / `qr-code-gen` / `todo-list` / `pomodoro` / `password-gen`）**已入库（sort_no 6-14），但后端流式接口未提供**，前端未启用 `realized: true` 标记，点击会提示"该工具开发中"。
+
+`ai-file-reader` 由独立的 `AiFileReaderController` 提供（`/api/ai-office/ai-file-reader/batch-upload`），使用多模态 AI 解读任意文件。
 
 ## ⚠️ 密钥安全提醒
 
@@ -141,7 +146,7 @@ npm run dev:h5
 2. **若曾在其他平台 / 旧仓库提交过任何含真实密钥的文件，请立即轮换**：
    - QQ 邮箱授权码
    - 腾讯云 COS SecretId / SecretKey
-   - DeepSeek API Key
+   - MiniMax API Key（文本模型）
    - JWT Secret
 3. **提交后**仍建议轮换一次——GitHub 即使删除 commit，历史中仍可恢复。
 4. 腾讯云子账号请使用 **最小权限策略**（仅授权所需存储桶的读写）。

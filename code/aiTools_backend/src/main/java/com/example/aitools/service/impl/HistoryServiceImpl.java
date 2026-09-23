@@ -21,6 +21,8 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -124,16 +126,52 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public List<HistoryVO> listRecent(Long userId, int limit) {
+        // 1) 主查询：取最近 limit 条历史
         LambdaQueryWrapper<History> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(History::getUserId, userId)
                 .eq(History::getDr, Constants.DR_NORMAL)
                 .orderByDesc(History::getCreateTime)
                 .last("LIMIT " + limit);
         List<History> histories = historyMapper.selectList(wrapper);
-        return histories.stream().map(this::toVO).toList();
+        if (histories.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        // 2) 批量预加载（解决 P2-B10 N+1：100 条历史从 301 SQL 降到 4 SQL）
+        List<Long> historyIds = histories.stream().map(History::getId).toList();
+        List<Long> toolIds = histories.stream().map(History::getToolId).filter(java.util.Objects::nonNull).distinct().toList();
+
+        // tool: toolId -> AiTool
+        Map<Long, AiTool> toolMap = toolIds.isEmpty() ? java.util.Collections.emptyMap()
+                : aiToolMapper.selectBatchIds(toolIds).stream()
+                .collect(Collectors.toMap(AiTool::getId, t -> t, (a, b) -> a));
+
+        // detail: historyId -> HistoryDetail（每条 history 取一条明细）
+        Map<Long, HistoryDetail> detailMap = new java.util.HashMap<>();
+        List<HistoryDetail> allDetails = historyDetailMapper.selectList(
+                new LambdaQueryWrapper<HistoryDetail>()
+                        .in(HistoryDetail::getHistoryId, historyIds)
+                        .eq(HistoryDetail::getDr, Constants.DR_NORMAL)
+                        .orderByAsc(HistoryDetail::getId));  // 取最早一条
+        for (HistoryDetail d : allDetails) {
+            detailMap.putIfAbsent(d.getHistoryId(), d);
+        }
+
+        // file: historyId -> List<HistoryFile>
+        Map<Long, List<HistoryFile>> fileMap = new java.util.HashMap<>();
+        List<HistoryFile> allFiles = historyFileMapper.selectList(
+                new LambdaQueryWrapper<HistoryFile>()
+                        .in(HistoryFile::getHistoryId, historyIds)
+                        .eq(HistoryFile::getDr, Constants.DR_NORMAL));
+        for (HistoryFile f : allFiles) {
+            fileMap.computeIfAbsent(f.getHistoryId(), k -> new java.util.ArrayList<>()).add(f);
+        }
+
+        // 3) 组装 VO
+        return histories.stream().map(h -> toVO(h, toolMap, detailMap, fileMap)).toList();
     }
 
-    private HistoryVO toVO(History h) {
+    private HistoryVO toVO(History h, Map<Long, AiTool> toolMap, Map<Long, HistoryDetail> detailMap, Map<Long, List<HistoryFile>> fileMap) {
         HistoryVO vo = new HistoryVO();
         vo.setId(h.getId());
         vo.setUserId(h.getUserId());
@@ -144,31 +182,24 @@ public class HistoryServiceImpl implements HistoryService {
         vo.setDuration(h.getDuration());
         vo.setCreateTime(h.getCreateTime());
 
-        // 联查工具名
+        // 工具名（从批量预加载的 map 查，O(1)）
         if (h.getToolId() != null) {
-            AiTool tool = aiToolMapper.selectById(h.getToolId());
+            AiTool tool = toolMap.get(h.getToolId());
             if (tool != null) {
                 vo.setToolName(tool.getToolName());
             }
         }
 
-        // 查明细
-        LambdaQueryWrapper<HistoryDetail> detailWrapper = new LambdaQueryWrapper<>();
-        detailWrapper.eq(HistoryDetail::getHistoryId, h.getId())
-                .eq(HistoryDetail::getDr, Constants.DR_NORMAL)
-                .last("LIMIT 1");
-        HistoryDetail detail = historyDetailMapper.selectOne(detailWrapper);
+        // 明细
+        HistoryDetail detail = detailMap.get(h.getId());
         if (detail != null) {
             vo.setInputContent(detail.getInputContent());
             vo.setOutputContent(detail.getOutputContent());
             vo.setErrorMsg(detail.getErrorMsg());
         }
 
-        // 查文件
-        LambdaQueryWrapper<HistoryFile> fileWrapper = new LambdaQueryWrapper<>();
-        fileWrapper.eq(HistoryFile::getHistoryId, h.getId())
-                .eq(HistoryFile::getDr, Constants.DR_NORMAL);
-        List<HistoryFile> files = historyFileMapper.selectList(fileWrapper);
+        // 文件
+        List<HistoryFile> files = fileMap.getOrDefault(h.getId(), java.util.Collections.emptyList());
         vo.setFiles(files.stream().map(f -> {
             HistoryFileVO fvo = new HistoryFileVO();
             fvo.setId(f.getId());

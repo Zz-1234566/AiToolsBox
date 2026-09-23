@@ -57,26 +57,25 @@ export function getToolCategoryTag(toolId) {
 const PROMPT_REQUIRED = { type: 'any', min: 1, error: '请填写格式或生成内容提示词' }
 
 // 每个工具的完整配置
-// inputTypes: 该工具支持的输入方式数组（text 文字 / file 文件 / image 图片 / audio 音频）
+// inputTypes: 该工具支持的输入方式数组（text 文字 / file 文件 / image 图片）
 // defaultInput: 默认选中的输入方式
 export const TOOLS = {
   'work-summary': {
     name: '工作总结', icon: 'summary', category: 'AI办公助手', realized: true,
     desc: '输入零散的工作记录，AI 自动整理成结构化的工作内容总结。',
-    inputTypes: ['text', 'file', 'audio'], defaultInput: 'text',
+    inputTypes: ['text', 'file'], defaultInput: 'text',
     placeholder: '请输入今天的工作内容...',
     actionText: '开始总结', resultTitle: '总结结果', resultPlaceholder: '整理后的工作总结将在这里显示...',
     validateRules: {
       text:   { token: true, file: { type: 'text', min: 1, error: '请输入内容' }, prompt: PROMPT_REQUIRED },
       file:   { token: true, file: { type: 'single', min: 1, error: '请先上传文件' }, prompt: PROMPT_REQUIRED },
       image:  { unsupported: true, error: '该工具请使用文字或文件输入' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'doc-keypoint-extract': {
     name: '文档重点提取', icon: 'summary', category: 'AI办公助手', realized: true,
     desc: '上传多个文档（最多 10 个，总大小 200MB），AI 逐个提炼核心要点和待办事项。',
-    inputTypes: ['text', 'file', 'audio'], defaultInput: 'file', fileType: 'document',
+    inputTypes: ['text', 'file'], defaultInput: 'file', fileType: 'document',
     uploadTitle: '上传文档', uploadDesc: '支持 PDF、Word、TXT 格式',
     placeholder: '请输入或粘贴文档内容...',
     actionText: '开始提取', resultTitle: '提取结果', resultPlaceholder: '文档重点将在这里显示...',
@@ -96,7 +95,6 @@ export const TOOLS = {
       file:   { token: true, file: { type: 'batch', min: 1, error: '请至少选择 1 个文件' }, prompt: PROMPT_REQUIRED },
       image:  { unsupported: true, error: '该工具请使用文件上传' },
       text:   { unsupported: true, error: '该工具请使用文件上传' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'ai-file-reader': {
@@ -119,32 +117,31 @@ export const TOOLS = {
       file:   { token: true, file: { type: 'batch', min: 1, error: '请至少选择 1 个文件' } },
       image:  { unsupported: true, error: '该工具请使用文件上传' },
       text:   { unsupported: true, error: '该工具请使用文件上传' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'weekly-report': {
-    name: '周报生成', icon: 'weekly', category: 'AI办公助手', realized: false,
+    name: '周报生成', icon: 'weekly', category: 'AI办公助手', realized: true,
     desc: '输入本周工作内容，一键生成结构化的工作周报。',
-    inputTypes: ['text', 'file', 'audio'], defaultInput: 'text',
+    inputTypes: ['text', 'file'], defaultInput: 'text',
     placeholder: '请输入本周完成的工作内容...',
     actionText: '生成周报', resultTitle: '周报内容', resultPlaceholder: '生成的周报将在这里显示...',
     validateRules: {
       text:   { file: { type: 'text', min: 1, error: '请输入内容' }, prompt: PROMPT_REQUIRED },
       file:   { file: { type: 'single', min: 1, error: '请先上传文件' }, prompt: PROMPT_REQUIRED },
-      image:  { unsupported: true, error: '该工具请输入文字' },
+image:  { unsupported: true, error: '该工具请使用文字输入' },
       audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'meeting-minutes': {
-    name: '会议纪要', icon: 'meeting', category: 'AI办公助手', realized: false,
+    name: '会议纪要', icon: 'meeting', category: 'AI办公助手', realized: true,
     desc: '输入会议内容，AI 帮你整理会议核心结论和行动项。',
-    inputTypes: ['text', 'file', 'audio'], defaultInput: 'text',
+    inputTypes: ['text', 'file'], defaultInput: 'text',
     placeholder: '请输入会议内容或语音转写文字...',
     actionText: '整理纪要', resultTitle: '会议纪要', resultPlaceholder: '整理后的会议纪要将在这里显示...',
     validateRules: {
       text:   { file: { type: 'text', min: 1, error: '请输入内容' }, prompt: PROMPT_REQUIRED },
       file:   { file: { type: 'single', min: 1, error: '请先上传文件' }, prompt: PROMPT_REQUIRED },
-      image:  { unsupported: true, error: '该工具请输入文字' },
+image:  { unsupported: true, error: '该工具请使用文字输入' },
       audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
@@ -169,7 +166,6 @@ export const TOOLS = {
       image:  { token: true, file: { type: 'batch', min: 1, error: '请至少选择 1 个图片' }, prompt: PROMPT_REQUIRED },
       text:   { unsupported: true, error: '该工具请上传图片' },
       file:   { unsupported: true, error: '该工具请上传图片' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'id-photo-bg-change': {
@@ -182,7 +178,6 @@ export const TOOLS = {
       image:  { file: { type: 'single', min: 1, error: '请先上传证件照' } },
       text:   { unsupported: true, error: '该工具请上传图片' },
       file:   { unsupported: true, error: '该工具请上传图片' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'portrait-bg-replace': {
@@ -195,7 +190,6 @@ export const TOOLS = {
       image:  { file: { type: 'single', min: 1, error: '请先上传人像照片' } },
       text:   { unsupported: true, error: '该工具请上传图片' },
       file:   { unsupported: true, error: '该工具请上传图片' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'image-compress': {
@@ -208,7 +202,6 @@ export const TOOLS = {
       image:  { file: { type: 'single', min: 1, error: '请先上传图片' } },
       text:   { unsupported: true, error: '该工具请上传图片' },
       file:   { unsupported: true, error: '该工具请上传图片' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'qr-code-gen': {
@@ -221,7 +214,6 @@ export const TOOLS = {
       text:   { file: { type: 'text', min: 1, error: '请输入内容' } },
       file:   { unsupported: true, error: '该工具请输入文本' },
       image:  { unsupported: true, error: '该工具请输入文本' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'todo-list': {
@@ -234,7 +226,6 @@ export const TOOLS = {
       text:   { file: { type: 'text', min: 1, error: '请输入待办事项' } },
       file:   { unsupported: true, error: '该工具请输入文本' },
       image:  { unsupported: true, error: '该工具请输入文本' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
   'pomodoro': {
@@ -243,8 +234,9 @@ export const TOOLS = {
     inputTypes: [], defaultInput: 'text',
     actionText: '开始专注', resultTitle: '番茄钟', resultPlaceholder: '点击开始专注',
     validateRules: {
-      text: { unsupported: true, error: '本工具不需要输入' },
-      file: { unsupported: true, error: '本工具不需要输入' }
+      text:   { file: { type: 'text', min: 1, error: '请输入专注时长' } },
+      file:   { unsupported: true, error: '该工具请输入专注时长' },
+      image:  { unsupported: true, error: '该工具请输入专注时长' },
     }
   },
   'password-gen': {
@@ -253,13 +245,62 @@ export const TOOLS = {
     inputTypes: [], defaultInput: 'text',
     actionText: '生成密码', resultTitle: '密码', resultPlaceholder: '生成的密码将在这里显示...',
     validateRules: {
-      text: { unsupported: true, error: '本工具不需要输入' },
-      file: { unsupported: true, error: '本工具不需要输入' }
+      text:   { file: { type: 'text', min: 1, error: '请输入密码长度' } },
+      file:   { unsupported: true, error: '该工具请输入密码长度' },
+      image:  { unsupported: true, error: '该工具请输入密码长度' },
     }
   }
 }
 
-// 已实现的工具（首页/快速入口/分类页推荐用）
-export const REALIZED_TOOLS = Object.entries(TOOLS)
-  .filter(([, t]) => t.realized)
-  .map(([id]) => id)
+// 已实现的工具 code（用于提示词管理页工具下拉过滤）
+export const REALIZED_TOOLS = Object.entries(TOOLS).filter(([, v]) => v.realized).map(([k]) => k)
+
+// 根据 toolId 获取工具配置（带默认值兜底）
+export const getTool = (toolId) => TOOLS[toolId] || {
+  name: '工具详情',
+  desc: '暂无该工具信息',
+  inputTypes: ['text'],
+  defaultInput: 'text',
+  placeholder: '请输入内容...',
+  actionText: '开始处理',
+  resultTitle: '处理结果',
+  resultPlaceholder: '结果将在这里显示...'
+}
+
+/**
+ * 通用校验器：按工具 + 输入方式，校验输入和提示词
+ * @param {String} toolId 工具 code
+ * @param {String} inputType 输入方式（text / file / image）
+ * @param {Object} ctx 上下文 { filePath, batchFiles, inputText, promptFormat, promptGenerate, token }
+ * @returns {String|null} 第一个失败的错误文案，null = 通过
+ */
+export const validate = (toolId, inputType, ctx) => {
+  const tool = getTool(toolId)
+  const rule = tool.validateRules && tool.validateRules[inputType]
+  if (!rule) return '该输入方式暂未接入'
+  if (rule.unsupported) return rule.error || '该输入方式暂未接入'
+  // token 校验（可选规则：rule.token === true 时必须有 token）
+  if (rule.token && !ctx.token) {
+    return '请先登录'
+  }
+  // file 输入校验
+  if (rule.file) {
+    const min = rule.file.min || 1
+    let ok = true
+    if (rule.file.type === 'batch') {
+      ok = (ctx.batchFiles && ctx.batchFiles.length >= min)
+    } else if (rule.file.type === 'single') {
+      ok = !!(ctx.filePath)
+    } else if (rule.file.type === 'text') {
+      ok = !!(ctx.inputText && ctx.inputText.trim().length >= min)
+    }
+    if (!ok) return rule.file.error
+  }
+  // prompt 校验
+  if (rule.prompt) {
+    const min = rule.prompt.min || 1
+    const filled = ((ctx.promptFormat || '') + (ctx.promptGenerate || '')).trim().length
+    if (filled < min) return rule.prompt.error
+  }
+  return null
+}

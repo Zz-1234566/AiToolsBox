@@ -89,7 +89,7 @@ public class AiPromptController {
     }
 
     /**
-     * AI 生成提示词：调 DeepSeek 按用户需求生成一段提示词
+     * AI 生成提示词：调后端文本模型按用户需求生成一段提示词
      * 前端从 tools.js 读出 toolName/toolDesc 传入，无需后端查表
      */
     @PostMapping("/generate")

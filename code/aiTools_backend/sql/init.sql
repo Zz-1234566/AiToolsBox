@@ -26,14 +26,18 @@ CREATE TABLE IF NOT EXISTS `sys_user` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_account` (`account`),
   UNIQUE KEY `uk_email_dr` (`email`, `dr`),
+  UNIQUE KEY `uk_username_dr` (`username`, `dr`),
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
 -- 升级记录（历史，新装环境无需执行）：
 -- 1) 新增 email 字段（邮箱注册/找回密码功能）
---    ALTER TABLE `sys_user` ADD COLUMN `email` VARCHAR(64) NOT NULL COMMENT '邮箱' AFTER `username`;
+--    ALTER TABLE `sys_user` ADD COLUMN IF NOT EXISTS `email` VARCHAR(64) NOT NULL COMMENT '邮箱' AFTER `username`;
 -- 2) 唯一索引由单列 uk_email 调整为复合 uk_email_dr(email, dr)，支持软删后邮箱复用
 --    ALTER TABLE `sys_user` DROP INDEX `uk_email`, ADD UNIQUE KEY `uk_email_dr` (`email`, `dr`);
+-- 3) 加 username 复合唯一索引 uk_username_dr，支持软删后用户名复用
+--    ALTER TABLE `sys_user` ADD UNIQUE KEY IF NOT EXISTS `uk_username_dr` (`username`, `dr`);
+--    -- 注意：升级前需确认 dr=0 的 username 字段无重复；如有重复需先 UPDATE 修复，否则 ALTER 会失败
 
 -- -------------------------------------------
 -- 3. 工具表
@@ -88,8 +92,19 @@ CREATE TABLE IF NOT EXISTS `sys_aitools_history` (
   `dr` TINYINT DEFAULT 0 COMMENT '逻辑删除：0正常 1删除',
   PRIMARY KEY (`id`),
   KEY `idx_user_id` (`user_id`),
-  KEY `idx_user_time` (`user_id`, `create_time`)
+  KEY `idx_user_time` (`user_id`, `create_time`),
+  KEY `idx_ai_code` (`ai_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI工具使用历史主表';
+
+-- 升级记录（已建库环境）：补 ai_code 索引
+-- P0-D3 兼容老版本 MySQL（8.0.29 之前不支持 ADD INDEX IF NOT EXISTS）：
+-- 用 information_schema + 动态 SQL 兜底
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_aitools_history' AND INDEX_NAME = 'idx_ai_code');
+SET @sql := IF(@idx_exists = 0, 'ALTER TABLE `sys_aitools_history` ADD INDEX `idx_ai_code` (`ai_code`)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- -------------------------------------------
 -- 6. AI 工具使用历史明细表
@@ -196,54 +211,62 @@ DELETE FROM `sys_ai_prompt` WHERE `tool_code` = 'work-summary' AND `prompt_type`
 -- -------------------------------------------
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
 VALUES ('doc-keypoint-extract', 'AI办公助手', '文档重点提取', 'office', '上传文档自动提炼重点内容', '', 2, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 -- -------------------------------------------
--- 12.1 初始化数据：其余工具入库（共 10 个，sort_no 3-12）
+-- 12.1 初始化数据：其余工具入库（共 12 个，sort_no 3-14 唯一连续）
 -- -------------------------------------------
 
 -- AI办公助手（已有序号1-2，从3开始）
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
 VALUES ('weekly-report', 'AI办公助手', '周报生成', 'office', '输入工作内容生成周报', '', 3, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
 VALUES ('meeting-minutes', 'AI办公助手', '会议纪要', 'office', '整理会议核心结论', '', 4, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
 VALUES ('ocr-recognize', 'AI办公助手', '智能识别', 'office', '发票、名片、文字识别', '', 5, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-
--- 图片创意工具（sort_no 6-9）
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('id-photo-bg-change', '图片创意工具', '证件照换背景色', 'image', '红蓝白底自由切换', '', 6, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('portrait-bg-replace', '图片创意工具', '人像换背景图', 'image', 'AI 抠图替换背景', '', 7, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+VALUES ('bank-receipt-recognize', 'AI办公助手', '银行回单识别', 'office', '上传银行回单图片自动识别并结构化整理', '', 6, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('image-compress', '图片创意工具', '图片压缩', 'image', '压缩图片大小', '', 8, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+VALUES ('invoice-recognize', 'AI办公助手', '发票识别', 'office', '上传发票图片自动识别并结构化整理', '', 7, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
+
+-- 图片创意工具（sort_no 8-11）
+INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
+VALUES ('id-photo-bg-change', '图片创意工具', '证件照换背景色', 'image', '红蓝白底自由切换', '', 8, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('qr-code-gen', '图片创意工具', '二维码生成', 'image', '生成网址/名片二维码', '', 9, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-
--- 效率小工具（sort_no 10-12）
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('todo-list', '效率小工具', '待办清单', 'efficiency', '记录每日待办事项', '', 10, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+VALUES ('portrait-bg-replace', '图片创意工具', '人像换背景图', 'image', 'AI 抠图替换背景', '', 9, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('pomodoro', '效率小工具', '番茄钟', 'efficiency', '专注工作学习', '', 11, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+VALUES ('image-compress', '图片创意工具', '图片压缩', 'image', '压缩图片大小', '', 10, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('password-gen', '效率小工具', '密码生成', 'efficiency', '生成安全随机密码', '', 12, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+VALUES ('qr-code-gen', '图片创意工具', '二维码生成', 'image', '生成网址/名片二维码', '', 11, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
+
+-- 效率小工具（sort_no 12-14）
+INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
+VALUES ('todo-list', '效率小工具', '待办清单', 'efficiency', '记录每日待办事项', '', 12, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
+
+INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
+VALUES ('pomodoro', '效率小工具', '番茄钟', 'efficiency', '专注工作学习', '', 13, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
+
+INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
+VALUES ('password-gen', '效率小工具', '密码生成', 'efficiency', '生成安全随机密码', '', 14, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 -- -------------------------------------------
 -- 13. 初始化数据：系统提示词（doc-keypoint-extract）
@@ -298,55 +321,50 @@ ON DUPLICATE KEY UPDATE `prompt_content` = VALUES(`prompt_content`);
 -- 升级SQL（已建库环境执行）：工具按模块归类 + 提示词按工具隔离
 -- -------------------------------------------
 -- 1. 工具表加 tool_type 字段
-ALTER TABLE `sys_aitools_tool` ADD COLUMN `tool_type` VARCHAR(32) DEFAULT NULL COMMENT '所属模块：AI办公助手/图片创意工具/效率小工具' AFTER `tool_code`;
+-- P0-D3 兼容老版本 MySQL：见上方 helper 模板
+SET @col_exists := (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_aitools_tool' AND COLUMN_NAME = 'tool_type');
+SET @sql := IF(@col_exists = 0, 'ALTER TABLE `sys_aitools_tool` ADD COLUMN `tool_type` VARCHAR(32) DEFAULT NULL COMMENT ''所属模块：AI办公助手/图片创意工具/效率小工具'' AFTER `tool_code`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 -- 2. 现有工具补 tool_type
 UPDATE `sys_aitools_tool` SET `tool_type` = 'AI办公助手' WHERE `tool_code` IN ('work-summary', 'ai-summary');
 -- 3. ai-summary 改名 doc-keypoint-extract（工具表 + 系统提示词表）
 UPDATE `sys_aitools_tool` SET `tool_code` = 'doc-keypoint-extract', `tool_name` = '文档重点提取' WHERE `tool_code` = 'ai-summary';
 UPDATE `sys_ai_prompt` SET `tool_code` = 'doc-keypoint-extract' WHERE `tool_code` = 'ai-summary';
 -- 4. 用户提示词表加 tool_code
-ALTER TABLE `sys_ai_user_prompt` ADD COLUMN `tool_code` VARCHAR(32) NOT NULL COMMENT '所属工具编码（绑定具体工具）' AFTER `user_id`;
-ALTER TABLE `sys_ai_user_prompt` ADD INDEX `idx_user_tool` (`user_id`, `tool_code`);
--- 5. 补全其余工具入库（已建库环境，sort_no 3-12）
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('weekly-report', 'AI办公助手', '周报生成', 'office', '输入工作内容生成周报', '', 3, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('meeting-minutes', 'AI办公助手', '会议纪要', 'office', '整理会议核心结论', '', 4, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('ocr-recognize', 'AI办公助手', '智能识别', 'office', '发票、名片、文字识别', '', 5, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('id-photo-bg-change', '图片创意工具', '证件照换背景色', 'image', '红蓝白底自由切换', '', 6, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('portrait-bg-replace', '图片创意工具', '人像换背景图', 'image', 'AI 抠图替换背景', '', 7, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('image-compress', '图片创意工具', '图片压缩', 'image', '压缩图片大小', '', 8, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('qr-code-gen', '图片创意工具', '二维码生成', 'image', '生成网址/名片二维码', '', 9, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('todo-list', '效率小工具', '待办清单', 'efficiency', '记录每日待办事项', '', 10, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('pomodoro', '效率小工具', '番茄钟', 'efficiency', '专注工作学习', '', 11, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('password-gen', '效率小工具', '密码生成', 'efficiency', '生成安全随机密码', '', 12, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`);
+SET @col_exists := (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_ai_user_prompt' AND COLUMN_NAME = 'tool_code');
+SET @sql := IF(@col_exists = 0, 'ALTER TABLE `sys_ai_user_prompt` ADD COLUMN `tool_code` VARCHAR(32) NOT NULL COMMENT ''所属工具编码（绑定具体工具）'' AFTER `user_id`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
+-- 4.1 配套索引 idx_user_tool
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_ai_user_prompt' AND INDEX_NAME = 'idx_user_tool');
+SET @sql := IF(@idx_exists = 0, 'ALTER TABLE `sys_ai_user_prompt` ADD INDEX `idx_user_tool` (`user_id`, `tool_code`)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
+-- 5. 补全其余工具入库（已建库环境）
+-- 注意：12.1 块已用 sort_no 3-14 一次性写入新表；升级场景只补 tool_type / sort_no，不再重复插整行（避免 sort_no 冲突）
+-- 旧库若已存在 row，sort_no 已是 3-12；本脚本升级后用 UPDATE 统一对齐：
+UPDATE `sys_aitools_tool` SET `sort_no` = 3  WHERE `tool_code` = 'weekly-report';
+UPDATE `sys_aitools_tool` SET `sort_no` = 4  WHERE `tool_code` = 'meeting-minutes';
+UPDATE `sys_aitools_tool` SET `sort_no` = 5  WHERE `tool_code` = 'ocr-recognize';
+UPDATE `sys_aitools_tool` SET `sort_no` = 6  WHERE `tool_code` = 'bank-receipt-recognize';
+UPDATE `sys_aitools_tool` SET `sort_no` = 7  WHERE `tool_code` = 'invoice-recognize';
+UPDATE `sys_aitools_tool` SET `sort_no` = 8  WHERE `tool_code` = 'id-photo-bg-change';
+UPDATE `sys_aitools_tool` SET `sort_no` = 9  WHERE `tool_code` = 'portrait-bg-replace';
+UPDATE `sys_aitools_tool` SET `sort_no` = 10 WHERE `tool_code` = 'image-compress';
+UPDATE `sys_aitools_tool` SET `sort_no` = 11 WHERE `tool_code` = 'qr-code-gen';
+UPDATE `sys_aitools_tool` SET `sort_no` = 12 WHERE `tool_code` = 'todo-list';
+UPDATE `sys_aitools_tool` SET `sort_no` = 13 WHERE `tool_code` = 'pomodoro';
+UPDATE `sys_aitools_tool` SET `sort_no` = 14 WHERE `tool_code` = 'password-gen';
 
--- -------------------------------------------
--- 16. 初始化数据：工具（ocr-recognize 智能识别 / OCR）
--- -------------------------------------------
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('ocr-recognize', 'AI办公助手', '智能识别', 'office', '上传图片自动识别文字（OCR）', '', 5, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`);
 
 -- -------------------------------------------
 -- 17. 初始化数据：系统提示词（ocr-recognize）
@@ -362,9 +380,11 @@ ON DUPLICATE KEY UPDATE `prompt_content` = VALUES(`prompt_content`);
 -- -------------------------------------------
 -- 18. 初始化数据：工具（bank-receipt-recognize 银行回单识别）
 -- -------------------------------------------
+-- 已在 12.1 块入库（sort_no=6）。此处保留以兼容极端场景：若 12.1 跳过、且 bank-receipt 行不存在
 INSERT INTO sys_aitools_tool (	tool_code, 	tool_type, 	tool_name, component_type, description, icon, sort_no, status, dr)
-VALUES ('bank-receipt-recognize', 'AI办公助手', '银行回单识别', 'office', '上传银行回单图片自动识别并结构化整理', '', 6, 1, 0)
-ON DUPLICATE KEY UPDATE 	tool_name = VALUES(	tool_name);
+SELECT 'bank-receipt-recognize', 'AI办公助手', '银行回单识别', 'office', '上传银行回单图片自动识别并结构化整理', '', 6, 1, 0
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `sys_aitools_tool` WHERE `tool_code` = 'bank-receipt-recognize');
 
 -- -------------------------------------------
 -- 19. 初始化数据：系统提示词（bank-receipt-recognize）
@@ -380,9 +400,11 @@ ON DUPLICATE KEY UPDATE prompt_content = VALUES(prompt_content);
 -- -------------------------------------------
 -- 20. 初始化数据：工具（invoice-recognize 发票识别）
 -- -------------------------------------------
+-- 已在 12.1 块入库（sort_no=7）。此处保留以兼容极端场景
 INSERT INTO sys_aitools_tool (	tool_code, 	tool_type, 	tool_name, component_type, description, icon, sort_no, status, dr)
-VALUES ('invoice-recognize', 'AI办公助手', '发票识别', 'office', '上传发票图片自动识别并结构化整理', '', 7, 1, 0)
-ON DUPLICATE KEY UPDATE 	tool_name = VALUES(	tool_name);
+SELECT 'invoice-recognize', 'AI办公助手', '发票识别', 'office', '上传发票图片自动识别并结构化整理', '', 7, 1, 0
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `sys_aitools_tool` WHERE `tool_code` = 'invoice-recognize');
 
 -- -------------------------------------------
 -- 21. 初始化数据：系统提示词（invoice-recognize）
@@ -421,7 +443,13 @@ CREATE TABLE IF NOT EXISTS sys_batch_task (
   KEY idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';
 
-ALTER TABLE sys_batch_task ADD COLUMN processed_index INT DEFAULT 0 COMMENT '已处理文件数（成功+失败，用于前端轮询 since 增量）' AFTER fail_count;
+-- P0-D3 兼容老版本：动态 SQL 加列
+SET @col_exists := (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_batch_task' AND COLUMN_NAME = 'processed_index');
+SET @sql := IF(@col_exists = 0, 'ALTER TABLE sys_batch_task ADD COLUMN processed_index INT DEFAULT 0 COMMENT ''已处理文件数（成功+失败，用于前端轮询 since 增量）'' AFTER fail_count', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 CREATE TABLE IF NOT EXISTS sys_batch_task (
                                               id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -444,15 +472,23 @@ CREATE TABLE IF NOT EXISTS sys_batch_task (
                                               KEY idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='批量任务表';
 
-ALTER TABLE `sys_ai_user_prompt`
-    ADD COLUMN `prompt_name` VARCHAR(64) DEFAULT NULL
-        COMMENT '提示词名称（用户自定义命名，用于列表展示）'
-        AFTER `prompt_text`;
+-- P0-D3 兼容老版本：动态 SQL 加列
+SET @col_exists := (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_ai_user_prompt' AND COLUMN_NAME = 'prompt_name');
+SET @sql := IF(@col_exists = 0, 'ALTER TABLE `sys_ai_user_prompt` ADD COLUMN `prompt_name` VARCHAR(64) DEFAULT NULL COMMENT ''提示词名称（用户自定义命名，用于列表展示）'' AFTER `prompt_text`', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 升级记录：老数据暂不强制命名（应用层兜底"未命名"）
 
-ALTER TABLE `sys_ai_user_prompt`
-    ADD UNIQUE KEY `uk_user_tool_name` (`user_id`, `tool_code`, `prompt_name`);
+-- P0-D3 兼容老版本：动态 SQL 加唯一索引
+SET @idx_exists := (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_ai_user_prompt' AND INDEX_NAME = 'uk_user_tool_name');
+SET @sql := IF(@idx_exists = 0, 'ALTER TABLE `sys_ai_user_prompt` ADD UNIQUE KEY `uk_user_tool_name` (`user_id`, `tool_code`, `prompt_name`)', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 USE ai_toolbox;
 

@@ -390,7 +390,7 @@ const selectPrompt = (item) => {
   showPromptPicker.value = false
 }
 
-// AI 生成：调后端 DeepSeek，按用户需求生成提示词
+// AI 生成：调后端文本模型，按用户需求生成提示词
 const handleAiGenerate = async () => {
   const requirement = aiRequirement.value.trim()
   if (!requirement) {

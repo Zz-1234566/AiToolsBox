@@ -1,13 +1,20 @@
 import { BASE_URL } from '../config/env'
+import { handleAuthError } from '../utils/auth-error-handler'
 /**
  * SSE 流式请求（XHR 实现，H5 + App vue 页面通用）
  * @param {Object} options
  *   url - 接口路径
  *   data - POST body 对象
- *   onChunk - 每收到一段内容回调 (text)
+ *   onChunk - 每收到一段普通文本内容回调 (text)
+ *   onMarker - 收到 B2 多文件批量 SSE 标记 `--- [任务已创建 batchId=xxx] ---` 时回调 (text)；
+ *              文本中括号[]里的内容是规约约定的语义标记（如任务开始/完成/失败）。
+ *              不传 onMarker 时，标记仍会通过 onChunk 透传，调用方按需识别。
  *   onDone - 流结束回调
  *   onError - 错误回调 (err)
  */
+// 规约：B2 多文件批量 SSE 标记格式 `--- [xxx] ---`（见 AGENTS.md 第 7 节）
+const SSE_MARKER_PATTERN = /^---\s*\[(.+?)\]\s*---$/
+
 export const streamRequest = (options) => {
   const token = uni.getStorageSync('token')
 
@@ -29,7 +36,14 @@ export const streamRequest = (options) => {
         const data = trimmed.substring(5).trim()
         if (data === '[DONE]') continue
         if (data) {
-          if (options.onChunk) options.onChunk(data)
+          // 优先识别 B2 多文件批量标记
+          const match = data.match(SSE_MARKER_PATTERN)
+          if (match) {
+            if (options.onMarker) options.onMarker(match[1])
+            // 不再透传到 onChunk，避免重复渲染
+          } else {
+            if (options.onChunk) options.onChunk(data)
+          }
         }
       }
     }
@@ -40,7 +54,12 @@ export const streamRequest = (options) => {
       if (trimmed.startsWith('data:')) {
         const data = trimmed.substring(5).trim()
         if (data && data !== '[DONE]') {
-          if (options.onChunk) options.onChunk(data)
+          const match = data.match(SSE_MARKER_PATTERN)
+          if (match) {
+            if (options.onMarker) options.onMarker(match[1])
+          } else {
+            if (options.onChunk) options.onChunk(data)
+          }
         }
       }
       buffer = ''
@@ -64,13 +83,9 @@ export const streamRequest = (options) => {
     if (xhr.status >= 400) {
       // 401：token 过期，清除登录态并跳登录
       if (xhr.status === 401) {
-        uni.removeStorageSync('token')
-        uni.removeStorageSync('userInfo')
-        uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+        // P2-B11: 统一到 utils/auth-error-handler.js
+        handleAuthError('登录已过期，请重新登录')
         if (options.onError) options.onError(new Error('未登录'))
-        setTimeout(() => {
-          uni.reLaunch({ url: '/pages/login' })
-        }, 600)
         return
       }
       if (options.onError) options.onError(new Error('请求失败（' + xhr.status + '）'))
@@ -120,7 +135,12 @@ export const streamUpload = (options) => {
         const data = trimmed.substring(5).trim()
         if (data === '[DONE]') continue
         if (data) {
-          if (options.onChunk) options.onChunk(data)
+          const match = data.match(SSE_MARKER_PATTERN)
+          if (match) {
+            if (options.onMarker) options.onMarker(match[1])
+          } else {
+            if (options.onChunk) options.onChunk(data)
+          }
         }
       }
     }
@@ -130,7 +150,12 @@ export const streamUpload = (options) => {
       if (trimmed.startsWith('data:')) {
         const data = trimmed.substring(5).trim()
         if (data && data !== '[DONE]') {
-          if (options.onChunk) options.onChunk(data)
+          const match = data.match(SSE_MARKER_PATTERN)
+          if (match) {
+            if (options.onMarker) options.onMarker(match[1])
+          } else {
+            if (options.onChunk) options.onChunk(data)
+          }
         }
       }
       buffer = ''
@@ -188,13 +213,9 @@ export const streamUpload = (options) => {
       xhr.onload = () => {
         if (xhr.status >= 400) {
           if (xhr.status === 401) {
-            uni.removeStorageSync('token')
-            uni.removeStorageSync('userInfo')
-            uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+            // P2-B11: 统一到 utils/auth-error-handler.js
+            handleAuthError('登录已过期，请重新登录')
             if (options.onError) options.onError(new Error('未登录'))
-            setTimeout(() => {
-              uni.reLaunch({ url: '/pages/login' })
-            }, 600)
             return
           }
           // 解析后端 message，弹窗给用户看
