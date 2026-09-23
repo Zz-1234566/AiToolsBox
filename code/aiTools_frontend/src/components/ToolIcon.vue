@@ -121,7 +121,6 @@ const props = defineProps({
 </script>
 
 <style lang="scss" scoped>
-@use '@/uni.scss' as *;
 .tool-icon {
   display: flex;
   align-items: center;
