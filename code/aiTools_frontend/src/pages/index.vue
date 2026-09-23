@@ -152,7 +152,7 @@ function goToSearch() {
   uni.navigateTo({ url: '/pages/search' })
 }
 function goToCategory() {
-  uni.switchTab({ url: '/pages/category' })
+  uni.navigateTo({ url: '/pages/category' })
 }
 function goToHistory() {
   uni.navigateTo({ url: '/pages/history' })
