@@ -53,10 +53,10 @@ const onClick = () => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-  
+  transition: opacity 0.1s ease-in-out;
+
   &:active {
-    transform: scale(0.97);
+    opacity: 0.85;
   }
   
   .card-icon {

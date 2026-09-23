@@ -123,10 +123,10 @@ onShow(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: transform 0.15s ease;
+  transition: opacity 0.1s ease-in-out, background-color 0.1s ease-in-out;
 
   &:active {
-    transform: scale(0.98);
+    opacity: 0.85;
     background-color: $bg-gray;
   }
 
