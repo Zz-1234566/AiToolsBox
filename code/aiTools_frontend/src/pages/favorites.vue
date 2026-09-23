@@ -98,6 +98,7 @@ onShow(() => {
 </script>
 
 <style lang="scss" scoped>
+@use '@/uni.scss' as *;
 .page-container {
   min-height: 100vh;
   background-color: $bg-color;

@@ -9,17 +9,11 @@ export default defineConfig({
     preprocessorOptions: {
       scss: {
         api: 'modern-compiler',
-        silenceDeprecations: ['legacy-js-api', 'import'],
-        // 全局注入 uni.scss，但跳过 App.vue / animations.scss 等已自管的入口
-        // 函数形式 additionalData：fileName 是不含 .scss 后缀的路径
-        additionalData: (source, filename) => {
-          // 这些入口文件不允许注入（避免"both define a variable"）
-          const skipPatterns = ['App.vue', 'styles/animations', 'uni.scss']
-          if (skipPatterns.some((p) => filename.includes(p))) {
-            return ''
-          }
-          return `@use "@/uni.scss" as *;\n`
-        }
+        silenceDeprecations: ['legacy-js-api', 'import']
+        // 不再使用 additionalData 自动注入 uni.scss
+        // 改为每个组件 <style lang="scss"> 第一行手动写：
+        //   @use '@/uni.scss' as *;
+        // 这样可以避免 vite-plugin-uni 对 .vue 重复注入导致的 "both define" 错误。
       }
     }
   },

@@ -59,6 +59,7 @@ const onClick = () => {
 </script>
 
 <style lang="scss" scoped>
+@use '@/uni.scss' as *;
 .tool-card {
   background-color: $bg-white;
   border-radius: $radius-lg;
