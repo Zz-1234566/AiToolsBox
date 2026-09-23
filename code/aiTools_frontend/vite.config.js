@@ -9,7 +9,9 @@ export default defineConfig({
     preprocessorOptions: {
       scss: {
         api: 'modern-compiler',
-        silenceDeprecations: ['legacy-js-api', 'import']
+        silenceDeprecations: ['legacy-js-api', 'import'],
+        // 全局注入 uni.scss，所有 <style lang="scss"> 自动可用 token 变量
+        additionalData: `@use "@/uni.scss" as *;\n`
       }
     }
   },

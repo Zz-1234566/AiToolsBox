@@ -19,7 +19,7 @@ export default {
 /* 全局动效工具类（点击反馈 / 入场 / 错落 / 加载 / 页面转场） */
 @use './styles/animations.scss';
 
-/* 全局基础样式 */
+/* 全局基础样式（uni.scss 已在 vite.config.js 自动注入） */
 page {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   background-color: $bg-color;
