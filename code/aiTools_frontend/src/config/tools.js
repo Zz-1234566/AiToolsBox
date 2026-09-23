@@ -8,6 +8,42 @@ export const CATEGORIES = [
   { code: '效率小工具', tools: ['todo-list', 'pomodoro', 'password-gen'] }
 ]
 
+// 工具分类 → 渐变类型映射（设计稿 tokens）
+// doc / image / dev / audio / video / ocr / text / code / brand
+const CATEGORY_TO_GRADIENT = {
+  'AI办公助手': 'doc',
+  '图片创意工具': 'image',
+  '效率小工具': 'dev'
+}
+
+const CATEGORY_TO_TAG = {
+  'AI办公助手': '办公',
+  '图片创意工具': '图片',
+  '效率小工具': '效率'
+}
+
+/**
+ * 根据工具 ID 返回展示用的渐变类型（用于 ToolIcon / ToolCard）
+ * @param {string} toolId
+ * @returns {string} gradient name
+ */
+export function getToolGradient(toolId) {
+  const tool = TOOLS[toolId]
+  if (!tool) return 'brand'
+  return CATEGORY_TO_GRADIENT[tool.category] || 'brand'
+}
+
+/**
+ * 根据工具 ID 返回分类 tag 文字
+ * @param {string} toolId
+ * @returns {string} tag label
+ */
+export function getToolCategoryTag(toolId) {
+  const tool = TOOLS[toolId]
+  if (!tool) return ''
+  return CATEGORY_TO_TAG[tool.category] || ''
+}
+
 // ==================== 校验规则 ====================
 // 每个工具 + 每种输入方式 都有自己的校验规则：
 //   {
@@ -95,7 +131,7 @@ export const TOOLS = {
     validateRules: {
       text:   { file: { type: 'text', min: 1, error: '请输入内容' }, prompt: PROMPT_REQUIRED },
       file:   { file: { type: 'single', min: 1, error: '请先上传文件' }, prompt: PROMPT_REQUIRED },
-      image:  { unsupported: true, error: '该工具请使用文字输入' },
+      image:  { unsupported: true, error: '该工具请输入文字' },
       audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
@@ -108,7 +144,7 @@ export const TOOLS = {
     validateRules: {
       text:   { file: { type: 'text', min: 1, error: '请输入内容' }, prompt: PROMPT_REQUIRED },
       file:   { file: { type: 'single', min: 1, error: '请先上传文件' }, prompt: PROMPT_REQUIRED },
-      image:  { unsupported: true, error: '该工具请使用文字输入' },
+      image:  { unsupported: true, error: '该工具请输入文字' },
       audio:  { unsupported: true, error: '音频输入功能开发中' }
     }
   },
@@ -203,81 +239,27 @@ export const TOOLS = {
   },
   'pomodoro': {
     name: '番茄钟', icon: 'tomato', category: '效率小工具', realized: false,
-    desc: '设置专注时长，开始番茄工作法。',
-    inputTypes: ['text'], defaultInput: 'text',
-    placeholder: '请输入专注时长（分钟）...',
-    actionText: '开始专注', resultTitle: '专注状态', resultPlaceholder: '专注状态将在这里显示...',
+    desc: '设置番茄钟，专注工作 25 分钟休息 5 分钟。',
+    inputTypes: [], defaultInput: 'text',
+    actionText: '开始专注', resultTitle: '番茄钟', resultPlaceholder: '点击开始专注',
     validateRules: {
-      text:   { file: { type: 'text', min: 1, error: '请输入专注时长' } },
-      file:   { unsupported: true, error: '该工具请输入专注时长' },
-      image:  { unsupported: true, error: '该工具请输入专注时长' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
+      text: { unsupported: true, error: '本工具不需要输入' },
+      file: { unsupported: true, error: '本工具不需要输入' }
     }
   },
   'password-gen': {
     name: '密码生成', icon: 'password', category: '效率小工具', realized: false,
-    desc: '输入密码长度，生成随机强密码。',
-    inputTypes: ['text'], defaultInput: 'text',
-    placeholder: '请输入密码长度...',
-    actionText: '生成密码', resultTitle: '生成密码', resultPlaceholder: '生成的密码将在这里显示...',
+    desc: '一键生成高强度随机密码。',
+    inputTypes: [], defaultInput: 'text',
+    actionText: '生成密码', resultTitle: '密码', resultPlaceholder: '生成的密码将在这里显示...',
     validateRules: {
-      text:   { file: { type: 'text', min: 1, error: '请输入密码长度' } },
-      file:   { unsupported: true, error: '该工具请输入密码长度' },
-      image:  { unsupported: true, error: '该工具请输入密码长度' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
+      text: { unsupported: true, error: '本工具不需要输入' },
+      file: { unsupported: true, error: '本工具不需要输入' }
     }
   }
 }
 
-// 已实现的工具 code（用于提示词管理页工具下拉过滤）
-export const REALIZED_TOOLS = Object.entries(TOOLS).filter(([, v]) => v.realized).map(([k]) => k)
-
-// 根据 toolId 获取工具配置（带默认值兜底）
-export const getTool = (toolId) => TOOLS[toolId] || {
-  name: '工具详情',
-  desc: '暂无该工具信息',
-  inputTypes: ['text'],
-  defaultInput: 'text',
-  placeholder: '请输入内容...',
-  actionText: '开始处理',
-  resultTitle: '处理结果',
-  resultPlaceholder: '结果将在这里显示...'
-}
-
-/**
- * 通用校验器：按工具 + 输入方式，校验输入和提示词
- * @param {String} toolId 工具 code
- * @param {String} inputType 输入方式（text / file / image / audio）
- * @param {Object} ctx 上下文 { filePath, batchFiles, inputText, promptFormat, promptGenerate, token }
- * @returns {String|null} 第一个失败的错误文案，null = 通过
- */
-export const validate = (toolId, inputType, ctx) => {
-  const tool = getTool(toolId)
-  const rule = tool.validateRules && tool.validateRules[inputType]
-  if (!rule) return '该输入方式暂未接入'
-  if (rule.unsupported) return rule.error || '该输入方式暂未接入'
-  // token 校验（可选规则：rule.token === true 时必须有 token）
-  if (rule.token && !ctx.token) {
-    return '请先登录'
-  }
-  // file 输入校验
-  if (rule.file) {
-    const min = rule.file.min || 1
-    let ok = true
-    if (rule.file.type === 'batch') {
-      ok = (ctx.batchFiles && ctx.batchFiles.length >= min)
-    } else if (rule.file.type === 'single') {
-      ok = !!(ctx.filePath)
-    } else if (rule.file.type === 'text') {
-      ok = !!(ctx.inputText && ctx.inputText.trim().length >= min)
-    }
-    if (!ok) return rule.file.error
-  }
-  // prompt 校验
-  if (rule.prompt) {
-    const min = rule.prompt.min || 1
-    const filled = ((ctx.promptFormat || '') + (ctx.promptGenerate || '')).trim().length
-    if (filled < min) return rule.prompt.error
-  }
-  return null
-}
+// 已实现的工具（首页/快速入口/分类页推荐用）
+export const REALIZED_TOOLS = Object.entries(TOOLS)
+  .filter(([, t]) => t.realized)
+  .map(([id]) => id)
