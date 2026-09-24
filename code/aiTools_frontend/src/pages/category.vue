@@ -92,8 +92,8 @@ const ICON_MAP = {
   password:  { type: 'dev',   emoji: '🔑' }
 }
 
-// 从 TOOLS 派生列表（只展示已实现的）
-const allTools = REALIZED_TOOLS.map(id => {
+// 从 TOOLS 派生列表（展示全部 13 个工具，包括未实现的）
+const allTools = Object.keys(TOOLS).map(id => {
   const t = TOOLS[id]
   const icon = ICON_MAP[t.icon] || { type: 'doc', emoji: '📄' }
   return {

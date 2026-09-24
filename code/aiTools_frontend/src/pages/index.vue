@@ -127,6 +127,17 @@
 
 <script setup>
 import { ref } from 'vue'
+import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
+
+// tools.js icon 字段 → 首页可渲染的 iconType（共用映射）
+const ICON_TYPE_MAP = {
+  summary: 'doc', weekly: 'text', meeting: 'text', ocr: 'ocr',
+  'bg-color': 'image', 'bg-image': 'image', compress: 'image', qr: 'dev',
+  todo: 'dev', tomato: 'audio', password: 'dev'
+}
+const TAG_MAP = {
+  'AI办公助手': '办公', '图片创意工具': '图片', '效率小工具': '工具'
+}
 const quickCategories = [
   { code: 'all',    name: '全部', bg: 'var(--cat-all)' },
   { code: 'doc',    name: '文档', bg: 'var(--cat-doc)' },
@@ -138,15 +149,26 @@ const quickCategories = [
 ]
 const activeCategory = ref('all')
 
-const hotTools = [
-  { id: 'pdf-summary', name: 'PDF 总结',   desc: '快捷提取 PDF 核心内容', tag: '文档', iconType: 'doc' },
-  { id: 'image-bg',    name: '图片去背景', desc: '一键移除图片背景',     tag: '图片', iconType: 'image' },
-  { id: 'ocr',         name: 'OCR 识别',   desc: '从图片中提取文字',     tag: '文档', iconType: 'ocr' },
-  { id: 'json-format', name: 'JSON 格式化', desc: '快速格式化和校验 JSON', tag: '开发', iconType: 'dev' }
-]
-const recentTools = [
-  { id: 'image-bg', name: '图片去背景', time: '1小时前', iconType: 'image' }
-]
+const hotTools = Object.keys(TOOLS).slice(0, 4).map(id => {
+  const t = TOOLS[id] || {}
+  const iconType = ICON_TYPE_MAP[t.icon] || 'doc'
+  return {
+    id,
+    name: t.name || id,
+    desc: t.desc || '',
+    tag: TAG_MAP[t.category] || t.category || '工具',
+    iconType
+  }
+})
+const recentTools = Object.keys(TOOLS).slice(0, 1).map(id => {
+  const t = TOOLS[id] || {}
+  return {
+    id,
+    name: t.name || id,
+    time: '刚刚',
+    iconType: ICON_TYPE_MAP[t.icon] || 'doc'
+  }
+})
 
 function goToSearch() {
   uni.navigateTo({ url: '/pages/search' })
