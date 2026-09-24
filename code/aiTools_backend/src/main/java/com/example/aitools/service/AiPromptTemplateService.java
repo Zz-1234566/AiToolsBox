@@ -32,4 +32,16 @@ public interface AiPromptTemplateService {
      * @param promptUse 提示词用途（format/generate）
      */
     AiPrompt getDefaultByUse(String toolCode, String promptUse);
+
+    /**
+     * 解析指定用途的提示词：用户自定义优先，其次系统提示词（promptId 选中且用途匹配时），
+     * 最后回退到该系统默认提示词；均无时返回 null。
+     * <p>供 handler / service 公共调用，不再做私有复制。
+     */
+    String resolvePrompt(String userProvided, Long promptId, String promptUse, String toolCode);
+
+    /**
+     * 按工具编码查工具ID（查不到返回 null）
+     */
+    Long findToolIdByCode(String toolCode);
 }

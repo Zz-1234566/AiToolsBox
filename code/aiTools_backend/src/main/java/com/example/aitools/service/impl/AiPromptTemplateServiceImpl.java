@@ -3,8 +3,10 @@ package com.example.aitools.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.common.Constants;
 import com.example.aitools.entity.AiPrompt;
+import com.example.aitools.entity.AiTool;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.mapper.AiPromptMapper;
+import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.vo.SystemPromptVO;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ import java.util.List;
 public class AiPromptTemplateServiceImpl implements AiPromptTemplateService {
 
     private final AiPromptMapper aiPromptMapper;
+    private final AiToolMapper aiToolMapper;
 
     @Override
     public List<SystemPromptVO> listByTool(String toolCode) {
@@ -69,5 +72,31 @@ public class AiPromptTemplateServiceImpl implements AiPromptTemplateService {
                 .orderByAsc(AiPrompt::getId)
                 .last("LIMIT 1");
         return aiPromptMapper.selectOne(wrapper);
+    }
+
+    @Override
+    public String resolvePrompt(String userProvided, Long promptId, String promptUse, String toolCode) {
+        if (userProvided != null && !userProvided.isBlank()) {
+            return userProvided.trim();
+        }
+        if (promptId != null) {
+            AiPrompt selected = getById(promptId);
+            if (promptUse.equals(selected.getPromptUse())) {
+                return selected.getPromptContent();
+            }
+            // 用途不匹配，回退到该工具默认
+        }
+        AiPrompt defaultPrompt = getDefaultByUse(toolCode, promptUse);
+        return defaultPrompt == null ? null : defaultPrompt.getPromptContent();
+    }
+
+    @Override
+    public Long findToolIdByCode(String toolCode) {
+        LambdaQueryWrapper<AiTool> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AiTool::getToolCode, toolCode)
+                .eq(AiTool::getDr, Constants.DR_NORMAL)
+                .last("LIMIT 1");
+        AiTool tool = aiToolMapper.selectOne(wrapper);
+        return tool == null ? null : tool.getId();
     }
 }
