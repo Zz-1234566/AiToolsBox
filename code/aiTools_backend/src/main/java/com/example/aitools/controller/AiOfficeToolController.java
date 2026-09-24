@@ -43,6 +43,7 @@ public class AiOfficeToolController {
     private final AuthUtil authUtil;
     private final BatchTaskService batchTaskService;
 
+
     /** SSE 流式任务线程池（核心 8 / 最大 32 / 队列 100） */
     @Qualifier(ExecutorConfig.STREAM_EXECUTOR)
     private final Executor streamExecutor;
@@ -90,7 +91,12 @@ public class AiOfficeToolController {
     }
 
     /**
-     * 会议纪要（SSE 流式）：逐块推送 AI 生成内容，内部统一管理历史记录
+     * 会议纪要（SSE 流式，AI 路由决策 + sse/json 双链路）：
+     * <ul>
+     *     <li>第一步：调 decideRoute() 让 AI 判断走 sse 长文本还是 json 结构化（AI 返回异常时关键词兜底）</li>
+     *     <li>第二步：按 router 结果调对应 handler，最终通过 SSE 单块推一个 data 给前端</li>
+     *     <li>historyService 在 handler 内部完成，成功/失败都落库</li>
+     * </ul>
      */
     @PostMapping(value = "/meeting-minutes/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter meetingMinutesStream(@Valid @RequestBody AiWorkSummaryDTO dto,
