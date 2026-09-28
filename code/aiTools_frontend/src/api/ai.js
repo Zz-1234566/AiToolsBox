@@ -165,3 +165,30 @@ export const ocrBatchUpload = (options) => {
 export const aiFileReaderBatchUpload = (options) => {
   return batchCreate('/api/ai-office/ai-file-reader/batch-upload', options.files, options.fields)
 }
+
+/**
+ * 会议纪要 AI 路由决策：判断本次会议内容适合 SSE 流式还是 JSON 结构化输出
+ * 后端先调 AI 决策 + 关键词兜底，返回 'sse' 或 'json'
+ * @param {Object} data { content, promptFormat, promptGenerate, promptId }
+ * @returns {Promise<String>} 'sse' | 'json'
+ */
+export const meetingMinutesDecideRoute = (data) => {
+  return request({
+    url: '/api/ai-office/meeting-minutes/decide-route',
+    method: 'POST',
+    data
+  }).then((res) => (res && res.data) || 'sse')
+}
+
+/**
+ * 会议纪要 JSON 同步响应：调 json-single handler，等 AI 完全返回后一次性拿到结构化 JSON
+ * @param {Object} data { content, promptFormat, promptGenerate, promptId }
+ * @returns {Promise<{ code: number, data: string }>}
+ */
+export const meetingMinutesJson = (data) => {
+  return request({
+    url: '/api/ai-office/meeting-minutes/json',
+    method: 'POST',
+    data
+  })
+}

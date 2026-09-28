@@ -205,6 +205,35 @@
           </view>
         </view>
       </view>
+
+      <!-- ============ 会议纪要结果渲染区（JSON 表格 / SSE Markdown） ============ -->
+      <block v-if="meetingRoute === 'json'">
+        <view class="section-title">生成结果（JSON 结构化）</view>
+        <view class="mm-json-table">
+          <view v-for="(item, idx) in meetingJsonResult" :key="item.key || idx" class="mm-json-row">
+            <view class="mm-json-cell-title">
+              <text class="mm-json-key">{{ item.key || '' }}</text>
+              <text class="mm-json-title">{{ item.title || '' }}</text>
+            </view>
+            <view v-if="item.type === 'todo'" class="mm-json-cell-content">
+              <text class="mm-json-checkbox">□</text>
+              <text class="mm-json-content">{{ item.content || '' }}</text>
+            </view>
+            <view v-else class="mm-json-cell-content">
+              <text class="mm-json-content">{{ item.content || '' }}</text>
+            </view>
+          </view>
+          <view v-if="meetingJsonResult.length === 0" class="mm-json-empty">
+            <text>暂无生成结果</text>
+          </view>
+        </view>
+      </block>
+      <block v-else-if="meetingRoute === 'sse'">
+        <view class="section-title">生成结果（SSE 流式 Markdown）</view>
+        <view class="mm-md-result">
+          <rich-text :nodes="meetingMarkdownHtml"></rich-text>
+        </view>
+      </block>
     </block>
 
     <!-- 智能识别：上传 + 4 项识别类型列表 -->
@@ -468,10 +497,11 @@ import AudioInputArea from '@/components/AudioInputArea.vue'
 import PromptInputArea from '@/components/PromptInputArea.vue'
 import ResultArea from '@/components/ResultArea.vue'
 import BatchFilePicker from '@/components/BatchFilePicker.vue'
-import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, batchCompleted } from '@/api/ai.js'
+import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson } from '@/api/ai.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
 import { request } from '@/api/request'
+import { marked } from 'marked'
 import { promptListApi, systemPromptListApi, generatePromptApi, promptAddApi } from '@/api/prompt'
 import { getTool, validate } from '@/config/tools'
 import BatchResultCards from '@/components/BatchResultCards.vue'
@@ -575,6 +605,18 @@ const addWeeklyItem = (kind) => {
 }
 
 const mmProblemText = ref('')
+// ===== 会议纪要渲染状态（按 decide-route 分 JSON/SSE） =====
+const meetingRoute = ref('')  // '' | 'sse' | 'json'
+const meetingJsonResult = ref([])  // JSON 数组：[{ key, title, type, content }]
+const meetingMarkdownText = ref('')  // SSE markdown 累积文本
+const meetingMarkdownHtml = computed(() => {
+  try {
+    return meetingMarkdownText.value ? marked.parse(meetingMarkdownText.value) : ''
+  } catch (e) {
+    return ''
+  }
+})
+
 const mmPlanText = ref('')
 const onUploadRecording = () => { uni.showToast({ title: '录音上传开发中', icon: 'none' }) }
 const onInputMeetingContent = () => { uni.showToast({ title: '请在下方输入会议内容', icon: 'none' }) }
@@ -1082,9 +1124,37 @@ const handleGenerate = async () => {
       resultContent.value = formatAiResult(fullText)
 
     } else if (id === 'meeting-minutes') {
-      // 会议纪要：SSE 流式输出（前置校验已统一处理）
-      const fullText = await runTextStream('/api/ai-office/meeting-minutes/stream')
-      resultContent.value = formatAiResult(fullText)
+      // 会议纪要：先调 decide-route 决定 SSE 流式还是 JSON 同步，再分支处理
+      const route = await meetingMinutesDecideRoute({
+        content: inputText.value,
+        promptFormat: promptFormatText.value,
+        promptGenerate: promptGenerateText.value,
+        promptId: selectedPromptId.value || undefined
+      })
+      meetingRoute.value = route
+      meetingJsonResult.value = []
+      meetingMarkdownText.value = ''
+      resultContent.value = ''
+      if (route === 'json') {
+        // JSON 路径：同步调 /json 端点，等 AI 完全返回后一次性拿到结构化数据，渲染成表格
+        const res = await meetingMinutesJson({
+          content: inputText.value,
+          promptFormat: promptFormatText.value,
+          promptGenerate: promptGenerateText.value,
+          promptId: selectedPromptId.value || undefined
+        })
+        try {
+          const parsed = JSON.parse(res.data || '[]')
+          meetingJsonResult.value = Array.isArray(parsed) ? parsed : []
+        } catch (e) {
+          console.error('meeting-minutes JSON parse error:', e)
+          meetingJsonResult.value = []
+        }
+      } else {
+        // SSE 路径：调 /stream 端点流式 markdown 文本，用 marked 渲染
+        await runTextStream('/api/ai-office/meeting-minutes/stream')
+        meetingMarkdownText.value = resultContent.value
+      }
 
     } else if (id === 'ocr-recognize') {
       // OCR 智能识别：上传图片/PDF → 腾讯云 OCR → 调 AI 整理（前置校验已统一处理）
@@ -1185,11 +1255,12 @@ const handleGenerate = async () => {
   background-color: $bg-color;
   display: flex;
   flex-direction: column;
+  /* padding-bottom 移到 .page-content（scroll-view 内部），让滚动内容能滚到按钮上方 */
 }
 
 .page-content {
   flex: 1;
-  padding: 0 $spacing-md;
+  padding: 0 $spacing-md 160rpx; /* 底部 160rpx 给 .bottom-action 留空间，避免遮挡滚动内容 */
 }
 
 .tool-desc {
@@ -2475,6 +2546,108 @@ const handleGenerate = async () => {
   font-weight: 500;
   color: var(--color-success, #10B981);
   flex-shrink: 0;
+}
+
+
+/* ============ 会议纪要结果渲染（JSON 表格 + SSE Markdown） ============ */
+.mm-json-table {
+  margin: 0 32rpx 24rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  overflow: hidden;
+}
+.mm-json-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid var(--divider-color, #F0F0F0);
+}
+.mm-json-row:last-child {
+  border-bottom: none;
+}
+.mm-json-cell-title {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+.mm-json-key {
+  font-size: 22rpx;
+  color: var(--text-tertiary, #9CA3AF);
+  font-family: monospace;
+  background: var(--bg-page, #F3F4F6);
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}
+.mm-json-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+.mm-json-cell-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  padding-left: 16rpx;
+}
+.mm-json-checkbox {
+  font-size: 32rpx;
+  color: var(--text-tertiary, #9CA3AF);
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.mm-json-content {
+  flex: 1;
+  font-size: 28rpx;
+  color: var(--text-primary, #111827);
+  line-height: 1.6;
+}
+.mm-json-empty {
+  padding: 60rpx 0;
+  text-align: center;
+  color: var(--text-tertiary, #9CA3AF);
+  font-size: 26rpx;
+}
+.mm-md-result {
+  margin: 0 32rpx 24rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  padding: 32rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: var(--text-primary, #111827);
+}
+.mm-md-result h1,
+.mm-md-result h2,
+.mm-md-result h3 {
+  margin: 24rpx 0 16rpx;
+  font-weight: 700;
+  color: var(--text-primary, #111827);
+}
+.mm-md-result h1 { font-size: 36rpx; }
+.mm-md-result h2 { font-size: 32rpx; }
+.mm-md-result h3 { font-size: 28rpx; }
+.mm-md-result p {
+  margin: 12rpx 0;
+}
+.mm-md-result ul,
+.mm-md-result ol {
+  margin: 12rpx 0;
+  padding-left: 40rpx;
+}
+.mm-md-result li {
+  margin: 8rpx 0;
+}
+.mm-md-result strong {
+  font-weight: 700;
+  color: var(--brand-primary, #3B82F6);
+}
+.mm-md-result code {
+  background: var(--bg-page, #F3F4F6);
+  padding: 2rpx 8rpx;
+  border-radius: 4rpx;
+  font-family: monospace;
+  font-size: 24rpx;
 }
 
 /* 提示卡 */

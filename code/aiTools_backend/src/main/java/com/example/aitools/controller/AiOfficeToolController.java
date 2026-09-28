@@ -10,6 +10,7 @@ import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.dto.BatchUploadResponse;
 import com.example.aitools.entity.BatchTask;
 import com.example.aitools.exception.BusinessException;
+import com.example.aitools.handler.HandlerFactory;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
 import com.example.aitools.utils.AuthUtil;
@@ -42,6 +43,7 @@ public class AiOfficeToolController {
     private final AiOfficeToolService aiOfficeToolService;
     private final AuthUtil authUtil;
     private final BatchTaskService batchTaskService;
+    private final HandlerFactory handlerFactory;
 
 
     /** SSE 流式任务线程池（核心 8 / 最大 32 / 队列 100） */
@@ -91,21 +93,44 @@ public class AiOfficeToolController {
     }
 
     /**
-     * 会议纪要（SSE 流式，AI 路由决策 + sse/json 双链路）：
-     * <ul>
-     *     <li>第一步：调 decideRoute() 让 AI 判断走 sse 长文本还是 json 结构化（AI 返回异常时关键词兜底）</li>
-     *     <li>第二步：按 router 结果调对应 handler，最终通过 SSE 单块推一个 data 给前端</li>
-     *     <li>historyService 在 handler 内部完成，成功/失败都落库</li>
-     * </ul>
+     * 会议纪要（SSE 流式）：调 sse-text-single handler 委托 aiOfficeToolService.aiMeetingMinutesStream
+     * <p>前端按 /meeting-minutes/decide-route 返回的 route 选择调 /stream (sse) 或 /json (sync)
      */
     @PostMapping(value = "/meeting-minutes/stream", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter meetingMinutesStream(@Valid @RequestBody AiWorkSummaryDTO dto,
                                             HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         return StreamHelper.stream(streamExecutor, emitter ->
-                aiOfficeToolService.aiMeetingMinutesStream(userId, dto.getContent(),
+                handlerFactory.get("sse-text-single").handleSingleText("meeting-minutes", userId,
+                        dto.getContent(),
                         dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId(),
                         StreamHelper.asChunkConsumer(emitter)));
+    }
+
+    /**
+     * 会议纪要 AI 路由决策：让 AI 判断本次会议内容适合 SSE 流式还是 JSON 结构化
+     * <p>前端按返回的 route 选择调 /stream 或 /json 端点
+     */
+    @PostMapping("/meeting-minutes/decide-route")
+    public Result<String> meetingMinutesDecideRoute(@Valid @RequestBody AiWorkSummaryDTO dto) {
+        String route = handlerFactory.get("sse-text-single").decideRoute(
+                "meeting-minutes", dto.getContent(), resolvePromptGenerate(dto), null);
+        log.info("[meeting-minutes/decide-route] route={}", route);
+        return Result.success(route);
+    }
+
+    /**
+     * 会议纪要（JSON 同步）：调 json-single handler 委托 aiOfficeToolService 同步返回结构化 JSON
+     * <p>前端发起请求后等待 AI 完全返回（必须等完整 JSON），一次性拿到结构化数据
+     */
+    @PostMapping("/meeting-minutes/json")
+    public Result<String> meetingMinutesJson(@Valid @RequestBody AiWorkSummaryDTO dto,
+                                             HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        String json = handlerFactory.get("json-single").handleSingleJson(
+                "meeting-minutes", userId, dto.getContent(),
+                dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId());
+        return Result.success(json);
     }
 
     /**
