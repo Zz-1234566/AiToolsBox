@@ -100,7 +100,7 @@ const ICON_MAP = {
 }
 
 // 从 TOOLS 派生列表（展示全部 13 个工具，包括未实现的）
-const allTools = Object.keys(TOOLS).map(id => {
+const allTools = ref(Object.keys(TOOLS).map(id => {
   const t = TOOLS[id]
   const icon = ICON_MAP[t.icon] || { type: 'doc', emoji: '📄' }
   return {
@@ -113,24 +113,24 @@ const allTools = Object.keys(TOOLS).map(id => {
     inputTypes: t.inputTypes || [],
     category: t.category || ''
   }
-})
+}))
 
 // Tab 过滤
 const filteredTools = computed(() => {
   switch (activeTab.value) {
     case 'document':
-      return allTools.filter(t => t.fileType === 'document' || t.inputTypes.includes('file'))
+      return allTools.value.filter(t => t.fileType === 'document' || t.inputTypes.includes('file'))
     case 'image':
-      return allTools.filter(t => t.fileType === 'image' || t.inputTypes.includes('image'))
+      return allTools.value.filter(t => t.fileType === 'image' || t.inputTypes.includes('image'))
     case 'audio':
     case 'video':
     case 'dev':
       return []
     case 'office':
-      return allTools.filter(t => t.category === 'AI办公助手' || t.category === '效率小工具')
+      return allTools.value.filter(t => t.category === 'AI办公助手' || t.category === '效率小工具')
     case 'all':
     default:
-      return allTools
+      return allTools.value
   }
 })
 
@@ -140,7 +140,7 @@ const goToTool = (id) => {
 
 /** 收藏：点击同步后端（乐观更新） */
 function toggleFav(id) {
-  const t = allTools.find(x => x.id === id)
+  const t = allTools.value.find(x => x.id === id)
   if (!t) return
   const next = !t.favored
   t.favored = next
@@ -153,7 +153,7 @@ async function loadFavorites() {
   try {
     const res = await favoriteListApi('tool')
     const set = new Set((res.data || []).map(f => f.targetId))
-    allTools.forEach(t => { t.favored = set.has(t.id) })
+    allTools.value.forEach(t => { t.favored = set.has(t.id) })
   } catch (e) { /* 未登录 / 失败：保持未收藏 */ }
 }
 

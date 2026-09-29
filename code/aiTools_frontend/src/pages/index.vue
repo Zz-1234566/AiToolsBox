@@ -35,35 +35,6 @@
       </view>
     </section>
 
-    <!-- 快捷分类（横滑，7 类） -->
-    <section class="section">
-      <view class="section__header">
-        <text class="section__title">快捷分类</text>
-        <text class="section__more" @click="goToCategory">全部分类 ›</text>
-      </view>
-      <scroll-view scroll-x class="category-list" :show-scrollbar="false">
-        <view
-          v-for="cat in quickCategories"
-          :key="cat.code"
-          class="category-item"
-          :class="{ 'category-item--active': cat.code === activeCategory }"
-          @click="activeCategory = cat.code"
-        >
-          <view class="category-icon" :style="{ background: cat.bg }">
-            <!-- 内联 SVG（避免额外静态资源） -->
-            <svg v-if="cat.code === 'all'" viewBox="0 0 24 24" fill="#3B82F6"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z" /></svg>
-            <svg v-else-if="cat.code === 'doc'" viewBox="0 0 24 24" fill="#EF4444"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13z" /></svg>
-            <svg v-else-if="cat.code === 'image'" viewBox="0 0 24 24" fill="#6366F1"><path d="M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z" /></svg>
-            <svg v-else-if="cat.code === 'audio'" viewBox="0 0 24 24" fill="#F59E0B"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z" /></svg>
-            <svg v-else-if="cat.code === 'video'" viewBox="0 0 24 24" fill="#EC4899"><path d="M8 5v14l11-7z" /></svg>
-            <svg v-else-if="cat.code === 'dev'" viewBox="0 0 24 24" fill="#10B981"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" /></svg>
-            <svg v-else-if="cat.code === 'office'" viewBox="0 0 24 24" fill="#8B5CF6"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 11h-4v4h-2v-4H7v-2h4V8h2v4h4v2z" /></svg>
-          </view>
-          <text>{{ cat.name }}</text>
-        </view>
-      </scroll-view>
-    </section>
-
     <!-- 热门工具（2 列卡） -->
     <section class="section">
       <view class="section__header">
@@ -140,18 +111,8 @@ const ICON_TYPE_MAP = {
 const TAG_MAP = {
   'AI办公助手': '办公', '图片创意工具': '图片', '效率小工具': '工具'
 }
-const quickCategories = [
-  { code: 'all',    name: '全部', bg: 'var(--cat-all)' },
-  { code: 'doc',    name: '文档', bg: 'var(--cat-doc)' },
-  { code: 'image',  name: '图片', bg: 'var(--cat-image)' },
-  { code: 'audio',  name: '音频', bg: 'var(--cat-audio)' },
-  { code: 'video',  name: '视频', bg: 'var(--cat-video)' },
-  { code: 'dev',    name: '开发', bg: 'var(--cat-dev)' },
-  { code: 'office', name: '办公', bg: 'var(--cat-office)' }
-]
-const activeCategory = ref('all')
 
-const hotTools = Object.keys(TOOLS).slice(0, 4).map(id => {
+const hotTools = ref(Object.keys(TOOLS).slice(0, 4).map(id => {
   const t = TOOLS[id] || {}
   const iconType = ICON_TYPE_MAP[t.icon] || 'doc'
   return {
@@ -161,8 +122,8 @@ const hotTools = Object.keys(TOOLS).slice(0, 4).map(id => {
     tag: TAG_MAP[t.category] || t.category || '工具',
     iconType
   }
-})
-const recentTools = Object.keys(TOOLS).slice(0, 1).map(id => {
+}))
+const recentTools = ref(Object.keys(TOOLS).slice(0, 1).map(id => {
   const t = TOOLS[id] || {}
   return {
     id,
@@ -170,7 +131,7 @@ const recentTools = Object.keys(TOOLS).slice(0, 1).map(id => {
     time: '刚刚',
     iconType: ICON_TYPE_MAP[t.icon] || 'doc'
   }
-})
+}))
 
 function goToSearch() {
   uni.navigateTo({ url: '/pages/search' })
@@ -185,7 +146,7 @@ function goToTool(id) {
   uni.navigateTo({ url: `/pages/tool-common?id=${id}` })
 }
 function toggleFav(id) {
-  const t = hotTools.find(x => x.id === id)
+  const t = hotTools.value.find(x => x.id === id)
   if (!t) return
   const next = !t.favored
   // 乐观更新
@@ -201,7 +162,7 @@ async function loadFavorites() {
   try {
     const res = await favoriteListApi('tool')
     const set = new Set((res.data || []).map(f => f.targetId))
-    hotTools.forEach(t => { t.favored = set.has(t.id) })
+    hotTools.value.forEach(t => { t.favored = set.has(t.id) })
   } catch (e) { /* 未登录 / 请求失败：保持默认未收藏 */ }
 }
 
@@ -284,44 +245,6 @@ onShow(() => {
 .section__more {
   font-size: 26rpx;
   color: var(--brand-primary, #3B82F6);
-}
-
-/* ===== 快捷分类 ===== */
-.category-list {
-  white-space: nowrap;
-  padding: 4rpx 0;
-}
-.category-item {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4rpx;
-  margin-right: 32rpx;
-  width: 80rpx;
-  vertical-align: top;
-
-  text {
-    font-size: 22rpx;
-    color: var(--text-primary, #111827);
-  }
-  &.category-item--active text {
-    color: var(--brand-primary, #3B82F6);
-    font-weight: 500;
-  }
-}
-.category-icon {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-
-  svg {
-    width: 40rpx;
-    height: 40rpx;
-  }
 }
 
 /* ===== 工具卡 ===== */

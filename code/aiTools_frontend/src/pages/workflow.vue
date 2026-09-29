@@ -33,13 +33,25 @@
           </view>
         </view>
         <view class="wf-card__acts">
-          <text class="wf-act wf-act--primary" @click="openRun(wf)">运行</text>
+          <view class="wf-act wf-act--primary" @click="openRun(wf)">
+            <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            <text>运行</text>
+          </view>
           <view class="wf-act__sep"></view>
-          <text class="wf-act" @click="viewRuns(wf)">历史</text>
+          <view class="wf-act" @click="viewRuns(wf)">
+            <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 117 7 6.96 6.96 0 01-4.95-2.05l-1.42 1.42A9 9 0 1013 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/></svg>
+            <text>历史</text>
+          </view>
           <view class="wf-act__sep"></view>
-          <text class="wf-act" @click="goEdit(wf)">编辑</text>
+          <view class="wf-act" @click="goEdit(wf)">
+            <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            <text>编辑</text>
+          </view>
           <view class="wf-act__sep"></view>
-          <text class="wf-act wf-act--danger" @click="remove(wf)">删除</text>
+          <view class="wf-act wf-act--danger" @click="remove(wf)">
+            <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+            <text>删除</text>
+          </view>
         </view>
       </view>
     </block>
@@ -379,9 +391,18 @@ const openRunDetail = async (runId) => {
 }
 .wf-act {
   flex: 1;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
   font-size: 24rpx;
   color: #4B5563;
+}
+.wf-act__icon {
+  width: 30rpx;
+  height: 30rpx;
+  fill: currentColor;
+  flex-shrink: 0;
 }
 .wf-act--primary { color: #3B82F6; font-weight: 500; }
 .wf-act--danger { color: #EF4444; }

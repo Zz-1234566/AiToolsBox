@@ -40,7 +40,9 @@
             <view class="fav-tool__btn" @click="openTool(item)">
               <text>去使用</text>
             </view>
-            <view class="fav-tool__cancel" @click="onCancelTool(item)">取消</view>
+            <view class="fav-tool__cancel" @click="onCancelTool(item)">
+              <text>取消收藏</text>
+            </view>
           </view>
         </view>
       </view>
@@ -220,23 +222,23 @@ const onCancel = (item) => {
 
 .fav-grid {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 24rpx;
   padding: 0 32rpx;
 }
 .fav-tool {
-  width: calc(50% - 12rpx);
+  width: 100%;
   background: #fff;
   border-radius: 24rpx;
-  padding: 24rpx;
+  padding: 28rpx;
   box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
   border: 2rpx solid #F3F4F6;
   box-sizing: border-box;
 }
-.fav-tool__top { display: flex; gap: 16rpx; align-items: center; }
+.fav-tool__top { display: flex; gap: 20rpx; align-items: center; }
 .fav-tool__name {
   flex: 1;
-  font-size: 26rpx;
+  font-size: 30rpx;
   font-weight: 600;
   color: #111827;
 }
@@ -245,37 +247,35 @@ const onCancel = (item) => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: #9CA3AF;
-  margin-top: 12rpx;
+  margin-top: 14rpx;
   line-height: 1.5;
-  min-height: 66rpx;
 }
 .fav-tool__acts {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-top: 16rpx;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+.fav-tool__btn,
+.fav-tool__cancel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 64rpx;
+  border-radius: 9999rpx;
+  font-size: 24rpx;
+  white-space: nowrap;
 }
 .fav-tool__btn {
-  display: inline-flex;
-  align-items: center;
-  height: 52rpx;
-  padding: 0 24rpx;
-  border-radius: 9999rpx;
   background: #EFF6FF;
   color: #3B82F6;
-  font-size: 22rpx;
 }
 .fav-tool__cancel {
-  display: inline-flex;
-  align-items: center;
-  height: 52rpx;
-  padding: 0 24rpx;
-  border-radius: 9999rpx;
   background: #FEF2F2;
   color: #EF4444;
-  font-size: 22rpx;
 }
 
 .fav-prompt {
