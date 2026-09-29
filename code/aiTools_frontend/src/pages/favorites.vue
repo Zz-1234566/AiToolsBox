@@ -36,8 +36,11 @@
             <text class="fav-tool__name">{{ item.toolName }}</text>
           </view>
           <text class="fav-tool__desc">{{ item.toolDesc || '暂无描述' }}</text>
-          <view class="fav-tool__btn" @click="openTool(item)">
-            <text>去使用</text>
+          <view class="fav-tool__acts">
+            <view class="fav-tool__btn" @click="openTool(item)">
+              <text>去使用</text>
+            </view>
+            <view class="fav-tool__cancel" @click="onCancelTool(item)">取消</view>
           </view>
         </view>
       </view>
@@ -129,6 +132,22 @@ onShow(() => {
 /** 去使用：跳转到该工具详情页 */
 const openTool = (item) => {
   uni.navigateTo({ url: `/pages/tool-common?id=${item.toolCode}` })
+}
+
+/** 取消收藏工具 */
+const onCancelTool = (item) => {
+  uni.showModal({
+    title: '取消收藏',
+    content: `确定取消收藏「${item.toolName || '该工具'}」吗？`,
+    success: async (res) => {
+      if (!res.confirm) return
+      try {
+        await favoriteRemoveApi('tool', item.targetId)
+        list.value = list.value.filter(i => i.id !== item.id)
+        uni.showToast({ title: '已取消收藏', icon: 'none' })
+      } catch (e) { /* request.js 已统一提示 */ }
+    }
+  })
 }
 
 /** 取消收藏提示词 */
@@ -232,6 +251,12 @@ const onCancel = (item) => {
   line-height: 1.5;
   min-height: 66rpx;
 }
+.fav-tool__acts {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
 .fav-tool__btn {
   display: inline-flex;
   align-items: center;
@@ -241,8 +266,16 @@ const onCancel = (item) => {
   background: #EFF6FF;
   color: #3B82F6;
   font-size: 22rpx;
-  margin-top: 16rpx;
-  align-self: flex-start;
+}
+.fav-tool__cancel {
+  display: inline-flex;
+  align-items: center;
+  height: 52rpx;
+  padding: 0 24rpx;
+  border-radius: 9999rpx;
+  background: #FEF2F2;
+  color: #EF4444;
+  font-size: 22rpx;
 }
 
 .fav-prompt {

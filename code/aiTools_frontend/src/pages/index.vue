@@ -127,7 +127,9 @@
 
 <script setup>
 import { ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
+import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 
 // tools.js icon 字段 → 首页可渲染的 iconType（共用映射）
 const ICON_TYPE_MAP = {
@@ -184,8 +186,28 @@ function goToTool(id) {
 }
 function toggleFav(id) {
   const t = hotTools.find(x => x.id === id)
-  if (t) t.favored = !t.favored
+  if (!t) return
+  const next = !t.favored
+  // 乐观更新
+  t.favored = next
+  const call = next ? favoriteAddApi('tool', id) : favoriteRemoveApi('tool', id)
+  call.catch(() => {
+    t.favored = !next // 失败回滚
+  })
 }
+
+/** 拉取当前用户已收藏的工具编码集合，回填 favored */
+async function loadFavorites() {
+  try {
+    const res = await favoriteListApi('tool')
+    const set = new Set((res.data || []).map(f => f.targetId))
+    hotTools.forEach(t => { t.favored = set.has(t.id) })
+  } catch (e) { /* 未登录 / 请求失败：保持默认未收藏 */ }
+}
+
+onShow(() => {
+  loadFavorites()
+})
 </script>
 
 <style lang="scss" scoped>

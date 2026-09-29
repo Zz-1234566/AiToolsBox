@@ -53,11 +53,11 @@
               </svg>
               <text>{{ tool.viewCount }}</text>
             </view>
-            <view class="stats-item">
+            <view class="stats-item stats-fav" :class="{ 'stats-fav--on': tool.favored }" @click.stop="toggleFav(tool.id)">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
                 <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
               </svg>
-              <text>{{ tool.favCount }}</text>
+              <text>{{ tool.favored ? '已收藏' : '收藏' }}</text>
             </view>
           </view>
         </view>
@@ -69,7 +69,9 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
 import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
+import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 
 const tabs = [
   { code: 'all', name: '全部' },
@@ -135,6 +137,29 @@ const filteredTools = computed(() => {
 const goToTool = (id) => {
   uni.navigateTo({ url: `/pages/tool-common?id=${id}` })
 }
+
+/** 收藏：点击同步后端（乐观更新） */
+function toggleFav(id) {
+  const t = allTools.find(x => x.id === id)
+  if (!t) return
+  const next = !t.favored
+  t.favored = next
+  const call = next ? favoriteAddApi('tool', id) : favoriteRemoveApi('tool', id)
+  call.catch(() => { t.favored = !next })
+}
+
+/** 回填已收藏状态 */
+async function loadFavorites() {
+  try {
+    const res = await favoriteListApi('tool')
+    const set = new Set((res.data || []).map(f => f.targetId))
+    allTools.forEach(t => { t.favored = set.has(t.id) })
+  } catch (e) { /* 未登录 / 失败：保持未收藏 */ }
+}
+
+onShow(() => {
+  loadFavorites()
+})
 const goBack = () => {
   // #ifdef H5
   if (window.history.length > 1) {
@@ -279,6 +304,19 @@ const goSearch = () => {
   display: flex;
   align-items: center;
   gap: 6rpx;
+}
+/* 收藏按钮：默认灰，已收藏为主题色 */
+.stats-fav {
+  padding: 4rpx 16rpx;
+  border-radius: 9999rpx;
+  background: #F3F4F6;
+  color: #9CA3AF;
+  transition: all 0.15s;
+}
+.stats-fav--on {
+  background: #FEF3C7;
+  color: #F59E0B;
+  font-weight: 500;
 }
 
 /* ===== Tool Icon ===== */

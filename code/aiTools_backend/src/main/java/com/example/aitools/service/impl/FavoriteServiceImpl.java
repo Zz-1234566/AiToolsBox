@@ -75,19 +75,8 @@ public class FavoriteServiceImpl implements FavoriteService {
     @Override
     public void add(Long userId, String targetType, String targetId) {
         validateType(targetType);
-        LambdaQueryWrapper<UserFavorite> w = new LambdaQueryWrapper<>();
-        w.eq(UserFavorite::getUserId, userId)
-                .eq(UserFavorite::getTargetType, targetType)
-                .eq(UserFavorite::getTargetId, targetId)
-                .last("LIMIT 1");
-        if (favoriteMapper.selectOne(w) != null) {
-            return; // 已收藏，幂等返回
-        }
-        UserFavorite f = new UserFavorite();
-        f.setUserId(userId);
-        f.setTargetType(targetType);
-        f.setTargetId(targetId);
-        favoriteMapper.insert(f);
+        // 幂等插入：已存在（含被逻辑删除的行）则恢复 dr=0，避免撞唯一索引 uk_user_target
+        favoriteMapper.upsertFavorite(userId, targetType, targetId);
         log.info("[favorite] add userId={} type={} target={}", userId, targetType, targetId);
     }
 
