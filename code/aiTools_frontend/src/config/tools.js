@@ -3,7 +3,7 @@
 
 // 工具分类（模块），code 即 tool_type
 export const CATEGORIES = [
-  { code: 'AI办公助手', tools: ['work-summary', 'doc-keypoint-extract', 'ai-file-reader', 'weekly-report', 'meeting-minutes', 'ocr-recognize'] },
+  { code: 'AI办公助手', tools: ['work-summary', 'doc-keypoint-extract', 'ai-file-reader', 'weekly-report', 'meeting-minutes', 'ocr-recognize', 'doc-to-text', 'audio-transcribe'] },
   { code: '图片创意工具', tools: ['id-photo-bg-change', 'portrait-bg-replace', 'image-compress', 'qr-code-gen'] },
   { code: '效率小工具', tools: ['todo-list', 'pomodoro', 'password-gen'] }
 ]
@@ -135,14 +135,15 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
   'meeting-minutes': {
     name: '会议纪要', icon: 'meeting', category: 'AI办公助手', realized: true,
     desc: '输入会议内容，AI 帮你整理会议核心结论和行动项。',
-    inputTypes: ['text', 'file'], defaultInput: 'text',
-    placeholder: '请输入会议内容或语音转写文字...',
+    // 已移除录音上传：转写能力解耦为独立节点/工具（audio-transcribe / doc-to-text）
+    inputTypes: ['text'], defaultInput: 'text',
+    placeholder: '请输入或粘贴会议内容（可先用【录音转写】/【文档转文本】工具准备好文字）...',
     actionText: '整理纪要', resultTitle: '会议纪要', resultPlaceholder: '整理后的会议纪要将在这里显示...',
     validateRules: {
       text:   { file: { type: 'text', min: 1, error: '请输入内容' }, prompt: PROMPT_REQUIRED },
-      file:   { file: { type: 'single', min: 1, error: '请先上传文件' }, prompt: PROMPT_REQUIRED },
-image:  { unsupported: true, error: '该工具请使用文字输入' },
-      audio:  { unsupported: true, error: '音频输入功能开发中' }
+      file:   { unsupported: true, error: '该工具请使用文字输入（文件请先用【文档转文本】）' },
+      image:  { unsupported: true, error: '该工具请使用文字输入' },
+      audio:  { unsupported: true, error: '该工具请使用文字输入（录音请先用【录音转写】）' }
     }
   },
   'ocr-recognize': {
@@ -166,6 +167,32 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
       image:  { token: true, file: { type: 'batch', min: 1, error: '请至少选择 1 个图片' }, prompt: PROMPT_REQUIRED },
       text:   { unsupported: true, error: '该工具请上传图片' },
       file:   { unsupported: true, error: '该工具请上传图片' },
+    }
+  },
+  'doc-to-text': {
+    name: '文档转文本', icon: 'summary', category: 'AI办公助手', realized: true,
+    pureConvert: true,                        // 纯解析工具：不渲染提示词卡片、无提示词校验
+    desc: '上传文档（PDF / Word / TXT）提取纯文本，供会议纪要等工具使用。',
+    inputTypes: ['file'], defaultInput: 'file', fileType: 'document',
+    uploadTitle: '上传文档', uploadDesc: '支持 PDF、Word、TXT 格式',
+    actionText: '提取文本', resultTitle: '提取结果', resultPlaceholder: '提取的文本将在这里显示...',
+    validateRules: {
+      file:   { token: true, file: { type: 'single', min: 1, error: '请先上传文档' } },
+      text:   { unsupported: true, error: '该工具请上传文档' },
+      image:  { unsupported: true, error: '该工具请上传文档' },
+    }
+  },
+  'audio-transcribe': {
+    name: '录音转写', icon: 'meeting', category: 'AI办公助手', realized: true,
+    pureConvert: true,                        // 纯转换工具：提示词后端内置，不渲染提示词卡片
+    desc: '上传录音（MP3 / WAV / M4A），AI 自动转写为文字，供会议纪要等工具使用。',
+    inputTypes: ['file'], defaultInput: 'file', fileType: 'audio',
+    uploadTitle: '上传录音', uploadDesc: '支持 MP3、WAV、M4A 等格式',
+    actionText: '开始转写', resultTitle: '转写结果', resultPlaceholder: '转写文字将在这里显示...',
+    validateRules: {
+      file:   { token: true, file: { type: 'single', min: 1, error: '请先上传录音' } },
+      text:   { unsupported: true, error: '该工具请上传录音' },
+      image:  { unsupported: true, error: '该工具请上传录音' },
     }
   },
   'id-photo-bg-change': {

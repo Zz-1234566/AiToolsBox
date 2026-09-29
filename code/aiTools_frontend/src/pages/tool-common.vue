@@ -67,6 +67,29 @@
       </view>
     </block>
 
+    <!-- 纯转换工具（文档转文本 / 录音转写）：单文件上传，无提示词 -->
+    <block v-if="isPureConvert">
+      <view class="upload-card" @click="onPureConvertPick">
+        <view class="upload-card__icon">
+          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        </view>
+        <text class="upload-card__title">{{ toolInfo.uploadTitle || '点击上传文件' }}</text>
+        <text class="upload-card__desc">{{ toolInfo.uploadDesc || '' }}</text>
+      </view>
+      <view v-if="pureConvertFile" class="file-list">
+        <view class="file-item">
+          <view class="file-item__icon">{{ pureConvertFile.name.charAt(0).toUpperCase() }}</view>
+          <view class="file-item__body">
+            <text class="file-item__name">{{ pureConvertFile.name }}</text>
+            <text class="file-item__meta">已选择</text>
+          </view>
+          <view class="file-item__close" @click="pureConvertFile = null">
+            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </view>
+        </view>
+      </view>
+    </block>
+
     <!-- 文档重点提取 / AI 文件解读：上传 + 文件列表（共用） -->
     <block v-if="toolId === 'doc-keypoint-extract' || toolId === 'ai-file-reader'">
       <view class="upload-card" @click="onFilePickerClick">
@@ -537,6 +560,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { BASE_URL } from '@/config/env'
 import { onLoad } from '@dcloudio/uni-app'
 import { requireLogin } from '@/utils/auth'
 import PageHeader from '@/components/PageHeader.vue'
@@ -905,10 +929,41 @@ const aiRequirementPlaceholder = computed(() => {
 // 是否是支持多文件批量上传的工具（tools.js 中定义了 fileRule）
 const isBatchTool = computed(() => !!toolInfo.value.fileRule)
 
+// 纯转换工具（文档转文本 / 录音转写）：单文件上传，无提示词（提示词后端内置或纯解析）
+const isPureConvert = computed(() => !!toolInfo.value.pureConvert)
+
+// 纯转换工具选中的单个文件（{ name, file } —— file 为 H5 File 对象，App 端为 null 走路径）
+const pureConvertFile = ref(null)
+
+/** 选择文件（纯转换工具）：H5 用原生 input，App 用 chooseMessageFile */
+const onPureConvertPick = () => {
+  const isAudio = toolId.value === 'audio-transcribe'
+  // #ifdef H5
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : '.pdf,.docx,.txt'
+  input.onchange = () => {
+    const f = (input.files || [])[0]
+    if (f) pureConvertFile.value = { name: f.name, file: f }
+  }
+  input.click()
+  // #endif
+  // #ifndef H5
+  uni.chooseMessageFile({
+    count: 1,
+    type: isAudio ? 'audio' : 'file',
+    success: (res) => {
+      const f = (res.tempFiles || [])[0]
+      if (f) pureConvertFile.value = { name: f.name || f.path, file: null, path: f.path }
+    }
+  })
+  // #endif
+}
+
 // 通用校验（按工具 + 输入方式）：返回第一个失败的错误文案，null = 通过
 // 在 handleGenerate 入口前置校验，不通过直接 return + toast，不进 if-else 分支
 const runValidation = () => validate(toolId.value, currentInputType.value, {
-  filePath: filePath.value,
+  filePath: isPureConvert.value ? (pureConvertFile.value ? 'selected' : '') : filePath.value,
   batchFiles: (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : [],
   inputText: inputText.value,
   promptFormat: promptFormatText.value,
@@ -1490,7 +1545,38 @@ const handleGenerate = async () => {
   try {
     const id = toolId.value
 
-    if (id === 'doc-keypoint-extract') {
+    if (isPureConvert.value) {
+      // 纯转换工具（文档转文本 / 录音转写）：单文件上传 → 调对应端点 → 纯文本结果
+      const picked = pureConvertFile.value
+      if (!picked) {
+        uni.showToast({ title: '请先选择文件', icon: 'none' })
+        return
+      }
+      const url = id === 'audio-transcribe'
+        ? '/api/ai-office/meeting-minutes/transcribe'
+        : '/api/ai-office/doc-to-text'
+      const upRes = await new Promise((resolve, reject) => {
+        uni.uploadFile({
+          url: BASE_URL + url,
+          filePath: picked.path || picked.file,
+          name: 'file',
+          header: { Authorization: 'Bearer ' + (uni.getStorageSync('token') || '') },
+          success: resolve,
+          fail: reject
+        })
+      })
+      let body = {}
+      try { body = JSON.parse(upRes.data || '{}') } catch (e) { /* ignore */ }
+      if (body.code !== 200) {
+        uni.showToast({ title: body.message || '转换失败', icon: 'none', duration: 2500 })
+        resultContent.value = body.message || '转换失败'
+        return
+      }
+      const text = (body.data && (body.data.text || '')) || ''
+      resultContent.value = text
+      if (!text) uni.showToast({ title: '未提取到内容', icon: 'none' })
+
+    } else if (id === 'doc-keypoint-extract') {
       // 文档重点提取：B2 多文件批量（轮询方案）
       // 流程：batchUpload 拿 batchId → 轮询 batchCompleted 拉增量 items → 渲染到 BatchResultCards
       const docBatchFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
