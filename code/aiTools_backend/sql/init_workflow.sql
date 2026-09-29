@@ -113,7 +113,7 @@ UPDATE `sys_aitools_tool` SET `input_type` = 'none',      `output_type` = 'text'
 INSERT INTO `sys_aitools_tool`
     (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `input_type`, `output_type`, `sort_no`, `status`, `dr`)
 VALUES
-    ('audio-transcribe', 'AI办公助手', '录音转写', 'office', '上传录音自动转写为文字，供会议纪要等工具使用', '', 'audio', 'text', 15, 1, 0)
+    ('audio-transcribe', 'AI办公助手', '录音转写', 'office', '上传录音自动转写为文字，供会议纪要等工具使用', '', 'audio', 'text', 14, 1, 0)
 ON DUPLICATE KEY UPDATE
     `tool_name` = VALUES(`tool_name`), `input_type` = VALUES(`input_type`),
     `output_type` = VALUES(`output_type`), `sort_no` = VALUES(`sort_no`);
@@ -121,7 +121,7 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO `sys_aitools_tool`
     (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `input_type`, `output_type`, `sort_no`, `status`, `dr`)
 VALUES
-    ('doc-to-text', 'AI办公助手', '文档转文本', 'office', '上传文档（PDF/Word/TXT）提取纯文本，供会议纪要等工具使用', '', 'document', 'text', 16, 1, 0)
+    ('doc-to-text', 'AI办公助手', '文档转文本', 'office', '上传文档（PDF/Word/TXT）提取纯文本，供会议纪要等工具使用', '', 'document', 'text', 15, 1, 0)
 ON DUPLICATE KEY UPDATE
     `tool_name` = VALUES(`tool_name`), `input_type` = VALUES(`input_type`),
     `output_type` = VALUES(`output_type`), `sort_no` = VALUES(`sort_no`);
@@ -129,10 +129,14 @@ ON DUPLICATE KEY UPDATE
 INSERT INTO `sys_aitools_tool`
     (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `input_type`, `output_type`, `sort_no`, `status`, `dr`)
 VALUES
-    ('ai-file-reader', 'AI办公助手', 'AI 文件解读', 'office', '上传任意文件（图片/PDF/Word/TXT），AI 自动识别内容并解读', '', 'image,document,text', 'text', 17, 1, 0)
+    ('ai-file-reader', 'AI办公助手', 'AI 文件解读', 'office', '上传任意文件（图片/PDF/Word/TXT），AI 自动识别内容并解读', '', 'image,document,text', 'text', 13, 1, 0)
 ON DUPLICATE KEY UPDATE
     `tool_name` = VALUES(`tool_name`), `input_type` = VALUES(`input_type`),
-    `output_type` = VALUES(`output_type`), `sort_no` = VALUES(`sort_no`);
+    `output_type` = VALUES(`output_type`);
+-- 注意：ai-file-reader 已存在于库中（sort_no=13），ON DUPLICATE 分支刻意不更新 sort_no，
+--       避免把它挪到末尾；此处只补 input_type / output_type 两列。
+-- 显式修正排序号（修复历史上被误改成 17 的库）：ai-file-reader 归位 13
+UPDATE `sys_aitools_tool` SET `sort_no` = 13 WHERE `tool_code` = 'ai-file-reader';
 
 -- ============================================================================
 -- 说明：提示词处理
