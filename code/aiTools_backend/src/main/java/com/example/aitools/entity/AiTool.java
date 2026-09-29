@@ -25,6 +25,12 @@ public class AiTool implements Serializable {
 
     private String icon;
 
+    /** 输入类型（逗号分隔）：none/text/audio/document/image/file —— 工作流节点连线匹配用 */
+    private String inputType;
+
+    /** 输出类型（逗号分隔）：none/text/image */
+    private String outputType;
+
     private Integer sortNo;
 
     private Integer status;

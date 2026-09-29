@@ -117,4 +117,15 @@ public class Constants {
 
     /** 单次批量上传总大小上限（字节）：200MB */
     public static final long BATCH_MAX_TOTAL_SIZE = 200L * 1024 * 1024;
+
+    // ==================== 工作流 ====================
+
+    /** 工作流最大层数（拓扑分层后 level 不得超过此值） */
+    public static final int WORKFLOW_MAX_DEPTH = 5;
+
+    /** 工作流同层节点并行执行上限 */
+    public static final int WORKFLOW_MAX_PARALLEL = 4;
+
+    /** 工作流名称最大长度 */
+    public static final int WORKFLOW_NAME_MAX_LENGTH = 64;
 }
