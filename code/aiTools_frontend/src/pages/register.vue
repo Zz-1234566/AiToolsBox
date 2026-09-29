@@ -1,98 +1,84 @@
 <template>
-  <view class="page-container">
-    <view class="register-card animate-fade-in-up">
-      <!-- 标题 -->
-      <view class="title-section">
-        <text class="title">智汇工具箱</text>
-        <text class="subtitle">创建新账号</text>
+  <view class="auth-wrap">
+    <!-- 返回 -->
+    <view class="auth-back" @click="goBack">
+      <text class="auth-back__icon">‹</text>
+    </view>
+
+    <view class="auth-logo">AIT</view>
+    <text class="auth-brand">AI Tools Box</text>
+
+    <text class="auth-title">创建账号</text>
+    <text class="auth-sub">欢迎加入 AI Tools Box</text>
+
+    <!-- 邮箱 -->
+    <view class="auth-field" :class="{ shake: shakeField === 'email' }">
+      <text class="af-icon">✉️</text>
+      <view class="af-body">
+        <text class="af-label">邮箱</text>
+        <input class="af-input" v-model="form.email" placeholder="请输入邮箱" placeholder-class="af-placeholder" />
       </view>
+    </view>
 
-      <!-- 表单 -->
-      <view class="form-section">
-        <view class="input-group" :class="{ shake: shakeField === 'username' }">
-          <text class="input-label">用户名</text>
-          <input
-            class="input-field"
-            type="text"
-            v-model="form.username"
-            placeholder="请输入用户名"
-            placeholder-class="placeholder"
-          />
-        </view>
-
-        <view class="input-group" :class="{ shake: shakeField === 'password' }">
-          <text class="input-label">密码</text>
-          <input
-            class="input-field"
-            type="password"
-            v-model="form.password"
-            placeholder="请输入密码"
-            placeholder-class="placeholder"
-          />
-        </view>
-
-        <view class="input-group" :class="{ shake: shakeField === 'confirmPassword' }">
-          <text class="input-label">确认密码</text>
-          <input
-            class="input-field"
-            type="password"
-            v-model="form.confirmPassword"
-            placeholder="请再次输入密码"
-            placeholder-class="placeholder"
-          />
-        </view>
-
-        <view class="input-group" :class="{ shake: shakeField === 'code' }">
-          <text class="input-label">邮箱验证码</text>
-          <view class="code-row">
-            <input
-              class="input-field code-input"
-              type="text"
-              v-model="form.code"
-              placeholder="请输入邮箱验证码"
-              placeholder-class="placeholder"
-            />
-            <button
-              class="code-btn"
-              :disabled="countdown > 0 || sendingCode"
-              @click="handleSendCode"
-            >
-              {{ countdown > 0 ? `重新发送(${countdown}s)` : '发送验证码' }}
-            </button>
-          </view>
-        </view>
-
-        <view class="input-group" :class="{ shake: shakeField === 'email' }">
-          <text class="input-label">邮箱</text>
-          <input
-            class="input-field"
-            type="text"
-            v-model="form.email"
-            placeholder="请输入邮箱（用于找回账号）"
-            placeholder-class="placeholder"
-          />
-        </view>
-
-        <button class="btn-primary press-scale" @click="handleRegister" :disabled="loading">
-          {{ loading ? '注册中...' : '注 册' }}
-        </button>
+    <!-- 验证码 -->
+    <view class="auth-field" :class="{ shake: shakeField === 'code' }">
+      <text class="af-icon">🛡</text>
+      <view class="af-body">
+        <text class="af-label">验证码</text>
+        <input class="af-input" v-model="form.code" placeholder="请输入验证码" placeholder-class="af-placeholder" />
       </view>
+      <text class="af-code" :class="{ 'af-code--disabled': countdown > 0 || sendingCode }" @click="handleSendCode">
+        {{ countdown > 0 ? countdown + 's' : '获取验证码' }}
+      </text>
+    </view>
 
-      <!-- 底部链接 -->
-      <view class="footer-link">
-        <text class="link-text">已有账号？</text>
-        <text class="link-action" @click="goToLogin">去登录</text>
+    <!-- 用户名 -->
+    <view class="auth-field" :class="{ shake: shakeField === 'username' }">
+      <text class="af-icon">👤</text>
+      <view class="af-body">
+        <text class="af-label">用户名</text>
+        <input class="af-input" v-model="form.username" placeholder="请输入用户名" placeholder-class="af-placeholder" />
       </view>
+    </view>
 
-      <!-- 注册成功弹窗 -->
-      <view class="success-modal" v-if="showSuccess">
-        <view class="success-content animate-scale-in">
-          <text class="success-title">注册成功</text>
-          <text class="success-desc">你的账号是：</text>
-          <text class="success-account">{{ registeredAccount }}</text>
-          <text class="success-hint">请牢记你的账号，登录时需要使用</text>
-          <button class="btn-success press-scale" @click="goToLogin">去登录</button>
-        </view>
+    <!-- 设置密码 -->
+    <view class="auth-field" :class="{ shake: shakeField === 'password' }">
+      <text class="af-icon">🔒</text>
+      <view class="af-body">
+        <text class="af-label">设置密码</text>
+        <input class="af-input" :type="showPwd ? 'text' : 'password'" v-model="form.password" placeholder="请输入 6-16 位密码" placeholder-class="af-placeholder" />
+      </view>
+      <text class="af-eye" @click="showPwd = !showPwd">{{ showPwd ? '🙈' : '👁' }}</text>
+    </view>
+
+    <!-- 确认密码 -->
+    <view class="auth-field" :class="{ shake: shakeField === 'confirmPassword' }">
+      <text class="af-icon">🔒</text>
+      <view class="af-body">
+        <text class="af-label">确认密码</text>
+        <input class="af-input" :type="showPwd2 ? 'text' : 'password'" v-model="form.confirmPassword" placeholder="请再次输入密码" placeholder-class="af-placeholder" />
+      </view>
+      <text class="af-eye" @click="showPwd2 = !showPwd2">{{ showPwd2 ? '🙈' : '👁' }}</text>
+    </view>
+
+    <view class="btn-solid btn-register" :class="{ 'btn-solid--disabled': loading }" @click="loading ? null : handleRegister()">
+      {{ loading ? '注册中...' : '注册' }}
+    </view>
+
+    <view class="auth-foot">
+      <text>已有账号？</text>
+      <text class="auth-foot__link" @click="goToLoginPage">立即登录</text>
+    </view>
+
+    <!-- 注册成功弹层 -->
+    <view v-if="showSuccess" class="success-mask">
+      <view class="success-card">
+        <view class="success-icon">✓</view>
+        <text class="success-title">注册成功</text>
+        <text class="success-tip">你的账号是</text>
+        <text class="success-account">{{ registeredAccount }}</text>
+        <text class="success-note">请牢记账号，可用于登录与找回密码</text>
+        <view class="btn-solid" @click="goToLogin">去登录</view>
       </view>
     </view>
   </view>
@@ -117,6 +103,8 @@ const registeredAccount = ref('')
 const shakeField = ref('')
 const countdown = ref(0)
 const sendingCode = ref(false)
+const showPwd = ref(false)
+const showPwd2 = ref(false)
 let countdownTimer = null
 
 // 页面卸载时清理倒计时定时器
@@ -139,6 +127,7 @@ const triggerShake = (field) => {
 
 // 发送邮箱验证码：校验邮箱后触发 60s 倒计时
 const handleSendCode = async () => {
+  if (countdown.value > 0 || sendingCode.value) return
   if (!form.value.email) {
     triggerShake('email')
     uni.showToast({ title: '请输入邮箱', icon: 'none' })
@@ -238,229 +227,179 @@ const goToLogin = () => {
   uni.setStorageSync('pendingAccount', registeredAccount.value)
   uni.navigateTo({ url: `/pages/login?account=${registeredAccount.value}` })
 }
+
+const goToLoginPage = () => {
+  uni.navigateTo({ url: '/pages/login' })
+}
+
+const goBack = () => {
+  uni.navigateBack({ delta: 1 })
+}
 </script>
 
 <style lang="scss" scoped>
-.page-container {
+@import '@/styles/redesign.scss';
+
+.auth-wrap {
   min-height: 100vh;
-  background-color: $bg-color;
+  background: #fff;
+  padding: 0 40rpx 48rpx;
+  box-sizing: border-box;
+}
+
+.auth-back {
+  padding: 24rpx 0 8rpx;
+}
+.auth-back__icon {
+  font-size: 56rpx;
+  color: #111827;
+  line-height: 1;
+}
+
+.auth-logo {
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 40rpx;
+  background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
+  color: #fff;
+  font-size: 52rpx;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: $spacing-lg;
+  margin: 8rpx auto 24rpx;
 }
-
-.register-card {
-  width: 100%;
-  max-width: 680rpx;
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  padding: $spacing-xl $spacing-lg;
-  box-shadow: $shadow-float;
-  position: relative;
-}
-
-.title-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: $spacing-xl;
-
-  .title {
-    font-size: $font-size-xxl;
-    font-weight: 700;
-    color: $text-primary;
-    margin-bottom: $spacing-sm;
-  }
-
-  .subtitle {
-    font-size: $font-size-md;
-    color: $text-tertiary;
-  }
-}
-
-.form-section {
-  margin-bottom: $spacing-lg;
-}
-
-.input-group {
-  margin-bottom: $spacing-md;
-
-  .input-label {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-    margin-bottom: $spacing-xs;
-    display: block;
-  }
-
-  .input-field {
-    width: 100%;
-    height: 96rpx;
-    padding: 0 $spacing-md;
-    font-size: $font-size-md;
-    color: $text-primary;
-    background-color: $bg-gray;
-    border-radius: $radius-md;
-    border: 2rpx solid transparent;
-    transition: border-color 0.2s;
-
-    &:focus {
-      border-color: $text-primary;
-    }
-  }
-}
-
-.placeholder {
-  color: $text-tertiary;
-  font-size: $font-size-md;
-}
-
-.code-row {
-  display: flex;
-  align-items: center;
-
-  .code-input {
-    flex: 1;
-    width: auto;
-  }
-
-  .code-btn {
-    flex-shrink: 0;
-    height: 96rpx;
-    line-height: 96rpx;
-    padding: 0 $spacing-md;
-    margin-left: $spacing-sm;
-    font-size: $font-size-sm;
-    font-weight: 600;
-    color: #FFFFFF;
-    background-color: $text-primary;
-    border-radius: $radius-md;
-    border: none;
-    transition: opacity 0.2s;
-
-    &:active {
-      opacity: 0.8;
-    }
-
-    &[disabled] {
-      opacity: 0.5;
-    }
-  }
-}
-.btn-primary {
-  width: 100%;
-  height: 96rpx;
-  line-height: 96rpx;
+.auth-brand {
+  display: block;
   text-align: center;
-  font-size: $font-size-lg;
+  font-size: 32rpx;
   font-weight: 600;
-  color: #FFFFFF;
-  background-color: $text-primary;
-  border-radius: $radius-md;
-  border: none;
-  margin-top: $spacing-md;
-  transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  &:active {
-    opacity: 0.8;
-  }
-
-  &[disabled] {
-    opacity: 0.5;
-  }
+  color: #111827;
+  margin-bottom: 64rpx;
 }
 
-.footer-link {
+.auth-title {
+  display: block;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8rpx;
+}
+.auth-sub {
+  display: block;
+  font-size: 28rpx;
+  color: #9CA3AF;
+  margin-bottom: 40rpx;
+}
+
+.auth-field {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  height: 112rpx;
+  padding: 0 32rpx;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 24rpx;
+  margin-bottom: 24rpx;
+  background: #fff;
+}
+.af-icon { font-size: 36rpx; flex-shrink: 0; }
+.af-body { flex: 1; min-width: 0; }
+.af-label {
+  display: block;
+  font-size: 22rpx;
+  color: #9CA3AF;
+  margin-bottom: 4rpx;
+}
+.af-input {
+  width: 100%;
+  font-size: 28rpx;
+  color: #111827;
+  background: transparent;
+}
+.af-placeholder { color: #D1D5DB; }
+.af-eye { font-size: 34rpx; flex-shrink: 0; }
+.af-code {
+  font-size: 26rpx;
+  color: #3B82F6;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.af-code--disabled { color: #9CA3AF; }
+
+.btn-register { margin-top: 40rpx; }
+
+.auth-foot {
   display: flex;
   align-items: center;
   justify-content: center;
-
-  .link-text {
-    font-size: $font-size-sm;
-    color: $text-tertiary;
-  }
-
-  .link-action {
-    font-size: $font-size-sm;
-    color: $text-primary;
-    font-weight: 600;
-    margin-left: 8rpx;
-
-    &:active {
-      opacity: 0.7;
-    }
-  }
+  margin-top: 40rpx;
+  font-size: 26rpx;
+  color: #9CA3AF;
+}
+.auth-foot__link {
+  color: #3B82F6;
+  font-weight: 600;
+  margin-left: 6rpx;
 }
 
-.success-modal {
+.shake { animation: shake-x 0.4s; }
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-12rpx); }
+  75% { transform: translateX(12rpx); }
+}
+
+/* 注册成功弹层 */
+.success-mask {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 999;
+  z-index: 1000;
+  padding: 0 60rpx;
 }
-
-.success-content {
-  width: 580rpx;
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  padding: $spacing-xl;
+.success-card {
+  width: 100%;
+  background: #fff;
+  border-radius: 32rpx;
+  padding: 56rpx 40rpx 40rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-
-  .success-title {
-    font-size: $font-size-xl;
-    font-weight: 700;
-    color: $text-primary;
-    margin-bottom: $spacing-md;
-  }
-
-  .success-desc {
-    font-size: $font-size-md;
-    color: $text-secondary;
-    margin-bottom: $spacing-sm;
-  }
-
-  .success-account {
-    font-size: $font-size-xl;
-    font-weight: 700;
-    color: $text-primary;
-    background-color: $bg-gray;
-    padding: $spacing-sm $spacing-lg;
-    border-radius: $radius-md;
-    margin-bottom: $spacing-md;
-    letter-spacing: 2rpx;
-  }
-
-  .success-hint {
-    font-size: $font-size-sm;
-    color: $text-tertiary;
-    margin-bottom: $spacing-lg;
-    text-align: center;
-  }
-
-  .btn-success {
-    width: 100%;
-    height: 88rpx;
-    line-height: 88rpx;
-    text-align: center;
-    font-size: $font-size-md;
-    font-weight: 600;
-    color: #FFFFFF;
-    background-color: $text-primary;
-    border-radius: $radius-md;
-    border: none;
-    transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-
-    &:active {
-      opacity: 0.8;
-    }
-  }
+}
+.success-icon {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #34D399, #10B981);
+  color: #fff;
+  font-size: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32rpx;
+}
+.success-title {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 24rpx;
+}
+.success-tip { font-size: 26rpx; color: #9CA3AF; }
+.success-account {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #3B82F6;
+  letter-spacing: 2rpx;
+  margin: 12rpx 0 16rpx;
+}
+.success-note {
+  font-size: 24rpx;
+  color: #9CA3AF;
+  margin-bottom: 40rpx;
+  text-align: center;
 }
 </style>

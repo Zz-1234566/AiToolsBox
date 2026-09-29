@@ -1,107 +1,66 @@
 <template>
-  <view class="page page--no-tabbar">
-    <!-- 顶栏 -->
-    <view class="topbar">
-      <text class="topbar__title">工作流</text>
-      <view class="topbar__spacer"></view>
-      <view v-if="!editing" class="btn-create" @click="startCreate">
-        <text class="btn-create__label">创建工作流</text>
-      </view>
-      <view v-else class="btn-create" @click="cancelEdit">
-        <text class="btn-create__label">取消</text>
+  <view class="wf-page">
+    <!-- 头部 -->
+    <view class="wf-head">
+      <text class="wf-head__title">工作流</text>
+      <view class="wf-create" @click="goCreate">
+        <text>＋ 创建工作流</text>
       </view>
     </view>
 
-    <scroll-view scroll-y class="page-content">
-      <!-- ============ 编辑态：节点编排 ============ -->
-      <block v-if="editing">
-        <view class="card">
-          <input class="input-name" v-model="form.name" placeholder="工作流名称，如：会议纪要生成流" :maxlength="64" />
-          <input class="input-desc" v-model="form.description" placeholder="描述（可选）" :maxlength="255" />
+    <!-- 列表 -->
+    <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
+    <view v-else-if="workflows.length === 0" class="redesign-empty">
+      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">🔗</text></view>
+      <text class="redesign-empty__text">还没有创建工作流</text>
+      <view class="wf-create" @click="goCreate"><text>去创建</text></view>
+    </view>
 
-          <view class="section-label">节点（按依赖顺序自动分层，最多 5 层）</view>
-
-          <view v-for="(node, idx) in form.nodes" :key="idx" class="node-edit">
-            <view class="node-edit__head">
-              <text class="node-edit__idx">{{ idx + 1 }}</text>
-              <picker class="node-edit__picker" :range="toolNames" :value="toolIndexOf(node.nodeRef)"
-                      @change="(e) => onToolChange(idx, e)">
-                <view class="picker-value">{{ toolName(node.nodeRef) || '选择工具' }}</view>
-              </picker>
-              <view class="node-edit__del" @click="removeNode(idx)">删除</view>
-            </view>
-            <view class="node-edit__types" v-if="toolByCode(node.nodeRef)">
-              <text class="type-tag">输入：{{ toolByCode(node.nodeRef).inputType || '—' }}</text>
-              <text class="type-tag">输出：{{ toolByCode(node.nodeRef).outputType || '—' }}</text>
-            </view>
-            <!-- 依赖选择：多选上游节点 -->
-            <view class="node-edit__deps">
-              <text class="deps-label">上游依赖（不选=源节点，运行时需填输入）</text>
-              <view class="deps-list">
-                <view v-for="(other, oi) in form.nodes" :key="oi"
-                      v-if="oi !== idx"
-                      class="dep-chip" :class="{ 'dep-chip--on': node.deps.includes(nodeIdOf(oi)) }"
-                      @click="toggleDep(idx, oi)">
-                  {{ nodeIdOf(oi) }}
-                </view>
-              </view>
-            </view>
+    <block v-else>
+      <view v-for="wf in workflows" :key="wf.workflowId" class="wf-card">
+        <view class="wf-card__top">
+          <view class="tool-avatar" :class="'tool-avatar--' + firstIcon(wf)">
+            <text class="ta-emoji">{{ firstEmoji(wf) }}</text>
           </view>
-
-          <view class="btn-add-node" @click="addNode">+ 添加节点</view>
-          <view class="edit-hint" v-if="form.nodes.length">
-            当前 {{ form.nodes.length }} 个节点，预计 {{ previewDepth }} 层
-          </view>
-
-          <view class="btn btn--primary" :disabled="saving" @click="save">保存工作流</view>
-        </view>
-      </block>
-
-      <!-- ============ 列表态 ============ -->
-      <block v-else>
-        <view v-if="listLoading" class="empty">加载中…</view>
-        <view v-else-if="workflows.length === 0" class="empty">
-          还没有工作流，点右上角「创建工作流」开始
-        </view>
-        <view v-for="wf in workflows" :key="wf.workflowId" class="card wf-card">
-          <view class="wf-card__head">
+          <view class="wf-card__main">
             <text class="wf-card__title">{{ wf.name }}</text>
-            <text v-if="wf.lastRunStatus !== null && wf.lastRunStatus !== undefined"
-                  class="wf-card__status" :class="'st-' + wf.lastRunStatus">
-              {{ runStatusLabel(wf.lastRunStatus) }}
-            </text>
-          </view>
-          <view class="wf-card__desc">{{ wf.description || '无描述' }}</view>
-          <view class="wf-card__meta">{{ wf.nodeCount }} 个节点 · {{ wf.maxDepth }} 层 · {{ wf.createTime }}</view>
-          <view class="wf-card__actions">
-            <view class="btn btn--primary btn--sm" @click="openRun(wf)">运行</view>
-            <view class="btn btn--ghost btn--sm" @click="viewRuns(wf)">历史</view>
-            <view class="btn btn--ghost btn--sm" @click="startEdit(wf)">编辑</view>
-            <view class="btn btn--ghost btn--sm" @click="remove(wf)">删除</view>
+            <text class="wf-card__desc">{{ wf.description || '无描述' }}</text>
+            <view class="wf-card__meta">
+              <text class="wf-meta">{{ wf.nodeCount }} 个节点</text>
+              <text class="wf-meta">{{ wf.maxDepth }} 层</text>
+            </view>
+            <text class="wf-card__time">创建：{{ wf.createTime }}</text>
           </view>
         </view>
-      </block>
-    </scroll-view>
+        <view class="wf-card__acts">
+          <text class="wf-act wf-act--primary" @click="openRun(wf)">运行</text>
+          <view class="wf-act__sep"></view>
+          <text class="wf-act" @click="viewRuns(wf)">历史</text>
+          <view class="wf-act__sep"></view>
+          <text class="wf-act" @click="goEdit(wf)">编辑</text>
+          <view class="wf-act__sep"></view>
+          <text class="wf-act wf-act--danger" @click="remove(wf)">删除</text>
+        </view>
+      </view>
+    </block>
 
     <!-- ============ 运行弹窗：填源节点输入 ============ -->
     <view v-if="runVisible" class="mask" @click="runVisible = false">
       <view class="sheet" @click.stop>
-        <view class="sheet__title">运行：{{ runTarget && runTarget.name }}</view>
-        <view class="sheet__desc">请为以下起始节点提供输入（文件已上传或文本已填写）</view>
+        <text class="sheet__title">运行：{{ runTarget && runTarget.name }}</text>
+        <text class="sheet__desc">请为以下起始节点提供输入</text>
         <scroll-view scroll-y class="sheet__body">
           <view v-for="n in sourceNodes" :key="n.nodeId" class="run-node">
-            <view class="run-node__name">{{ n.name }} <text class="run-node__tool">({{ toolName(n.nodeRef) }})</text></view>
-            <!-- 文本类：textarea -->
+            <text class="run-node__name">{{ n.name || n.toolName }}<text class="run-node__tool">（{{ n.toolName }}）</text></text>
             <textarea v-if="isTextInput(n)" class="run-node__text" v-model="runInputs[n.nodeId].text"
-                      placeholder="请输入文本内容" :maxlength="5000" />
-            <!-- 文件类：选择文件 -->
+                      placeholder="请输入文本内容" placeholder-class="wfe-ph" :maxlength="5000" />
             <view v-else class="run-node__file">
               <view class="file-pick" @click="pickFile(n)">选择文件</view>
               <text class="file-name">{{ runInputs[n.nodeId].files.length ? runInputs[n.nodeId].files.length + ' 个文件' : '未选择' }}</text>
             </view>
           </view>
         </scroll-view>
-        <view class="btn btn--primary" :disabled="running" @click="doRun">
+        <view class="btn-solid" :class="{ 'btn-solid--disabled': running }" @click="running ? null : doRun()">
           {{ running ? '运行中…' : '开始运行' }}
         </view>
       </view>
@@ -110,19 +69,17 @@
     <!-- ============ 结果弹窗 ============ -->
     <view v-if="resultVisible" class="mask" @click="resultVisible = false">
       <view class="sheet" @click.stop>
-        <view class="sheet__title">运行结果</view>
-        <view class="sheet__desc">
-          <text :class="'st-' + (runResult && runResult.status)">{{ runResult && runResult.statusLabel }}</text>
-          · 成功 {{ runResult && runResult.successCount }} / 失败 {{ runResult && runResult.failCount }}
-          · {{ runResult && runResult.duration }}ms · {{ runResult && runResult.maxDepth }} 层
-        </view>
+        <text class="sheet__title">运行结果</text>
+        <text class="sheet__desc">
+          {{ runResult && runResult.statusLabel }} · 成功 {{ runResult && runResult.successCount }} / 失败 {{ runResult && runResult.failCount }} · {{ runResult && runResult.duration }}ms
+        </text>
         <scroll-view scroll-y class="sheet__body">
           <view v-for="(nr, nodeId) in (runResult && runResult.nodeResults) || {}" :key="nodeId" class="res-node">
             <view class="res-node__head">
               <text class="res-node__id">{{ nodeId }}</text>
-              <text class="res-node__st" :class="'st-' + nr.status">{{ nr.status === 2 ? '成功' : '失败' }}</text>
+              <text class="res-node__st" :class="nr.status === 2 ? 'st-ok' : 'st-fail'">{{ nr.status === 2 ? '成功' : '失败' }}</text>
             </view>
-            <view v-if="nr.errorMsg" class="res-node__err">{{ nr.errorMsg }}</view>
+            <text v-if="nr.errorMsg" class="res-node__err">{{ nr.errorMsg }}</text>
             <view v-for="(out, oi) in nr.outputs || []" :key="oi" class="res-out">
               <text class="res-out__idx">输出 {{ oi + 1 }}</text>
               <view class="res-out__body">
@@ -137,49 +94,44 @@
     <!-- ============ 历史弹窗 ============ -->
     <view v-if="runsVisible" class="mask" @click="runsVisible = false">
       <view class="sheet" @click.stop>
-        <view class="sheet__title">运行历史</view>
+        <text class="sheet__title">运行历史</text>
         <scroll-view scroll-y class="sheet__body">
-          <view v-if="runs.length === 0" class="empty">暂无运行记录</view>
+          <view v-if="runs.length === 0" class="redesign-empty"><text class="redesign-empty__text">暂无运行记录</text></view>
           <view v-for="r in runs" :key="r.runId" class="run-item">
             <view class="run-item__head">
-              <text :class="'st-' + r.status">{{ r.statusLabel }}</text>
+              <text :class="r.status === 2 ? 'st-ok' : (r.status === 3 ? 'st-part' : 'st-fail')">{{ r.statusLabel }}</text>
               <text class="run-item__time">{{ r.createTime }}</text>
             </view>
-            <view class="run-item__meta">成功 {{ r.successCount }} / 失败 {{ r.failCount }} · {{ r.duration }}ms</view>
-            <view class="run-item__act" @click="openRunDetail(r.runId)">查看详情</view>
+            <text class="run-item__meta">成功 {{ r.successCount }} / 失败 {{ r.failCount }} · {{ r.duration }}ms</text>
+            <text class="run-item__act" @click="openRunDetail(r.runId)">查看详情</text>
           </view>
         </scroll-view>
       </view>
     </view>
 
-    <view class="safe-area-bottom"></view>
+    <view class="safe-bottom"></view>
   </view>
 </template>
 
 <script setup>
-import { ref, computed, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import MarkdownView from '@/components/MarkdownView.vue'
 import { toolListApi } from '@/api/prompt'
 import { uploadFile } from '@/api/request'
 import {
-  workflowSaveApi, workflowListApi, workflowDetailApi, workflowDeleteApi,
+  workflowListApi, workflowDetailApi, workflowDeleteApi,
   workflowRunApi, workflowRunsApi, workflowRunDetailApi
 } from '@/api/workflow'
 
-// ==================== 状态 ====================
 const workflows = ref([])
-const listLoading = ref(false)
-const tools = ref([])          // [{ toolCode, toolName, inputType, outputType }]
-
-const editing = ref(false)
-const saving = ref(false)
-const form = reactive({ workflowId: '', name: '', description: '', nodes: [] })
+const loading = ref(false)
+const tools = ref([])
 
 const runVisible = ref(false)
 const running = ref(false)
 const runTarget = ref(null)
-const runInputs = reactive({})   // nodeId -> { text, files: [] }
+const runInputs = reactive({})
 
 const resultVisible = ref(false)
 const runResult = ref(null)
@@ -187,132 +139,46 @@ const runResult = ref(null)
 const runsVisible = ref(false)
 const runs = ref([])
 
-// ==================== 工具辅助 ====================
-const toolNames = computed(() => tools.value.map(t => t.toolName))
 const toolByCode = (code) => tools.value.find(t => t.toolCode === code)
-const toolName = (code) => { const t = toolByCode(code); return t ? t.toolName : '' }
-const toolIndexOf = (code) => { const i = tools.value.findIndex(t => t.toolCode === code); return i < 0 ? 0 : i }
 
-const onToolChange = (nodeIdx, e) => {
-  const t = tools.value[Number(e.detail.value)]
-  if (t) form.nodes[nodeIdx].nodeRef = t.toolCode
+/** 卡片头像：取第一个节点的工具类型 */
+const firstNode = (wf) => (wf.nodes && wf.nodes[0]) || null
+const iconTypeOf = (code) => {
+  const c = code || ''
+  if (c.includes('ocr') || c.includes('recognize')) return 'ocr'
+  if (c.includes('image') || c.includes('photo') || c.includes('qr')) return 'image'
+  if (c.includes('doc') || c.includes('file-reader')) return 'doc'
+  if (c.includes('audio') || c.includes('transcribe')) return 'audio'
+  return 'text'
 }
+const emojiOf = (type) => ({ ocr: '🖨', image: '🖼️', doc: '📄', audio: '🎤', text: '📝' }[type] || '📝')
+const firstIcon = (wf) => iconTypeOf(firstNode(wf) && firstNode(wf).nodeRef)
+const firstEmoji = (wf) => emojiOf(firstIcon(wf))
 
-// ==================== 加载 ====================
 const loadTools = async () => {
   try {
     const res = await toolListApi()
     tools.value = (res && res.data) || []
-  } catch (e) { /* request.js 已 toast */ }
-}
-
-const loadList = async () => {
-  listLoading.value = true
-  try {
-    const res = await workflowListApi()
-    workflows.value = (res && res.data) || []
-  } catch (e) { /* ignore */ } finally {
-    listLoading.value = false
-  }
-}
-
-// ==================== 编辑 ====================
-const nodeIdOf = (idx) => 'n' + (idx + 1)
-
-const startCreate = () => {
-  form.workflowId = ''
-  form.name = ''
-  form.description = ''
-  form.nodes = []
-  editing.value = true
-  addNode()
-}
-
-const startEdit = async (wf) => {
-  try {
-    const res = await workflowDetailApi(wf.workflowId)
-    const d = res.data
-    form.workflowId = d.workflowId
-    form.name = d.name
-    form.description = d.description || ''
-    form.nodes = (d.nodes || []).map(n => ({
-      nodeId: n.nodeId, nodeRef: n.nodeRef, name: n.name || '', deps: n.deps || [], params: n.params || {}
-    }))
-    editing.value = true
   } catch (e) { /* ignore */ }
 }
 
-const cancelEdit = () => { editing.value = false }
-
-const addNode = () => {
-  if (form.nodes.length >= 50) {
-    uni.showToast({ title: '节点数量过多', icon: 'none' })
-    return
+const loadList = async () => {
+  loading.value = true
+  try {
+    const res = await workflowListApi()
+    workflows.value = (res && res.data) || []
+  } catch (e) { /* request.js 已提示 */ } finally {
+    loading.value = false
   }
-  form.nodes.push({ nodeId: nodeIdOf(form.nodes.length), nodeRef: '', name: '', deps: [], params: {} })
 }
 
-const removeNode = (idx) => {
-  const removed = nodeIdOf(idx)
-  form.nodes.splice(idx, 1)
-  // 重排 nodeId + 清掉被删节点的依赖
-  const map = {}
-  form.nodes.forEach((n, i) => { map[n.nodeId] = nodeIdOf(i) })
-  form.nodes.forEach((n, i) => {
-    n.nodeId = nodeIdOf(i)
-    n.deps = (n.deps || []).filter(d => d !== removed && map[d] !== undefined).map(d => map[d])
-  })
-}
-
-const toggleDep = (nodeIdx, otherIdx) => {
-  const dep = nodeIdOf(otherIdx)
-  const deps = form.nodes[nodeIdx].deps || []
-  const pos = deps.indexOf(dep)
-  if (pos >= 0) deps.splice(pos, 1)
-  else deps.push(dep)
-}
-
-/** 前端预演层数（后端保存时会再严格校验一次） */
-const previewDepth = computed(() => {
-  const nodes = form.nodes
-  if (!nodes.length) return 0
-  const level = {}
-  nodes.forEach(n => { if (!n.deps || !n.deps.length) level[n.nodeId] = 1 })
-  let progressed = true
-  while (progressed) {
-    progressed = false
-    nodes.forEach(n => {
-      if (level[n.nodeId]) return
-      const ds = n.deps || []
-      if (ds.length && ds.every(d => level[d])) {
-        level[n.nodeId] = Math.max(...ds.map(d => level[d])) + 1
-        progressed = true
-      }
-    })
-  }
-  const vals = Object.values(level)
-  return vals.length ? Math.max(...vals) : 0
+onShow(async () => {
+  if (!tools.value.length) await loadTools()
+  await loadList()
 })
 
-const save = async () => {
-  if (!form.name.trim()) { uni.showToast({ title: '请填写工作流名称', icon: 'none' }); return }
-  const bad = form.nodes.find(n => !n.nodeRef)
-  if (bad) { uni.showToast({ title: '有节点未选择工具', icon: 'none' }); return }
-  saving.value = true
-  try {
-    await workflowSaveApi({
-      workflowId: form.workflowId || undefined,
-      name: form.name,
-      description: form.description,
-      nodes: form.nodes
-    })
-    uni.showToast({ title: '保存成功', icon: 'success' })
-    editing.value = false
-    await loadList()
-  } catch (e) { /* request.js 已 toast */ } finally {
-    saving.value = false
-  }
-}
+const goCreate = () => uni.navigateTo({ url: '/pages/workflow-edit' })
+const goEdit = (wf) => uni.navigateTo({ url: `/pages/workflow-edit?workflowId=${wf.workflowId}` })
 
 const remove = (wf) => {
   uni.showModal({
@@ -329,7 +195,7 @@ const remove = (wf) => {
   })
 }
 
-// ==================== 运行 ====================
+/* ==================== 运行 ==================== */
 const sourceNodes = computed(() => {
   if (!runTarget.value) return []
   return (runTarget.value.nodes || []).filter(n => !n.deps || !n.deps.length)
@@ -345,7 +211,6 @@ const openRun = async (wf) => {
   try {
     const res = await workflowDetailApi(wf.workflowId)
     runTarget.value = res.data
-    // 重置输入
     Object.keys(runInputs).forEach(k => delete runInputs[k])
     ;(res.data.nodes || []).forEach(n => {
       if (!n.deps || !n.deps.length) runInputs[n.nodeId] = { text: '', files: [] }
@@ -354,32 +219,32 @@ const openRun = async (wf) => {
   } catch (e) { /* ignore */ }
 }
 
-/** 选择文件并上传，返回可访问的 URL（后端按 URL 读取） */
 const pickFile = (n) => {
-  // H5：原生 input（uni.chooseFile 在 H5 不可靠）
+  const t = toolByCode(n.nodeRef)
+  const isAudio = t && t.inputType && t.inputType.includes('audio')
   // #ifdef H5
   const input = document.createElement('input')
   input.type = 'file'
-  input.multiple = true
-  input.accept = '.pdf,.docx,.txt,.mp3,.wav,.m4a,.jpg,.jpeg,.png'
+  input.multiple = false
+  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : '.pdf,.docx,.txt'
   input.onchange = async () => {
-    const files = Array.from(input.files || [])
-    await uploadFiles(n, files)
+    const f = (input.files || [])[0]
+    if (f) await uploadFiles(n, [f])
   }
   input.click()
   // #endif
   // #ifndef H5
   uni.chooseMessageFile({
-    count: 10,
+    count: 1,
+    type: isAudio ? 'audio' : 'file',
     success: async (res) => {
-      const paths = (res.tempFiles || []).map(f => f.path)
-      await uploadFiles(n, paths)
+      const f = (res.tempFiles || [])[0]
+      if (f) await uploadFiles(n, [f.path || f])
     }
   })
   // #endif
 }
 
-/** 上传文件列表（H5 传 File 对象，App 传路径），成功后存 URL 列表 */
 const uploadFiles = async (n, list) => {
   if (!list.length) return
   uni.showLoading({ title: '上传中…' })
@@ -418,13 +283,13 @@ const doRun = async () => {
     runVisible.value = false
     resultVisible.value = true
     await loadList()
-  } catch (e) { /* request.js 已 toast */ } finally {
+  } catch (e) { /* request.js 已提示 */ } finally {
     running.value = false
     uni.hideLoading()
   }
 }
 
-// ==================== 历史 ====================
+/* ==================== 历史 ==================== */
 const viewRuns = async (wf) => {
   try {
     const res = await workflowRunsApi(wf.workflowId, 20)
@@ -441,132 +306,204 @@ const openRunDetail = async (runId) => {
     resultVisible.value = true
   } catch (e) { /* ignore */ }
 }
-
-/** 运行状态中文（后端 WorkflowRunStatusEnum 同步；此处仅做列表快照兜底） */
-const runStatusLabel = (code) => {
-  return ({ 0: '待运行', 1: '运行中', 2: '全部成功', 3: '部分失败', 4: '全部失败', 5: '已取消' })[code] || ''
-}
-
-// ==================== 生命周期 ====================
-onShow(async () => {
-  if (!tools.value.length) await loadTools()
-  await loadList()
-})
 </script>
 
 <style lang="scss" scoped>
-.page { min-height: 100vh; background: #F9FAFB; }
-.topbar {
-  display: flex; align-items: center; height: 88rpx; padding: 0 24rpx;
-  background: #fff; border-bottom: 1rpx solid #F3F4F6;
-}
-.topbar__title { font-size: 36rpx; font-weight: 600; color: #111827; }
-.topbar__spacer { flex: 1; }
-.btn-create {
-  padding: 8rpx 20rpx; background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
-  border-radius: 32rpx;
-}
-.btn-create__label { color: #fff; font-size: 24rpx; }
-.page-content { padding: 24rpx; height: calc(100vh - 88rpx); }
+@import '@/styles/redesign.scss';
 
-.card {
-  background: #fff; border-radius: 24rpx; padding: 32rpx; margin-bottom: 24rpx;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+.wf-page {
+  min-height: 100vh;
+  background: #F9FAFB;
+  padding-bottom: 40rpx;
 }
-.empty { text-align: center; color: #9CA3AF; font-size: 26rpx; padding: 80rpx 0; }
 
-.input-name, .input-desc {
-  width: 100%; font-size: 28rpx; padding: 20rpx 0; border-bottom: 1rpx solid #F3F4F6;
+.wf-head {
+  display: flex;
+  align-items: center;
+  padding: 32rpx 32rpx 24rpx;
+}
+.wf-head__title {
+  flex: 1;
+  font-size: 48rpx;
+  font-weight: 700;
   color: #111827;
 }
-.section-label { font-size: 24rpx; color: #6B7280; margin: 24rpx 0 12rpx; }
-
-.node-edit { border: 1rpx solid #E5E7EB; border-radius: 16rpx; padding: 20rpx; margin-bottom: 16rpx; }
-.node-edit__head { display: flex; align-items: center; margin-bottom: 12rpx; }
-.node-edit__idx {
-  width: 40rpx; height: 40rpx; line-height: 40rpx; text-align: center;
-  background: #EFF6FF; color: #3B82F6; border-radius: 50%; font-size: 22rpx; margin-right: 12rpx;
+.wf-create {
+  height: 72rpx;
+  padding: 0 28rpx;
+  border-radius: 9999rpx;
+  background: #3B82F6;
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
 }
-.node-edit__picker { flex: 1; }
-.picker-value { font-size: 26rpx; color: #111827; }
-.node-edit__del { color: #EF4444; font-size: 24rpx; margin-left: 12rpx; }
-.node-edit__types { display: flex; gap: 12rpx; margin-bottom: 12rpx; }
-.type-tag { font-size: 20rpx; color: #6B7280; background: #F3F4F6; padding: 4rpx 12rpx; border-radius: 8rpx; }
-.node-edit__deps { margin-top: 8rpx; }
-.deps-label { font-size: 22rpx; color: #9CA3AF; }
-.deps-list { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 8rpx; }
-.dep-chip {
-  padding: 6rpx 16rpx; border-radius: 24rpx; font-size: 22rpx;
-  background: #F3F4F6; color: #6B7280;
+
+.wf-card {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  margin: 0 32rpx 24rpx;
+  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
 }
-.dep-chip--on { background: #DBEAFE; color: #2563EB; }
-
-.btn-add-node {
-  text-align: center; padding: 20rpx; border: 1rpx dashed #D1D5DB; border-radius: 16rpx;
-  color: #3B82F6; font-size: 26rpx; margin-top: 8rpx;
+.wf-card__top { display: flex; gap: 24rpx; }
+.wf-card__main { flex: 1; min-width: 0; }
+.wf-card__title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #111827;
 }
-.edit-hint { font-size: 22rpx; color: #9CA3AF; margin-top: 12rpx; text-align: center; }
-
-.btn {
-  display: flex; align-items: center; justify-content: center;
-  height: 88rpx; border-radius: 44rpx; font-size: 30rpx; margin-top: 32rpx;
+.wf-card__desc {
+  display: block;
+  font-size: 26rpx;
+  color: #4B5563;
+  margin-top: 8rpx;
 }
-.btn--primary { background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%); color: #fff; }
-.btn--ghost { background: #F3F4F6; color: #374151; }
-.btn--sm { height: 64rpx; font-size: 24rpx; margin-top: 0; flex: 1; border-radius: 32rpx; }
+.wf-card__meta { display: flex; gap: 32rpx; margin-top: 12rpx; }
+.wf-meta { font-size: 22rpx; color: #9CA3AF; }
+.wf-card__time {
+  display: block;
+  font-size: 22rpx;
+  color: #D1D5DB;
+  margin-top: 8rpx;
+}
 
-.wf-card__head { display: flex; align-items: center; justify-content: space-between; }
-.wf-card__title { font-size: 30rpx; font-weight: 600; color: #111827; }
-.wf-card__status { font-size: 22rpx; }
-.wf-card__desc { font-size: 24rpx; color: #6B7280; margin-top: 8rpx; }
-.wf-card__meta { font-size: 22rpx; color: #9CA3AF; margin-top: 8rpx; }
-.wf-card__actions { display: flex; gap: 12rpx; margin-top: 24rpx; }
+.wf-card__acts {
+  display: flex;
+  align-items: center;
+  border-top: 2rpx solid #F3F4F6;
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+}
+.wf-act {
+  flex: 1;
+  text-align: center;
+  font-size: 24rpx;
+  color: #4B5563;
+}
+.wf-act--primary { color: #3B82F6; font-weight: 500; }
+.wf-act--danger { color: #EF4444; }
+.wf-act__sep { width: 2rpx; height: 28rpx; background: #F3F4F6; }
 
+/* 弹层 */
 .mask {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-  display: flex; align-items: flex-end; z-index: 999;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  z-index: 1000;
 }
 .sheet {
-  width: 100%; max-height: 85vh; background: #fff;
-  border-radius: 24rpx 24rpx 0 0; padding: 32rpx; display: flex; flex-direction: column;
+  width: 100%;
+  max-height: 85vh;
+  background: #fff;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 40rpx 32rpx 48rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
-.sheet__title { font-size: 32rpx; font-weight: 600; color: #111827; }
-.sheet__desc { font-size: 24rpx; color: #6B7280; margin: 12rpx 0; }
-.sheet__body { flex: 1; overflow-y: auto; }
+.sheet__title { font-size: 34rpx; font-weight: 700; color: #111827; }
+.sheet__desc {
+  font-size: 24rpx;
+  color: #4B5563;
+  margin: 16rpx 0 8rpx;
+  background: #F8FAFF;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+}
+.sheet__body { flex: 1; margin-top: 16rpx; max-height: 60vh; }
 
-.run-node { margin-bottom: 24rpx; }
-.run-node__name { font-size: 26rpx; font-weight: 500; color: #111827; margin-bottom: 12rpx; }
-.run-node__tool { font-size: 22rpx; color: #9CA3AF; }
+.run-node {
+  padding: 24rpx;
+  background: #FCFDFF;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 20rpx;
+  margin-bottom: 24rpx;
+}
+.run-node__name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 16rpx;
+}
+.run-node__tool { font-size: 22rpx; color: #9CA3AF; font-weight: 400; }
 .run-node__text {
-  width: 100%; min-height: 160rpx; border: 1rpx solid #E5E7EB; border-radius: 12rpx;
-  padding: 16rpx; font-size: 26rpx; box-sizing: border-box;
+  width: 100%;
+  min-height: 180rpx;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  font-size: 26rpx;
+  box-sizing: border-box;
+  background: #fff;
 }
-.run-node__file { display: flex; align-items: center; gap: 16rpx; }
+.run-node__file { display: flex; align-items: center; gap: 20rpx; }
 .file-pick {
-  padding: 12rpx 28rpx; background: #EFF6FF; color: #3B82F6;
-  border-radius: 24rpx; font-size: 24rpx;
+  padding: 16rpx 36rpx;
+  background: #EFF6FF;
+  color: #2563EB;
+  border-radius: 9999rpx;
+  font-size: 26rpx;
+  font-weight: 500;
 }
-.file-name { font-size: 22rpx; color: #9CA3AF; }
+.file-name { font-size: 24rpx; color: #9CA3AF; }
 
-.res-node { border-bottom: 1rpx solid #F3F4F6; padding: 20rpx 0; }
+.res-node { border-bottom: 2rpx solid #F3F4F6; padding: 24rpx 0; }
 .res-node__head { display: flex; align-items: center; justify-content: space-between; }
-.res-node__id { font-size: 26rpx; font-weight: 500; color: #374151; }
-.res-node__st { font-size: 22rpx; }
-.res-node__err { font-size: 22rpx; color: #EF4444; margin-top: 8rpx; }
-.res-out { margin-top: 12rpx; }
+.res-node__id {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #374151;
+  background: #F3F4F6;
+  padding: 6rpx 20rpx;
+  border-radius: 9999rpx;
+}
+.res-node__st { font-size: 24rpx; font-weight: 500; }
+.res-node__err {
+  display: block;
+  font-size: 24rpx;
+  color: #EF4444;
+  margin-top: 12rpx;
+  background: #FEF2F2;
+  padding: 16rpx;
+  border-radius: 12rpx;
+}
+.res-out { margin-top: 16rpx; }
 .res-out__idx { font-size: 22rpx; color: #9CA3AF; }
-.res-out__body { background: #F9FAFB; border-radius: 12rpx; padding: 16rpx; margin-top: 8rpx; }
+.res-out__body {
+  background: #F9FAFB;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-top: 8rpx;
+  border: 2rpx solid #F3F4F6;
+}
 
-.run-item { padding: 20rpx 0; border-bottom: 1rpx solid #F3F4F6; }
-.run-item__head { display: flex; justify-content: space-between; }
+.run-item {
+  padding: 24rpx;
+  border: 2rpx solid #F3F4F6;
+  border-radius: 16rpx;
+  margin-bottom: 16rpx;
+  background: #FCFDFF;
+}
+.run-item__head { display: flex; justify-content: space-between; align-items: center; }
 .run-item__time { font-size: 22rpx; color: #9CA3AF; }
-.run-item__meta { font-size: 22rpx; color: #6B7280; margin-top: 8rpx; }
-.run-item__act { font-size: 24rpx; color: #3B82F6; margin-top: 8rpx; }
+.run-item__meta { display: block; font-size: 24rpx; color: #4B5563; margin-top: 12rpx; }
+.run-item__act {
+  display: block;
+  font-size: 24rpx;
+  color: #3B82F6;
+  margin-top: 12rpx;
+  text-align: right;
+}
 
-.st-2 { color: #10B981; }
-.st-3 { color: #F59E0B; }
-.st-4 { color: #EF4444; }
-.st-0, .st-1 { color: #6B7280; }
+.st-ok { color: #10B981; }
+.st-part { color: #F59E0B; }
+.st-fail { color: #EF4444; }
 
-.safe-area-bottom { height: 60rpx; }
+.safe-bottom { height: 40rpx; }
 </style>

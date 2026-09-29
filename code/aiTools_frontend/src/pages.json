@@ -3,6 +3,7 @@
     { "path": "pages/index", "style": { "navigationStyle": "custom" } },
     { "path": "pages/category", "style": { "navigationStyle": "custom" } },
     { "path": "pages/workflow", "style": { "navigationStyle": "custom" } },
+    { "path": "pages/workflow-edit", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/favorites", "style": { "navigationStyle": "custom" } },
     { "path": "pages/my", "style": { "navigationStyle": "custom" } },
     { "path": "pages/search", "style": { "navigationStyle": "custom" } },
@@ -32,8 +33,10 @@
     "borderStyle": "white",
     "list": [
       { "pagePath": "pages/index",     "text": "首页",   "iconPath": "static/icons/home.png",     "selectedIconPath": "static/icons/home-active.png" },
-      { "pagePath": "pages/workflow", "text": "工作流", "iconPath": "static/icons/workflow.png", "selectedIconPath": "static/icons/workflow-active.png" },
-      { "pagePath": "pages/my",       "text": "我的",   "iconPath": "static/icons/my.png",       "selectedIconPath": "static/icons/my-active.png" }
+      { "pagePath": "pages/category",  "text": "分类",   "iconPath": "static/icons/category.png", "selectedIconPath": "static/icons/category-active.png" },
+      { "pagePath": "pages/workflow",  "text": "工作台", "iconPath": "static/icons/workflow.png", "selectedIconPath": "static/icons/workflow-active.png" },
+      { "pagePath": "pages/favorites", "text": "收藏",   "iconPath": "static/icons/favorites.png","selectedIconPath": "static/icons/favorites-active.png" },
+      { "pagePath": "pages/my",        "text": "我的",   "iconPath": "static/icons/my.png",       "selectedIconPath": "static/icons/my-active.png" }
     ]
   }
 }
