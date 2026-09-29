@@ -20,6 +20,16 @@ public class HistoryDetail implements Serializable {
 
     private String errorMsg;
 
+    /**
+     * 用户当时在格式提示词 textarea 的原始内容（resolve 前）—— 用于历史回填原参数重发
+     */
+    private String promptFormat;
+
+    /**
+     * 用户当时在生成提示词 textarea 的原始内容（resolve 前）—— 用于历史回填原参数重发
+     */
+    private String promptGenerate;
+
     @TableLogic
     private Integer dr;
 }

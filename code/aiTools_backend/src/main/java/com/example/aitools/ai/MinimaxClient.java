@@ -113,6 +113,130 @@ public class MinimaxClient {
     }
 
     /**
+     * 音频转文本（MiniMax M3 多模态 audio input）
+     *
+     * @param systemPrompt   系统提示词（如：请将这段录音准确转写为中文文字，不要修改用词和标点）
+     * @param audioBytes     音频字节（mp3 / wav / m4a）
+     * @param mimeType       音频 MIME，如 audio/mpeg
+     * @return 模型返回的识别文本
+     */
+    public String chatAudio(String systemPrompt, byte[] audioBytes, String mimeType) {
+        try {
+            // 1. content blocks: text + input_audio
+            List<Map<String, Object>> contentBlocks = new ArrayList<>();
+
+            Map<String, Object> textBlock = new HashMap<>();
+            textBlock.put("type", "text");
+            textBlock.put("text", systemPrompt);
+            contentBlocks.add(textBlock);
+
+            String base64 = Base64.getEncoder().encodeToString(audioBytes);
+            Map<String, Object> audioBlock = new HashMap<>();
+            audioBlock.put("type", "input_audio");
+            Map<String, Object> inputAudio = new HashMap<>();
+            inputAudio.put("data", base64);
+            inputAudio.put("format", normalizeAudioFormat(mimeType, audioBytes));
+            audioBlock.put("input_audio", inputAudio);
+            contentBlocks.add(audioBlock);
+
+            // 2. request body
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", visionConfig.getModel());
+            requestBody.put("stream", false);
+            requestBody.put("thinking", Map.of("type", "disabled"));
+
+            List<Map<String, Object>> messages = new ArrayList<>();
+            Map<String, Object> userMsg = new HashMap<>();
+            userMsg.put("role", "user");
+            userMsg.put("content", contentBlocks);
+            messages.add(userMsg);
+            requestBody.put("messages", messages);
+
+            String json = objectMapper.writeValueAsString(requestBody);
+
+            // 3. HTTP call
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                    new java.net.URL(visionConfig.getApiUrl()).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + visionConfig.getApiKey());
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
+
+            int code = -1;
+            String resp = null;
+            int maxRetries = 3;
+            long backoffMs = 2000;
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    code = conn.getResponseCode();
+                    // 遇 5xx / 429 过载：重试
+                    if ((code >= 500 || code == 429) && attempt < maxRetries) {
+                        log.warn("MiniMax audio 调用遇 status={} attempt={}/{} -> retry after {}ms", code, attempt, maxRetries, backoffMs);
+                        try { Thread.sleep(backoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        backoffMs *= 2;
+                        continue;
+                    }
+                    try (Scanner s = new Scanner(conn.getInputStream(), StandardCharsets.UTF_8)) {
+                        resp = s.useDelimiter("\\A").next();
+                    }
+                    break;
+                } catch (java.io.IOException ioe) {
+                    // 网络异常（SSL / EOF / 超时）：重试
+                    log.warn("MiniMax audio 调用 IOException attempt={}/{} -> retry: {}", attempt, maxRetries, ioe.getMessage());
+                    if (attempt < maxRetries) {
+                        try { Thread.sleep(backoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        backoffMs *= 2;
+                    } else {
+                        throw ioe;
+                    }
+                }
+            }
+
+            if (code != 200) {
+                log.error("MiniMax M3 audio 调用失败 status={} body={}", code, resp);
+                throw new RuntimeException("MiniMax M3 audio 调用失败：" + code);
+            }
+
+            JsonNode root = objectMapper.readTree(resp);
+            JsonNode choices = root.get("choices");
+            if (choices == null || choices.isEmpty()) {
+                throw new RuntimeException("MiniMax M3 audio 返回为空");
+            }
+            JsonNode message = choices.get(0).get("message");
+            String content = message.get("content").asText();
+            log.debug("MiniMax M3 audio 响应 length={}", content == null ? 0 : content.length());
+            return content;
+
+        } catch (IOException e) {
+            log.error("MiniMax M3 audio 调用异常", e);
+            throw new RuntimeException("MiniMax M3 audio 服务调用失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 归一化为 MiniMax audio format（仅 mp3 / wav 两值）
+     */
+    private String normalizeAudioFormat(String mimeType, byte[] bytes) {
+        if (mimeType != null) {
+            String lower = mimeType.toLowerCase();
+            if (lower.contains("wav")) return "wav";
+            if (lower.contains("mp3") || lower.contains("mpeg")) return "mp3";
+        }
+        // 备选：按文件头检测
+        if (bytes.length >= 4) {
+            // RIFF...WAV
+            if (bytes[0] == (byte) 0x52 && bytes[1] == (byte) 0x49 && bytes[2] == (byte) 0x46 && bytes[3] == (byte) 0x46) {
+                return "wav";
+            }
+            // ID3 或 MP3 sync 0xFFE
+            if (bytes[0] == (byte) 0x49 && bytes[1] == (byte) 0x44 && bytes[2] == (byte) 0x33) return "mp3";
+            if ((bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xE0) == 0xE0) return "mp3";
+        }
+        return "mp3";
+    }
+
+    /**
      * 纯文本对话（复用同一模型）
      */
     public String chatText(String systemPrompt, String userPrompt) {

@@ -146,7 +146,6 @@ public class AiClient {
                                 if (line.startsWith("data:")) {
                                     String data = line.substring(5).trim();
                                     if ("[DONE]".equals(data)) {
-                                        break;
                                     }
                                     try {
                                         JsonNode node = objectMapper.readTree(data);

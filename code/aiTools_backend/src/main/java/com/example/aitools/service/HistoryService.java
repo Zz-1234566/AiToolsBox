@@ -27,6 +27,14 @@ public interface HistoryService {
     Long createPendingHistory(Long userId, Long toolId, Long modelId, String aiCode, String inputContent);
 
     /**
+     * 创建"处理中"历史记录，额外记录用户当时的格式/生成提示词（用于历史回填原参数重发）
+     * @param promptFormat    用户在格式提示词 textarea 的原值（可为 null/空）
+     * @param promptGenerate  用户在生成提示词 textarea 的原值（可为 null/空）
+     */
+    Long createPendingHistory(Long userId, Long toolId, Long modelId, String aiCode,
+                              String inputContent, String promptFormat, String promptGenerate);
+
+    /**
      * 更新为成功（写输出 + 耗时）
      */
     void completeHistory(Long historyId, String outputContent, Integer duration);
@@ -40,6 +48,14 @@ public interface HistoryService {
      * 查询用户最近历史（组装主表+明细+文件+工具名），取 10 条
      */
     List<HistoryVO> listRecent(Long userId, int limit);
+
+    /**
+     * 查询指定用户最近历史（按 aiCode 过滤），组装主表+明细+文件+工具名
+     * @param userId  用户 id（账号）
+     * @param aiCode  工具编码（如 work-summary / meeting-minutes），为空则不按工具过滤
+     * @param limit   返回条数上限（调用方应保证 1 <= limit <= 50）
+     */
+    List<HistoryVO> listRecent(Long userId, String aiCode, int limit);
 
     /**
      * 删除历史记录（逻辑删除主表，明细/文件子表一并逻辑删除）

@@ -113,8 +113,9 @@ public class AiOfficeToolController {
      */
     @PostMapping("/meeting-minutes/decide-route")
     public Result<String> meetingMinutesDecideRoute(@Valid @RequestBody AiWorkSummaryDTO dto) {
-        String route = handlerFactory.get("sse-text-single").decideRoute(
-                "meeting-minutes", dto.getContent(), resolvePromptGenerate(dto), null);
+        // 路由决策同时考虑 promptFormat 和 promptGenerate（用户可能在提示词里明确要求 JSON/Markdown）
+String route = handlerFactory.get("sse-text-single").decideRoute(
+                "meeting-minutes", dto.getContent(), dto.getPromptFormat(), resolvePromptGenerate(dto), null);
         log.info("[meeting-minutes/decide-route] route={}", route);
         return Result.success(route);
     }

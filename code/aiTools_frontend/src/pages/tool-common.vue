@@ -155,83 +155,90 @@
           <text class="input-card__label">上传录音</text>
           <text class="input-card__sub">支持 MP3、WAV 等</text>
         </view>
-        <view class="input-card" @click="onInputMeetingContent">
+        <view class="input-card" @click="focusMeetingContent">
           <view class="input-card__icon">
             <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12z"/></svg>
           </view>
           <text class="input-card__label">输入会议内容</text>
-          <text class="input-card__sub">粘贴或输入文字</text>
-        </view>
-      </view>
-      <view class="form-card">
-        <view class="form-card__title">会议信息（可编辑）</view>
-        <view class="form-row" @click="onEditMeetingInfo('participants')">
-          <text class="form-row__label">会议参与人</text>
-          <text class="form-row__field">请输入参与人，支持多选</text>
-          <view class="form-row__chev"><svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></view>
-        </view>
-        <view class="form-row" @click="onEditMeetingInfo('time')">
-          <text class="form-row__label">会议时间</text>
-          <text class="form-row__field">请选择会议时间</text>
-          <view class="form-row__chev"><svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg></view>
-        </view>
-      </view>
-      <view class="add-item-card">
-        <view class="add-item-row">
-          <text class="add-item-row__label">存在问题</text>
-          <input class="add-item-row__field" v-model="mmProblemText" placeholder="请填写会议中遇到的问题…" />
-          <view class="add-item-row__action" @click="addMmItem('problem')">
-            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-            <text>添加</text>
-          </view>
-        </view>
-      </view>
-      <view class="example-card">
-        <view class="example-card__title">示例效果</view>
-        <view class="example-list">
-          <view class="example-item"><view class="example-item__icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg></view><text class="example-item__label">会议主题</text></view>
-          <view class="example-item"><view class="example-item__icon"><svg viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg></view><text class="example-item__label">讨论要点</text></view>
-          <view class="example-item"><view class="example-item__icon"><svg viewBox="0 0 24 24"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg></view><text class="example-item__label">待办事项</text></view>
-          <view class="example-item"><view class="example-item__icon"><svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg></view><text class="example-item__label">会议总结</text></view>
-        </view>
-      </view>
-      <view class="add-item-card">
-        <view class="add-item-row">
-          <text class="add-item-row__label">下周计划</text>
-          <input class="add-item-row__field" v-model="mmPlanText" placeholder="请输入下周工作计划…" />
-          <view class="add-item-row__action" @click="addMmItem('plan')">
-            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-            <text>添加</text>
-          </view>
+          <text class="input-card__sub">{{ inputText ? inputText.length + ' 字' : '点击下方输入或粘贴文字' }}</text>
         </view>
       </view>
 
-      <!-- ============ 会议纪要结果渲染区（JSON 表格 / SSE Markdown） ============ -->
-      <block v-if="meetingRoute === 'json'">
-        <view class="section-title">生成结果（JSON 结构化）</view>
-        <view class="mm-json-table">
-          <view v-for="(item, idx) in meetingJsonResult" :key="item.key || idx" class="mm-json-row">
-            <view class="mm-json-cell-title">
-              <text class="mm-json-key">{{ item.key || '' }}</text>
-              <text class="mm-json-title">{{ item.title || '' }}</text>
-            </view>
-            <view v-if="item.type === 'todo'" class="mm-json-cell-content">
-              <text class="mm-json-checkbox">□</text>
-              <text class="mm-json-content">{{ item.content || '' }}</text>
-            </view>
-            <view v-else class="mm-json-cell-content">
-              <text class="mm-json-content">{{ item.content || '' }}</text>
-            </view>
-          </view>
-          <view v-if="meetingJsonResult.length === 0" class="mm-json-empty">
-            <text>暂无生成结果</text>
+      <!-- 会议内容（与下方提示词展示框同款 textarea，转写成功后自动填入） -->
+      <view class="prompt-card">
+        <view class="prompt-card__header">
+          <text class="prompt-card__label">会议内容</text>
+        </view>
+        <textarea class="prompt-card__textarea" v-model="inputText" ref="meetingContentRef" placeholder="请输入或粘贴会议内容；上传录音后 AI 会自动转写并填入此处…" :maxlength="5000"></textarea>
+        <text class="prompt-card__counter">{{ inputText.length }}/5000</text>
+      </view>
+
+<!-- 格式提示词（告诉 AI 输出什么结构） -->
+      <view class="prompt-card">
+        <view class="prompt-card__header">
+          <text class="prompt-card__label">格式提示词</text>
+          <view class="prompt-card__pick" @click="openPromptPicker('format')">
+            <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+            <text>选择系统提示词</text>
           </view>
         </view>
+        <textarea class="prompt-card__textarea" v-model="promptFormatText" placeholder="例如：按四部分输出（已完成/进行中/问题/下一步），每部分用编号列表…" :maxlength="1000"></textarea>
+        <text class="prompt-card__counter">{{ promptFormatText.length }}/1000</text>
+      </view>
+
+      <!-- 生成提示词（告诉 AI 你是谁、怎么说话） -->
+      <view class="prompt-card">
+        <view class="prompt-card__header">
+          <text class="prompt-card__label">生成提示词</text>
+          <view class="prompt-card__pick" @click="openPromptPicker('generate')">
+            <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
+            <text>选择系统提示词</text>
+          </view>
+        </view>
+        <textarea class="prompt-card__textarea" v-model="promptGenerateText" placeholder="例如：你是严谨的会议整理助手，语气正式、结构清晰…" :maxlength="1000"></textarea>
+        <text class="prompt-card__counter">{{ promptGenerateText.length }}/1000</text>
+      </view>
+
+      <!-- ============ 会议纪要结果渲染区（JSON 树 / SSE Markdown） ============ -->
+      <!-- 使用 vue-json-pretty 通用渲染任意 JSON 结构（不限字段名/嵌套深度） -->
+      <block v-if="meetingRoute === 'json'">
+        <view class="section-title-row">
+          <text class="section-title">生成结果（JSON 结构化）</text>
+          <view class="result-actions">
+            <view class="result-action-btn" @click="copyToClipboard(JSON.stringify(meetingJsonResult, null, 2), '已复制 JSON')">
+              <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <text>复制 JSON</text>
+            </view>
+          </view>
+        </view>
+        <view v-if="meetingJsonResult.length > 0" class="mm-json-pretty">
+          <vue-json-pretty :data="meetingJsonResult" :show-length="true" :show-line-number="true" />
+        </view>
+        <view v-else class="mm-json-empty">
+          <text>暂无生成结果</text>
+        </view>
       </block>
+      <!-- ============ 会议纪要结果渲染区（JSON 树 / SSE Markdown） ============ -->
+      <!-- SSE Markdown 统一由 MarkdownView 渲染：H5 走 v-html + DOMPurify 清洗，App 走 mp-html -->
       <block v-else-if="meetingRoute === 'sse'">
-        <view class="section-title">生成结果（SSE 流式 Markdown）</view>
-        <view class="mm-md-result">
-          <rich-text :nodes="meetingMarkdownHtml"></rich-text>
+        <view class="section-title-row">
+          <text class="section-title">生成结果（SSE 流式 Markdown）</text>
+          <view class="result-actions">
+            <view class="result-action-btn" @click="copyToClipboard(meetingMarkdownText, '已复制 Markdown')">
+              <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <text>复制 Markdown</text>
+            </view>
+            <view class="result-action-btn" @click="copyToClipboard(meetingMarkdownText.replace(/[#*_>`~\-]+/g, ''), '已复制纯文本')">
+              <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+              <text>复制纯文本</text>
+            </view>
+          </view>
+        </view>
+        <view class="mm-md-result" :ref="el => setMeetingResultRef(el)" @scroll="onMeetingScroll">
+          <!-- 渲染统一交给 MarkdownView（组件内部用 markdown-it + DOMPurify / mp-html）：
+               streaming=true（推字中）只显示转义纯文本，推字结束(meetingTypingDone)后渲染富文本 -->
+          <!-- 渲染模式的整块重挂载由组件内部处理，外部无需再传 renderKey -->
+          <MarkdownView :source="meetingMarkdownText" :streaming="!meetingTypingDone" />
         </view>
       </block>
     </block>
@@ -477,13 +484,56 @@
     </block>
 
     <view class="safe-area-bottom"></view>
+
+    <!-- ===== 工具内嵌历史记录面板 ===== -->
+    <view class="history-panel" :class="{ 'is-open': historyPanelOpen }">
+      <view class="history-panel__header" @click="toggleHistoryPanel">
+        <svg viewBox="0 0 24 24" class="history-panel__icon"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+        <text class="history-panel__title">{{ historyPanelOpen ? '收起历史记录' : '查看历史记录' + (historyList.length ? ' (' + historyList.length + ')' : '') }}</text>
+        <svg viewBox="0 0 24 24" class="history-panel__chevron"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z" v-if="!historyPanelOpen"/><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" v-else/></svg>
+      </view>
+      <view v-if="historyPanelOpen" class="history-panel__body">
+        <view v-if="historyLoading" class="history-panel__loading">
+          <text>加载中…</text>
+        </view>
+        <view v-else-if="historyList.length === 0" class="history-panel__empty">
+          <text>暂无历史记录</text>
+        </view>
+        <view v-else class="history-panel__list">
+          <view v-for="item in historyList" :key="item.id" class="history-item" @click="applyHistory(item)">
+            <view class="history-item__left">
+              <text class="history-item__status" :class="item.status === 1 ? 'is-ok' : 'is-fail'">{{ item.status === 1 ? '成功' : '失败' }}</text>
+              <text class="history-item__input">{{ (item.inputContent || '（无输入）').slice(0, 60) }}{{ (item.inputContent || '').length > 60 ? '…' : '' }}</text>
+            </view>
+            <view class="history-item__right">
+              <text class="history-item__time">{{ formatHistoryTime(item.createTime) }}</text>
+              <svg viewBox="0 0 24 24" class="history-item__chev"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
   </scroll-view>
 
   <!-- 底部按钮 -->
   <view class="bottom-action">
     <button class="btn btn--primary btn--block" :disabled="loading" @click="handleGenerate">{{ bottomActionText }}</button>
   </view>
+
+    
+    <!-- 提示词选择抽屉弹窗（独立组件） -->
+    <PromptPickerDrawer
+      v-model:show="showPromptPicker"
+      :tool-name="toolInfo.name"
+      :tool-desc="toolInfo.desc"
+      :system-prompts="systemPromptList"
+      :user-prompts="userPromptList"
+      @confirm="onPromptPickerConfirm"
+    />
+
 </template>
+
+
 
 <script setup>
 import { ref, computed } from 'vue'
@@ -497,14 +547,18 @@ import AudioInputArea from '@/components/AudioInputArea.vue'
 import PromptInputArea from '@/components/PromptInputArea.vue'
 import ResultArea from '@/components/ResultArea.vue'
 import BatchFilePicker from '@/components/BatchFilePicker.vue'
-import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson } from '@/api/ai.js'
+import VueJsonPretty from 'vue-json-pretty'
+import 'vue-json-pretty/lib/styles.css'
+import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting } from '@/api/ai.js'
+import { historyListByToolApi } from '@/api/history.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
 import { request } from '@/api/request'
-import { marked } from 'marked'
+import MarkdownView from '@/components/MarkdownView.vue'
 import { promptListApi, systemPromptListApi, generatePromptApi, promptAddApi } from '@/api/prompt'
 import { getTool, validate } from '@/config/tools'
 import BatchResultCards from '@/components/BatchResultCards.vue'
+import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
 
 const toolId = ref('')
 const currentInputType = ref('text')
@@ -529,6 +583,12 @@ const userPromptList = ref([])    // 用户自定义提示词（按用途过滤�
 const systemPromptList = ref([])  // 系统提示词（按用途过滤）
 const showPromptPicker = ref(false) // 是否显示选择弹窗
 const currentTab = ref('system')    // 弹窗当前 tab：system / user / ai
+
+// ===== 工具内嵌历史记录（按 aiCode 过滤）=====
+const historyPanelOpen = ref(false)  // 历史面板是否展开
+const historyList = ref([])          // 当前工具的历史列表（HistoryVO[]）
+const historyLoading = ref(false)    // 拉历史时的 loading 状态
+const HISTORY_DEFAULT_LIMIT = 10    // 拉取条数上限（与后端一致）
 const aiRequirement = ref('')        // AI 生成 tab 的需求输入
 const aiGeneratedText = ref('')      // AI 生成的提示词预览
 const aiLoading = ref(false)         // AI 生成中（防重复点）
@@ -578,7 +638,16 @@ const bottomActionText = computed(() => {
 })
 
 const goBack = () => {
+  // #ifdef H5
+  if (window.history.length > 1) {
+    window.history.back()
+  } else {
+    uni.showToast({ title: '已是最上层页面', icon: 'none' })
+  }
+  // #endif
+  // #ifndef H5
   uni.navigateBack({ delta: 1 })
+  // #endif
 }
 
 // ===== 各工具特化状态 =====
@@ -609,18 +678,139 @@ const mmProblemText = ref('')
 const meetingRoute = ref('')  // '' | 'sse' | 'json'
 const meetingJsonResult = ref([])  // JSON 数组：[{ key, title, type, content }]
 const meetingMarkdownText = ref('')  // SSE markdown 累积文本
-const meetingMarkdownHtml = computed(() => {
-  try {
-    return meetingMarkdownText.value ? marked.parse(meetingMarkdownText.value) : ''
-  } catch (e) {
-    return ''
-  }
-})
 
+// 打字机是否已完成:false=推字中(只显示纯文本,不渲染 markdown),true=已结束(渲染 markdown)
+// 原因:打字过程中 markdown 是半截的,实时解析会频繁闪成错乱格式;
+//       改为推字时纯文本 + 换行,结束后再一次性渲染完整 markdown
+const meetingTypingDone = ref(false)
+
+// 流式输出时的自动滚动:打字机每帧推完后,如果用户处于"接近底部"则跟着滚到底
+// 用户主动上滑查看历史时暂停,直到再次滚到底才恢复
+const meetingResultEl = ref(null)
+const meetingUserScrolledUp = ref(false) // 用户是否已上滑
+const MEETING_SCROLL_BOTTOM_THRESHOLD = 60 // 距底多少 px 视为"还在底部"
+const setMeetingResultRef = (el) => {
+  // 函数式 ref:vue 3 支持,el 可能为 null(组件卸载)
+  meetingResultEl.value = el
+}
+const onMeetingScroll = () => {
+  const el = meetingResultEl.value
+  if (!el) return
+  const distanceToBottom = el.scrollHeight - (el.scrollTop + el.clientHeight)
+  // 距底 > 阈值视为用户上滑
+  meetingUserScrolledUp.value = distanceToBottom > MEETING_SCROLL_BOTTOM_THRESHOLD
+}
+const scrollMeetingToBottom = () => {
+  const el = meetingResultEl.value
+  if (!el || meetingUserScrolledUp.value) return
+  // 滚到底:用 scrollTop 直接赋值,uni-app H5 兼容;App 端用 uni.pageScrollTo
+  try {
+    if (typeof el.scrollTop === 'number') {
+      el.scrollTop = el.scrollHeight
+    } else if (typeof uni !== 'undefined' && uni.pageScrollTo) {
+      uni.pageScrollTo({ scrollTop: el.scrollHeight || 999999, duration: 0 })
+    }
+  } catch (e) { /* 静默吞滚动异常,不影响主流程 */ }
+}
+const resetMeetingScroll = () => {
+  // 重新生成前重置
+  meetingUserScrolledUp.value = false
+}
+// 说明：原先的 normalizeMarkdown（用正则给 markdown 补空行）与 marked 解析已废弃——
+// markdown-it（CommonMark）本身就支持"标题/列表/引用可打断段落"，无需正则预处理；
+// 解析与渲染统一走 @/utils/markdown + MarkdownView 组件。
+
+// 纯文本转义 / H5 渲染 / App 节点转换原先都在这里，现已全部收敛到
+// src/components/MarkdownView.vue（内部复用 src/utils/markdown 管线）
 const mmPlanText = ref('')
-const onUploadRecording = () => { uni.showToast({ title: '录音上传开发中', icon: 'none' }) }
-const onInputMeetingContent = () => { uni.showToast({ title: '请在下方输入会议内容', icon: 'none' }) }
-const onEditMeetingInfo = (kind) => { uni.showToast({ title: '会议信息编辑开发中', icon: 'none' }) }
+// H5 端用隐藏 input 选文件，返回 base64 dataURL（uni.uploadFile H5 需要 Blob/File）
+const pickAudioByInput = () => {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'audio/*'
+    input.style.display = 'none'
+    input.onchange = (e) => {
+      const file = e.target.files && e.target.files[0]
+      document.body.removeChild(input)
+      if (!file) return resolve('')
+      // H5 端 uni.uploadFile 需要 filePath，这里把 File 转 base64 dataURL 用作路径
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)  // data:audio/mpeg;base64,xxx
+      reader.onerror = () => reject(new Error('读取文件失败'))
+      reader.readAsDataURL(file)
+    }
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+// 上传录音 → 后端 ASR 转写 → 自动填入会议内容
+const isTranscribing = ref(false)
+const onUploadRecording = async () => {
+  try {
+    // 兼容 H5 + App：
+    //   H5 端用原生 <input type=file>（uni.chooseMessageFile 仅微信小程序支持）
+    //   App 端用 uni.chooseMedia（mediaType:audio）
+    let filePath = ''
+    // #ifdef H5
+    filePath = await pickAudioByInput()
+    // #endif
+    // #ifndef H5
+    const chooseRes = await uni.chooseMedia({
+      count: 1,
+      mediaType: ['audio'],
+      sourceType: ['album', 'file']
+    })
+    filePath = (chooseRes.tempFiles && chooseRes.tempFiles[0] && chooseRes.tempFiles[0].tempFilePath)
+      || (chooseRes[1] && chooseRes[1].tempFiles && chooseRes[1].tempFiles[0].tempFilePath)
+      || ''
+    // #endif
+    if (!filePath) {
+      uni.showToast({ title: '未选择文件', icon: 'none' })
+      return
+    }
+    isTranscribing.value = true
+    uni.showLoading({ title: 'AI 转写中...' })
+    const res = await transcribeMeeting(filePath)
+    uni.hideLoading()
+    if (res && res.data && res.data.text) {
+      // 智能合并：当前已有内容则换行追加，否则直接填入
+            const oldText = inputText.value
+      const newText = (res && res.data && res.data.text) || ''
+      inputText.value = oldText
+        ? oldText + String.fromCharCode(10, 10) + newText
+        : newText
+      uni.showToast({ title: '转写完成', icon: 'success' })
+    } else {
+      uni.showToast({ title: '转写失败', icon: 'none' })
+    }
+  } catch (e) {
+    uni.hideLoading()
+    console.error('录音转写失败:', e)
+    // 优先展示后端返回的 msg（ResultCode.message 或 BusinessException）
+    const serverMsg = e && e.data && e.data.msg
+    const errMsg = (serverMsg || (e && e.errMsg) || (e && e.message) || '录音转写失败').toString()
+    uni.showToast({ title: errMsg.length > 18 ? errMsg.slice(0, 18) + '…' : errMsg, icon: 'none', duration: 3000 })
+  } finally {
+    isTranscribing.value = false
+  }
+}
+// 点击"输入会议内容"卡 → 滚动聚焦到下方 textarea
+const meetingContentRef = ref(null)
+const focusMeetingContent = () => {
+  // #ifdef H5
+  const el = document.querySelector('.prompt-card__textarea')
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  // #endif
+  // #ifndef H5
+  uni.pageScrollTo({ selector: '.prompt-card__textarea', duration: 300 })
+  // #endif
+  setTimeout(() => {
+    const ref = meetingContentRef.value
+    if (ref && ref.focus) ref.focus()
+  }, 350)
+}
 const addMmItem = (kind) => {
   const map = { problem: mmProblemText, plan: mmPlanText }
   const labels = { problem: '存在问题', plan: '下周计划' }
@@ -696,6 +886,7 @@ const addTask = () => {
 const toggleTask = (i) => { tasks.value[i].done = !tasks.value[i].done }
 const deleteTask = (i) => { tasks.value.splice(i, 1) }
 
+
 const pickerTabs = [
   { key: 'system', label: '系统提示词' },
   { key: 'user', label: '我的提示词' },
@@ -752,6 +943,104 @@ onLoad((option) => {
   // 拉取系统统一管理的格式提示词（只读展示）
   fetchSystemFormat()
 })
+
+// ===== 历史记录（按当前 toolId 拉后端） =====
+// 打开/折叠历史面板：首次打开时拉一次，后续切换走缓存
+const toggleHistoryPanel = async () => {
+  historyPanelOpen.value = !historyPanelOpen.value
+  if (historyPanelOpen.value && historyList.value.length === 0 && !historyLoading.value) {
+    await loadHistory()
+  }
+}
+const loadHistory = async () => {
+  if (!toolId.value) return
+  historyLoading.value = true
+  try {
+    const res = await historyListByToolApi(toolId.value, HISTORY_DEFAULT_LIMIT)
+    const list = (res && res.data) || []
+    historyList.value = Array.isArray(list) ? list : []
+  } catch (e) {
+    console.error('loadHistory error:', e)
+    uni.showToast({ title: '加载历史失败', icon: 'none' })
+    historyList.value = []
+  } finally {
+    historyLoading.value = false
+  }
+}
+// 格式化历史时间：把 '2026-09-28T10:00:00' 切成 '09-28 10:00'
+const formatHistoryTime = (s) => {
+  if (!s) return ''
+  // 兼容 'YYYY-MM-DDTHH:mm:ss' 与 'YYYY-MM-DD HH:mm:ss'
+  const t = String(s).replace('T', ' ').slice(0, 16)
+  // 只取月-日 时:分，去掉年份缩短显示
+  return t.slice(5) || t
+}
+// 说明：自研的 parseInline / markdownToRichTextNodes（markdown → rich-text 节点数组）已删除，
+// App 端改由 MarkdownView 内部使用 mp-html 渲染同一份 markdown-it HTML。
+// 复制到剪贴板：text 为空时直接提示"无内容可复制"；toast 默认成功
+const copyToClipboard = (text, label = '已复制') => {
+  const data = text == null ? '' : String(text)
+  if (!data) {
+    uni.showToast({ title: '暂无可复制内容', icon: 'none' })
+    return
+  }
+  uni.setClipboardData({
+    data,
+    success: () => uni.showToast({ title: label, icon: 'none' }),
+    fail: () => uni.showToast({ title: '复制失败', icon: 'none' })
+  })
+}
+// 点击某条历史：回填文本输入 + 把历史结果写到结果区（不自动调 AI，用户需手动点生成重跑）
+//   - 文本类工具(work-summary/weekly-report/meeting-minutes)：inputText + 提示词 + resultContent
+//   - meeting-minutes：inputText + 提示词 + meetingMarkdownText + meetingRoute（不重跑，只展示）
+//   - 文件类工具(doc-keypoint/ocr-recognize/ai-file-reader)：本次不回填文件，只展示输出
+const applyHistory = (item) => {
+  if (!item) return
+  const input = item.inputContent || ''
+  const output = item.outputContent || ''
+  // 文件类工具：仅展示输出，不回填 inputText（避免误导——历史 inputContent 可能含文件名）
+  if (toolId.value === 'doc-keypoint-extract'
+      || toolId.value === 'ocr-recognize'
+      || toolId.value === 'ai-file-reader') {
+    resultContent.value = output
+    uni.showToast({ title: '已展示历史结果，文件请重新上传', icon: 'none', duration: 2000 })
+    historyPanelOpen.value = false
+    return
+  }
+  // 文本类：回填 input + 提示词（用户当时 textarea 的原值，让点生成时是"原参数重发"）
+  inputText.value = input
+  promptFormatText.value = item.promptFormat || ''
+  promptGenerateText.value = item.promptGenerate || ''
+  // meeting-minutes：还要回填 markdown 输出 + 切到对应渲染模式
+  if (toolId.value === 'meeting-minutes') {
+    // 优先尝试解析 JSON（meeting-minutes 历史上可能是 JSON 或纯 markdown）
+    if (output && (output.trim().startsWith('[') || output.trim().startsWith('{'))) {
+      try {
+        const parsed = JSON.parse(output)
+        if (Array.isArray(parsed)) {
+          meetingRoute.value = 'json'
+          meetingJsonResult.value = parsed
+          meetingMarkdownText.value = ''
+          resultContent.value = ''
+          historyPanelOpen.value = false
+          uni.showToast({ title: '已回填，请点生成重新发送', icon: 'none', duration: 2000 })
+          return
+        }
+      } catch (e) { /* 不是 JSON，按 markdown 走 */ }
+    }
+    meetingRoute.value = 'sse'
+    meetingMarkdownText.value = output
+    // 历史回填的是完整结果（无打字过程），直接按"推字已结束"渲染 markdown
+    meetingTypingDone.value = true
+    meetingJsonResult.value = []
+    resultContent.value = ''
+  } else {
+    // work-summary / weekly-report
+    resultContent.value = output
+  }
+  historyPanelOpen.value = false
+  uni.showToast({ title: '已回填，请点生成重新发送', icon: 'none', duration: 2000 })
+}
 
 // 切换输入方式时重置状态
 const switchInputType = (type) => {
@@ -832,15 +1121,16 @@ const switchTab = (key) => {
   currentTab.value = key
 }
 
-// 选中一条提示词填入对应输入框（用户/系统提示词均带 promptText）
-const selectPrompt = (item) => {
-  selectedPromptId.value = (item && item.id != null) ? item.id : ''
+// 抽屉弹窗：选中列表项 → 设置预览（不直接应用，让用户点"确定"再应用）
+// 抽屉弹窗"确定"事件回调：组件 emit confirm 后调用
+const onPromptPickerConfirm = (item) => {
+  if (!item) return
+  selectedPromptId.value = item.id
   if (promptPickerTarget.value === 'format') {
     promptFormatText.value = item.promptText
   } else {
     promptGenerateText.value = item.promptText
   }
-  showPromptPicker.value = false
 }
 
 // AI 生成：调后端文本模型，按用户需求生成提示词
@@ -958,66 +1248,178 @@ const confirmSaveName = async () => {
   }
 }
 
-// 通用 SSE 文本流式输出（打字机效果）：work-summary / weekly-report / meeting-minutes 共用
+// 通用 SSE 文本流式输出（会议纪要：推字中纯文本、打完再渲染 Markdown）：
+//   - meeting-minutes：走 createTypewriter（rAF + 自适应速度），逐字推进 meetingMarkdownText
+//     推字期间 meetingTypingDone=false（只显示纯文本），结束后再置 true 渲染 markdown
+//   - 其他工具：保留旧行为，直接 resultContent.value += chunk
 // 入参 url 为后端流式接口地址；返回拼接后的完整文本
+//
+// 打字机句柄：保存上一轮结果，每次请求时先清掉旧的（防止用户中途取消 / 重新生成时残留）
+let currentTypewriter = null
 const runTextStream = (url) => {
   return new Promise((resolve, reject) => {
-    let fullText = ''
-    resultContent.value = ''
-    const charQueue = []
-    let streamDone = false
-    let typeTimer = null
-
-    const flushChar = () => {
-      if (charQueue.length > 0) {
-        resultContent.value += charQueue.shift()
-      }
-      // 流结束且队列排空后收尾
-      if (streamDone && charQueue.length === 0) {
-        if (typeTimer) {
-          clearInterval(typeTimer)
-          typeTimer = null
-        }
-        resolve(fullText)
-      }
+    // 防御：上一轮未清理的句柄先 dispose
+    if (currentTypewriter) {
+      currentTypewriter.dispose()
+      currentTypewriter = null
     }
 
-    streamRequest({
-      url,
-      data: {
-        content: inputText.value,
-        promptFormat: promptFormatText.value,
-        promptGenerate: promptGenerateText.value
-      },
-      onChunk: (chunk) => {
-        fullText += chunk
-        for (const ch of chunk) {
-          charQueue.push(ch)
-        }
-        if (!typeTimer) {
-          typeTimer = setInterval(flushChar, 20)
-        }
-      },
-      onDone: () => {
-        streamDone = true
-        // 队列已空则立即结束，否则等 flushChar 排空后 resolve
-        if (charQueue.length === 0) {
-          if (typeTimer) {
-            clearInterval(typeTimer)
-            typeTimer = null
-          }
-          resolve(fullText)
-        }
-      },
-      onError: (err) => {
-        if (typeTimer) {
-          clearInterval(typeTimer)
-          typeTimer = null
-        }
-        reject(err)
+    const isMeeting = url.includes('meeting-minutes')
+    const initialContent = isMeeting ? meetingMarkdownText.value : ''
+    let fullText = initialContent
+    if (isMeeting) {
+      meetingMarkdownText.value = ''
+      // 进入推字阶段：先切回纯文本模式，整个推字过程不渲染 markdown
+      meetingTypingDone.value = false
+      // 为本轮 SSE 创建一个新的打字机
+      // onUpdate 每帧推完后回调 → 自动滚动到底(用户未上滑时)
+      currentTypewriter = createTypewriter({
+        targetRef: meetingMarkdownText,
+        onUpdate: () => scrollMeetingToBottom()
+      })
+    }
+
+    const onChunk = (chunk) => {
+      fullText += chunk
+      if (isMeeting) {
+        // 走打字机：chunk 进队列,rAF 每帧推一批到 meetingMarkdownText
+        currentTypewriter?.push(chunk)
+      } else {
+        resultContent.value += chunk
       }
-    })
+    }
+    const onDone = () => {
+      if (isMeeting) {
+        // 排空队列 → 唤醒 onComplete → 销毁
+        currentTypewriter?.flush()
+        currentTypewriter?.dispose()
+        currentTypewriter = null
+        // 推字结束：切到 markdown 渲染模式（MarkdownView 会由纯文本切到富文本）
+        // 必须放在 flush 之后：尾段字符此刻才真正写入 meetingMarkdownText，
+        // 否则会拿半截文本去渲染 markdown
+        meetingTypingDone.value = true
+      }
+      resolve(fullText)
+    }
+    const onError = (err) => {
+      if (isMeeting) {
+        currentTypewriter?.dispose()
+        currentTypewriter = null
+        // 出错同样标记推字结束，避免残留内容卡在纯文本模式
+        meetingTypingDone.value = true
+      }
+      reject(err)
+    }
+    streamRequest({ url, data: {
+      content: inputText.value,
+      promptFormat: promptFormatText.value,
+      promptGenerate: promptGenerateText.value
+    }, onChunk, onDone, onError })
   })
+}
+
+// 老的打字机实现（onChunk 进 charQueue + setInterval 20ms 推 1 字符）已废弃——
+// 现在 runTextStream 把 chunk 交给 createTypewriter 推进 meetingMarkdownText，
+// 渲染由 <MarkdownView> 按 streaming 模式自动切换。
+/* 旧的实现代码已被上面的新版替换，下方为残留修复占位 */
+
+/**
+ * 打字机调度器（rAF 驱动 + 自适应速度 + 队列缓冲）
+ *
+ * 设计目标:
+ *  - 把 SSE chunk 累积到字符队列(不立即 ref 触发渲染)
+ *  - 用 requestAnimationFrame 每帧从队列里推 N 个字符 → 改目标 ref
+ *  - 速度自适应:队列越长(AI 写入快) → 每帧推得越多;队列清空 → 减速到 BASE_STEP
+ *  - 单调性:FIFO,绝不重复消费绝不丢字符
+ *  - flush() 用于流结束时强制排空队列
+ *  - dispose() 用于组件卸载 / 用户切走 / 取消时停止 rAF
+ *
+ * @param {Object} options
+ *   targetRef     - 要写入的目标 ref(必须是 .value 可写的)
+ *   onUpdate?     - 可选:每帧推完后回调(text, isFinal),用于标记 / 光标
+ *   onComplete?   - 可选:flush 完最后一次回调
+ *   baseStep?     - 基础每帧推多少字(默认 2)
+ *   maxStep?      - 最大每帧推多少字(默认 8)
+ *   stepRule?     - 自定义调速函数(queuedLen, baseStep, maxStep) -> step
+ * @returns {{ push: (str) => void, flush: () => void, dispose: () => void }}
+ */
+const createTypewriter = (options) => {
+  const targetRef = options.targetRef
+  const onUpdate = options.onUpdate
+  const onComplete = options.onComplete
+  const baseStep = options.baseStep || 2
+  const maxStep = options.maxStep || 8
+  const stepRule = options.stepRule || ((qLen, b, m) => {
+    // 默认自适应:队列越长越快,呈线性提升到上限
+    if (qLen <= 0) return 0
+    if (qLen < 16) return b
+    if (qLen < 64) return Math.min(b + 2, m)
+    if (qLen < 256) return Math.min(b + 4, m)
+    return m
+  })
+
+  const queue = []
+  let rafId = null
+  let disposed = false
+
+  const tick = () => {
+    if (disposed) return
+    rafId = null
+    const queued = queue.length
+    if (queued === 0) {
+      // 队列空,等下一次 push 或 flush 再唤醒
+      return
+    }
+    const step = Math.min(stepRule(queued, baseStep, maxStep), queued)
+    let popped = ''
+    for (let i = 0; i < step; i++) {
+      popped += queue.shift()
+    }
+    targetRef.value += popped
+    if (onUpdate) onUpdate(targetRef.value, false)
+    // 继续下一帧(若队列还有内容)
+    scheduleNext()
+  }
+
+  const scheduleNext = () => {
+    if (disposed || rafId !== null) return
+    if (queue.length === 0) return
+    rafId = requestAnimationFrame(tick)
+  }
+
+  return {
+    push(str) {
+      if (disposed || !str) return
+      // 把字符串切成单个字符推入队列(支持中文 / emoji / surrogate pair)
+      // 使用 Array.from 可正确按 Unicode code point 切分,避免 char-split 切坏中文
+      const chars = Array.from(String(str))
+      for (let i = 0; i < chars.length; i++) queue.push(chars[i])
+      scheduleNext()
+    },
+    flush() {
+      if (disposed) return
+      if (queue.length === 0) {
+        if (onUpdate) onUpdate(targetRef.value, true)
+        if (onComplete) onComplete()
+        return
+      }
+      // 排空:一次性把所有剩余字符推到 ref
+      let rest = ''
+      while (queue.length) rest += queue.shift()
+      targetRef.value += rest
+      if (onUpdate) onUpdate(targetRef.value, true)
+      if (onComplete) onComplete()
+    },
+    dispose() {
+      disposed = true
+      queue.length = 0
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
+        rafId = null
+      }
+    },
+    get pending() { return queue.length }
+  }
 }
 
 /**
@@ -1074,7 +1476,7 @@ const handleGenerate = async () => {
   // 通用前置校验（按 tools.js 的 validateRules；不通过直接 toast + return，不进 if-else 分支）
   const err = runValidation()
   if (err) {
-    uni.showToast({ title: err, icon: 'none' })
+    uni.showToast({title: err, icon: 'none'})
     return
   }
 
@@ -1092,7 +1494,7 @@ const handleGenerate = async () => {
       // 文档重点提取：B2 多文件批量（轮询方案）
       // 流程：batchUpload 拿 batchId → 轮询 batchCompleted 拉增量 items → 渲染到 BatchResultCards
       const docBatchFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
-      const { batchId, fileCount } = await batchUpload({
+      const {batchId, fileCount} = await batchUpload({
         files: docBatchFiles,
         fields: {
           promptFormat: promptFormatText.value,
@@ -1110,7 +1512,7 @@ const handleGenerate = async () => {
       const promptParts = []
       if (promptFormatText.value.trim()) promptParts.push(promptFormatText.value.trim())
       if (promptGenerateText.value.trim()) promptParts.push(promptGenerateText.value.trim())
-      const { batchId, fileCount } = await aiFileReaderBatchUpload({
+      const {batchId, fileCount} = await aiFileReaderBatchUpload({
         files: readerFiles,
         fields: {
           prompt: promptParts.join('\n\n')
@@ -1135,6 +1537,8 @@ const handleGenerate = async () => {
       meetingJsonResult.value = []
       meetingMarkdownText.value = ''
       resultContent.value = ''
+      // 流式打字机开始前重置滚动状态(确保新一轮自动滚到底)
+      resetMeetingScroll()
       if (route === 'json') {
         // JSON 路径：同步调 /json 端点，等 AI 完全返回后一次性拿到结构化数据，渲染成表格
         const res = await meetingMinutesJson({
@@ -1151,9 +1555,9 @@ const handleGenerate = async () => {
           meetingJsonResult.value = []
         }
       } else {
-        // SSE 路径：调 /stream 端点流式 markdown 文本，用 marked 渲染
+        // SSE 路径：调 /stream 端点流式 markdown 文本，由 MarkdownView 渲染
+        // 注意：runTextStream 已经通过打字机把内容推到 meetingMarkdownText，不要再用 resultContent 覆盖
         await runTextStream('/api/ai-office/meeting-minutes/stream')
-        meetingMarkdownText.value = resultContent.value
       }
 
     } else if (id === 'ocr-recognize') {
@@ -1164,7 +1568,7 @@ const handleGenerate = async () => {
 
       if (useBatch) {
         // 多文件模式：轮询方案
-        const { batchId, fileCount } = await ocrBatchUpload({
+        const {batchId, fileCount} = await ocrBatchUpload({
           files: ocrFiles,
           fields: {
             promptFormat: promptFormatText.value,
@@ -1184,7 +1588,10 @@ const handleGenerate = async () => {
           const flushChar = () => {
             if (charQueue.length > 0) resultContent.value += charQueue.shift()
             if (streamDone && charQueue.length === 0) {
-              if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+              if (typeTimer) {
+                clearInterval(typeTimer);
+                typeTimer = null
+              }
               resolve()
             }
           }
@@ -1203,20 +1610,29 @@ const handleGenerate = async () => {
             onDone: () => {
               streamDone = true
               if (charQueue.length === 0) {
-                if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
+                if (typeTimer) {
+                  clearInterval(typeTimer);
+                  typeTimer = null
+                }
                 resolve()
               }
             },
             onError: (err) => {
-              if (typeTimer) { clearInterval(typeTimer); typeTimer = null }
-              uni.showModal({ title: '请求失败', content: err && err.message ? err.message : '未知错误', showCancel: false })
+              if (typeTimer) {
+                clearInterval(typeTimer);
+                typeTimer = null
+              }
+              uni.showModal({
+                title: '请求失败',
+                content: err && err.message ? err.message : '未知错误',
+                showCancel: false
+              })
               reject(err)
             }
           })
         })
         resultContent.value = formatAiResult(fullText)
       }
-
     } else if (id === 'work-summary') {
       // 工作总结：SSE 流式输出（前置校验已统一处理）
       const fullText = await runTextStream('/api/ai-office/work-summary/stream')
@@ -1224,22 +1640,18 @@ const handleGenerate = async () => {
       resultContent.value = formatAiResult(fullText)
     } else if (id === 'id-photo-bg-change' || id === 'portrait-bg-replace' || id === 'image-compress') {
       // 去背景 + 图片压缩：后端暂未实现
-      uni.showToast({ title: '该工具开发中', icon: 'none' })
+      uni.showToast({title: '该工具开发中', icon: 'none'})
       return
 
     } else if (id === 'qr-code-gen' || id === 'password-gen' || id === 'todo-list') {
       // 二维码 + 密码生成 + 待办清单：后端暂未实现
-      uni.showToast({ title: '该工具开发中', icon: 'none' })
+      uni.showToast({title: '该工具开发中', icon: 'none'})
       return
-      // 去背景：后端暂未实现
-      uni.showToast({ title: '该工具开发中', icon: 'none' })
-      return
-      
+
     } else {
       // 暂未接入后端的工具，使用模拟数据
       resultContent.value = `【${toolInfo.value.name}】\n\n这是模拟生成的结果。\n\n后续接入后端接口后会返回真实结果。`
     }
-    
   } catch (err) {
     console.error('Generate error:', err)
     resultContent.value = (err && err.message) || '处理失败，请稍后重试。'
@@ -1250,6 +1662,390 @@ const handleGenerate = async () => {
 </script>
 
 <style lang="scss" scoped>
+/* 全局 SVG 兜底：默认尺寸 + 跟随父颜色（避免父容器缺 size 时显示异常） */
+svg {
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+/* ============ 提示词输入卡（meeting-minutes 专用） ============ */
+.prompt-card {
+  margin: 0 32rpx 24rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  padding: 24rpx 32rpx;
+}
+.prompt-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.prompt-card__label {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+}
+.prompt-card__pick {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  height: 48rpx;
+  padding: 0 16rpx;
+  background: var(--brand-primary-light, #EFF6FF);
+  color: var(--brand-primary, #3B82F6);
+  font-size: 24rpx;
+  border-radius: 16rpx;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.prompt-card__pick svg {
+  width: 28rpx;
+  height: 28rpx;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+.prompt-card__textarea {
+  width: 100%;
+  min-height: 140rpx;
+  padding: 16rpx 0;
+  border: none;
+  font-size: 26rpx;
+  color: var(--text-primary, #111827);
+  background: transparent;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  line-height: 1.6;
+}
+.prompt-card__textarea::placeholder {
+  color: var(--text-tertiary, #9CA3AF);
+}
+.prompt-card__counter {
+  display: block;
+  text-align: right;
+  font-size: 22rpx;
+  color: var(--text-tertiary, #9CA3AF);
+  margin-top: 8rpx;
+}
+
+/* ============ 抽屉式 prompt-picker 弹窗样式（按图 4：左列表 + 右预览） ============ */
+.prompt-drawer-mask {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: flex;
+  justify-content: flex-end;
+}
+.prompt-drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 90vh;
+  background: var(--bg-page, #F9FAFB);
+  display: flex;
+  flex-direction: column;
+  border-top-left-radius: 32rpx;
+  border-top-right-radius: 32rpx;
+  overflow: hidden;
+  animation: drawerSlideUp 0.3s ease-out;
+  box-shadow: 0 -8rpx 32rpx rgba(0, 0, 0, 0.12);
+}
+@keyframes drawerSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.prompt-drawer__header {
+  padding: 24rpx 32rpx 32rpx;
+  background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
+  border-bottom: 1rpx solid var(--border-color, #E5E7EB);
+}
+.prompt-drawer__status {
+  font-size: 24rpx;
+  color: var(--text-secondary, #4B5563);
+  margin-bottom: 16rpx;
+}
+.prompt-drawer__title-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+.prompt-drawer__icon-bg {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 24rpx;
+  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.prompt-drawer__icon-bg svg {
+  width: 40rpx;
+  height: 40rpx;
+  fill: #FFFFFF;
+}
+.prompt-drawer__title-text {
+  flex: 1;
+  min-width: 0;
+}
+.prompt-drawer__name {
+  display: block;
+  font-size: 32rpx;
+  font-weight: 700;
+  color: var(--text-primary, #111827);
+}
+.prompt-drawer__desc {
+  display: block;
+  font-size: 24rpx;
+  color: var(--text-secondary, #4B5563);
+  margin-top: 4rpx;
+}
+.prompt-drawer__close {
+  position: absolute;
+  top: 24rpx;
+  right: 24rpx;
+  width: 56rpx;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #4B5563);
+  cursor: pointer;
+  z-index: 10;
+}
+.prompt-drawer__close svg {
+  width: 36rpx;
+  height: 36rpx;
+  fill: currentColor;
+}
+.prompt-drawer__body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+.prompt-drawer__left {
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  border-right: 1rpx solid var(--divider-color, #F0F0F0);
+  background: var(--bg-card, #FFFFFF);
+}
+.prompt-drawer__title-bar {
+  padding: 24rpx 32rpx 16rpx;
+}
+.prompt-drawer__modal-title {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text-primary, #111827);
+}
+.prompt-drawer__tab-bar {
+  display: flex;
+  gap: 16rpx;
+  padding: 0 32rpx 16rpx;
+}
+.prompt-drawer__tab-item {
+  padding: 12rpx 28rpx;
+  font-size: 26rpx;
+  color: var(--text-secondary, #4B5563);
+  font-weight: 500;
+  border-radius: 999rpx;
+  background: var(--bg-card, #FFFFFF);
+  border: 1rpx solid var(--border-color, #E5E7EB);
+  cursor: pointer;
+}
+.prompt-drawer__tab-item.is-active {
+  color: #FFFFFF;
+  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+  border-color: transparent;
+}
+.prompt-drawer__search {
+  margin: 0 32rpx 16rpx;
+  padding: 16rpx 20rpx;
+  background: var(--bg-page, #F3F4F6);
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.prompt-drawer__search svg {
+  width: 28rpx;
+  height: 28rpx;
+  fill: var(--text-tertiary, #9CA3AF);
+  flex-shrink: 0;
+}
+.prompt-drawer__search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 26rpx;
+  color: var(--text-primary, #111827);
+  font-family: inherit;
+}
+.prompt-drawer__list {
+  flex: 1;
+  padding: 0 32rpx 24rpx;
+}
+.prompt-list-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 12rpx;
+  border-radius: 16rpx;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.prompt-list-item.is-active {
+  background: var(--brand-primary-light, #EFF6FF);
+}
+.prompt-list-item__icon {
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  background: var(--brand-primary-light, #EFF6FF);
+  color: var(--brand-primary, #3B82F6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.prompt-list-item__icon svg {
+  width: 28rpx;
+  height: 28rpx;
+  fill: currentColor;
+}
+.prompt-list-item__body {
+  flex: 1;
+  min-width: 0;
+}
+.prompt-list-item__name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+  margin-bottom: 4rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prompt-list-item__meta {
+  display: block;
+  font-size: 22rpx;
+  color: var(--text-tertiary, #9CA3AF);
+}
+.prompt-list-empty {
+  text-align: center;
+  padding: 80rpx 0;
+  color: var(--text-tertiary, #9CA3AF);
+  font-size: 26rpx;
+}
+.prompt-drawer__right {
+  width: 50%;
+  background: var(--bg-page, #F9FAFB);
+  overflow-y: auto;
+}
+.prompt-preview {
+  padding: 32rpx;
+}
+.prompt-preview__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+  padding-bottom: 24rpx;
+  border-bottom: 1rpx solid var(--divider-color, #F0F0F0);
+  margin-bottom: 24rpx;
+}
+.prompt-preview__icon {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 16rpx;
+  background: var(--brand-primary-light, #EFF6FF);
+  color: var(--brand-primary, #3B82F6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.prompt-preview__icon svg {
+  width: 32rpx;
+  height: 32rpx;
+  fill: currentColor;
+}
+.prompt-preview__title-block {
+  flex: 1;
+  min-width: 0;
+}
+.prompt-preview__name {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  margin-bottom: 12rpx;
+  word-break: break-all;
+}
+.prompt-preview__tag-row {
+  display: flex;
+  gap: 8rpx;
+}
+.prompt-preview__tag {
+  display: inline-block;
+  padding: 4rpx 12rpx;
+  background: var(--brand-primary-light, #EFF6FF);
+  color: var(--brand-primary, #3B82F6);
+  font-size: 22rpx;
+  border-radius: 8rpx;
+}
+.prompt-preview__desc-title {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+  margin-bottom: 16rpx;
+}
+.prompt-preview__desc-text {
+  display: block;
+  font-size: 26rpx;
+  color: var(--text-primary, #111827);
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.prompt-preview--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary, #9CA3AF);
+  font-size: 28rpx;
+}
+.prompt-drawer__bottom {
+  padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom, 0rpx));
+  background: var(--bg-card, #FFFFFF);
+  border-top: 1rpx solid var(--divider-color, #F0F0F0);
+}
+.prompt-drawer__confirm-btn {
+  width: 100%;
+  height: 88rpx;
+  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+  color: #FFFFFF;
+  border-radius: 999rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.prompt-drawer__confirm-btn[disabled] {
+  opacity: 0.4;
+}
+
 .page-container {
   min-height: 100vh;
   background-color: $bg-color;
@@ -1735,6 +2531,44 @@ const handleGenerate = async () => {
   font-weight: 500;
   color: var(--text-primary, #111827);
 }
+/* 带右侧操作按钮的 section title 行（用于结果区复制按钮） */
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 32rpx 16rpx;
+  gap: 16rpx;
+}
+.section-title-row .section-title {
+  margin: 0;
+}
+.result-actions {
+  display: flex;
+  gap: 12rpx;
+  flex-shrink: 0;
+}
+.result-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 10rpx 18rpx;
+  background: var(--bg-card, #FFFFFF);
+  border: 1rpx solid var(--border-color, #E5E7EB);
+  border-radius: 12rpx;
+  font-size: 22rpx;
+  color: var(--text-secondary, #6B7280);
+  transition: all 0.15s;
+}
+.result-action-btn:active {
+  background: var(--bg-hover, rgba(59,130,246,0.06));
+  color: var(--color-primary, #3B82F6);
+}
+.result-action-icon {
+  width: 28rpx;
+  height: 28rpx;
+  fill: currentColor;
+  flex-shrink: 0;
+}
 .file-list { margin: 0 32rpx 24rpx; }
 .file-item {
   display: flex;
@@ -1889,10 +2723,13 @@ const handleGenerate = async () => {
 }
 .date-card__left { display: flex; align-items: center; gap: 24rpx; }
 .date-card__icon {
+  width: 64rpx;
+  height: 64rpx;
   color: var(--brand-primary, #3B82F6);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .date-card__icon svg { width: 44rpx; height: 44rpx; fill: currentColor; }
 .date-card__value {
@@ -1940,10 +2777,13 @@ const handleGenerate = async () => {
   cursor: pointer;
 }
 .input-card__icon {
+  width: 56rpx;
+  height: 56rpx;
   color: var(--brand-primary, #3B82F6);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .input-card__icon svg { width: 52rpx; height: 52rpx; fill: currentColor; }
 .input-card__label {
@@ -1954,12 +2794,7 @@ const handleGenerate = async () => {
 .input-card__sub { font-size: 22rpx; color: var(--text-tertiary, #9CA3AF); }
 
 /* 表单卡（会议信息） */
-.form-card {
-  margin: 0 32rpx 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  padding: 0 32rpx;
-}
+
 .form-card__title {
   font-size: 28rpx;
   font-weight: 500;
@@ -2608,47 +3443,23 @@ const handleGenerate = async () => {
   color: var(--text-tertiary, #9CA3AF);
   font-size: 26rpx;
 }
+/* ===== 会议纪要结果区 ===== */
+/* markdown 正文（h1-h6 / p / ul / ol / table / pre / code …）的标签样式统一由全局主题
+   src/styles/markdown.css 提供（作用域 .markdown-body），此处只保留滚动卡片外框 */
+/* 注意：v-html 注入的子元素没有 data-v-xxx 属性，不要在这里写 scoped 的标签选择器 */
 .mm-md-result {
-  margin: 0 32rpx 24rpx;
+  margin: 0 16px 12px;
   background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  padding: 32rpx;
-  font-size: 28rpx;
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 14px;
   line-height: 1.7;
   color: var(--text-primary, #111827);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
-.mm-md-result h1,
-.mm-md-result h2,
-.mm-md-result h3 {
-  margin: 24rpx 0 16rpx;
-  font-weight: 700;
-  color: var(--text-primary, #111827);
-}
-.mm-md-result h1 { font-size: 36rpx; }
-.mm-md-result h2 { font-size: 32rpx; }
-.mm-md-result h3 { font-size: 28rpx; }
-.mm-md-result p {
-  margin: 12rpx 0;
-}
-.mm-md-result ul,
-.mm-md-result ol {
-  margin: 12rpx 0;
-  padding-left: 40rpx;
-}
-.mm-md-result li {
-  margin: 8rpx 0;
-}
-.mm-md-result strong {
-  font-weight: 700;
-  color: var(--brand-primary, #3B82F6);
-}
-.mm-md-result code {
-  background: var(--bg-page, #F3F4F6);
-  padding: 2rpx 8rpx;
-  border-radius: 4rpx;
-  font-family: monospace;
-  font-size: 24rpx;
-}
+/* 说明：原先针对 .mm-md-html / .mm-md-result 的 :deep() 标签样式已删除，
+   统一收敛到全局主题 src/styles/markdown.css（.markdown-body） */
 
 /* 提示卡 */
 .tip {
@@ -2773,6 +3584,116 @@ const handleGenerate = async () => {
   flex-shrink: 0;
 }
 .task-item__delete svg { width: 32rpx; height: 32rpx; fill: currentColor; }
+
+/* ===== 历史记录面板（工具详情页内嵌） ===== */
+.history-panel {
+  margin: 24rpx $spacing-md 24rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.history-panel__header {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  gap: 16rpx;
+}
+.history-panel__icon {
+  width: 36rpx;
+  height: 36rpx;
+  fill: var(--color-primary, #3B82F6);
+  flex-shrink: 0;
+}
+.history-panel__title {
+  flex: 1;
+  font-size: 28rpx;
+  color: var(--text-primary, #111827);
+  font-weight: 500;
+}
+.history-panel__chevron {
+  width: 36rpx;
+  height: 36rpx;
+  fill: var(--text-secondary, #6B7280);
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+.history-panel.is-open .history-panel__chevron {
+  transform: rotate(0deg);
+}
+.history-panel__body {
+  border-top: 1rpx solid var(--border-color, #E5E7EB);
+  padding: 8rpx 0;
+}
+.history-panel__loading,
+.history-panel__empty {
+  padding: 48rpx 0;
+  text-align: center;
+  color: var(--text-secondary, #6B7280);
+  font-size: 26rpx;
+}
+.history-panel__list {
+  display: flex;
+  flex-direction: column;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 32rpx;
+  border-bottom: 1rpx solid var(--border-color-light, #F3F4F6);
+  transition: background-color 0.15s;
+}
+.history-item:last-child {
+  border-bottom: none;
+}
+.history-item:active {
+  background: var(--bg-hover, rgba(59,130,246,0.04));
+}
+.history-item__left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  overflow: hidden;
+}
+.history-item__status {
+  font-size: 22rpx;
+  font-weight: 500;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+  align-self: flex-start;
+}
+.history-item__status.is-ok {
+  color: #059669;
+  background: rgba(16,185,129,0.1);
+}
+.history-item__status.is-fail {
+  color: #DC2626;
+  background: rgba(239,68,68,0.1);
+}
+.history-item__input {
+  font-size: 26rpx;
+  color: var(--text-primary, #111827);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-item__right {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-left: 16rpx;
+}
+.history-item__time {
+  font-size: 22rpx;
+  color: var(--text-secondary, #6B7280);
+  white-space: nowrap;
+}
+.history-item__chev {
+  width: 32rpx;
+  height: 32rpx;
+  fill: var(--text-secondary, #6B7280);
+}
 
 /* 底部按钮 */
 .bottom-action {

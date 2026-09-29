@@ -46,6 +46,12 @@ public class HistoryVO {
     /** 错误信息（失败时） */
     private String errorMsg;
 
+    /** 用户当时在格式提示词 textarea 的原始内容（前端回填原参数重发用） */
+    private String promptFormat;
+
+    /** 用户当时在生成提示词 textarea 的原始内容（前端回填原参数重发用） */
+    private String promptGenerate;
+
     /** 涉及文件列表 */
     private List<HistoryFileVO> files;
 }

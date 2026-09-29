@@ -54,6 +54,7 @@ cos:
   # 私有文件（file/{userId}/）签名 URL 有效期（秒）。到期后链接 403，前端需重新调接口。
   signed-url-ttl-seconds: ${COS_SIGNED_URL_TTL:300}
 
+
 # 腾讯云 OCR（ai-ocr 工具用）。密钥默认复用 cos.*，留空即用 COS 密钥
 # 不需要 OCR 时设 ocr.enabled=false
 ocr:
@@ -82,3 +83,13 @@ ai:
     api-url: https://api.minimaxi.com/v1/chat/completions
     api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
     model: MiniMax-M3
+
+
+# 录音转文本服务（MiniMax chatAudio + ffmpeg 转码）
+# ffmpeg 可执行文件路径：空时走 PATH 自动查找
+# Windows 推荐：D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
+# Linux/Mac 一般可直接用系统 PATH 的 ffmpeg
+asr:
+  ffmpeg-binary-path: ${ASR_FFMPEG_PATH:D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe}
+  sample-rate: 16000
+  channels: 1

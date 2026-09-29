@@ -78,6 +78,12 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public Long createPendingHistory(Long userId, Long toolId, Long modelId, String aiCode, String inputContent) {
+        return createPendingHistory(userId, toolId, modelId, aiCode, inputContent, null, null);
+    }
+
+    @Override
+    public Long createPendingHistory(Long userId, Long toolId, Long modelId, String aiCode,
+                                     String inputContent, String promptFormat, String promptGenerate) {
         History history = new History();
         history.setUserId(userId);
         history.setToolId(toolId);
@@ -90,6 +96,8 @@ public class HistoryServiceImpl implements HistoryService {
         HistoryDetail detail = new HistoryDetail();
         detail.setHistoryId(history.getId());
         detail.setInputContent(inputContent);
+        detail.setPromptFormat(promptFormat);
+        detail.setPromptGenerate(promptGenerate);
         detail.setDr(Constants.DR_NORMAL);
         historyDetailMapper.insert(detail);
 
@@ -126,10 +134,17 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public List<HistoryVO> listRecent(Long userId, int limit) {
+        return listRecent(userId, null, limit);
+    }
+
+    @Override
+    public List<HistoryVO> listRecent(Long userId, String aiCode, int limit) {
         // 1) 主查询：取最近 limit 条历史
+        //    aiCode 为空时不过滤,等同于按用户拉全部
         LambdaQueryWrapper<History> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(History::getUserId, userId)
                 .eq(History::getDr, Constants.DR_NORMAL)
+                .eq(aiCode != null && !aiCode.isEmpty(), History::getAiCode, aiCode)
                 .orderByDesc(History::getCreateTime)
                 .last("LIMIT " + limit);
         List<History> histories = historyMapper.selectList(wrapper);
@@ -196,6 +211,8 @@ public class HistoryServiceImpl implements HistoryService {
             vo.setInputContent(detail.getInputContent());
             vo.setOutputContent(detail.getOutputContent());
             vo.setErrorMsg(detail.getErrorMsg());
+            vo.setPromptFormat(detail.getPromptFormat());
+            vo.setPromptGenerate(detail.getPromptGenerate());
         }
 
         // 文件

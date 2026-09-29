@@ -20,12 +20,19 @@ public class HistoryController {
     private final AuthUtil authUtil;
 
     /**
-     * 查询最近历史记录（默认 Constants.HISTORY_LIST_DEFAULT_LIMIT 条）
+     * 查询指定用户在指定工具的历史记录（默认 Constants.HISTORY_LIST_DEFAULT_LIMIT 条）
+     * @param userId  用户 id（账号，必填）
+     * @param aiCode  可选，按工具编码过滤（如 work-summary / meeting-minutes）
+     * @param limit   可选，返回条数上限（1 <= limit <= 50，默认 Constants.HISTORY_LIST_DEFAULT_LIMIT）
      */
     @GetMapping("/list")
-    public Result<List<HistoryVO>> list(HttpServletRequest request) {
-        Long userId = authUtil.getUserIdFromRequest(request);
-        return Result.success(historyService.listRecent(userId, Constants.HISTORY_LIST_DEFAULT_LIMIT));
+    public Result<List<HistoryVO>> list(
+            @RequestParam Long userId,
+            @RequestParam(required = false) String aiCode,
+            @RequestParam(required = false) Integer limit) {
+        int n = (limit == null || limit <= 0) ? Constants.HISTORY_LIST_DEFAULT_LIMIT
+                : Math.min(limit, 50); // 硬上限 50 防滥用
+        return Result.success(historyService.listRecent(userId, aiCode, n));
     }
 
     /**

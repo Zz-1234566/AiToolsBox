@@ -1,7 +1,12 @@
 <template>
   <view class="page page--no-tabbar">
-    <!-- 顶栏：标题 + 搜索按钮 -->
+    <!-- 顶栏：返回 + 标题 + 搜索按钮 -->
     <view class="topbar topbar--border">
+      <view class="topbar__back" hover-class="topbar__back--hover" aria-label="返回" @click="goBack">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </view>
       <text class="topbar__title">AI 工具</text>
       <view class="topbar__action" @click="goSearch">
         <svg viewBox="0 0 24 24" fill="none">
@@ -130,6 +135,19 @@ const filteredTools = computed(() => {
 const goToTool = (id) => {
   uni.navigateTo({ url: `/pages/tool-common?id=${id}` })
 }
+const goBack = () => {
+  // #ifdef H5
+  if (window.history.length > 1) {
+    window.history.back()
+  } else {
+    uni.showToast({ title: '已是最上层页面', icon: 'none' })
+  }
+  // #endif
+  // #ifndef H5
+  uni.navigateBack({ delta: 1 })
+  // #endif
+}
+
 const goSearch = () => {
   uni.navigateTo({ url: '/pages/search' })
 }
@@ -145,7 +163,6 @@ const goSearch = () => {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: center;
   position: relative;
   height: 88rpx;
   padding: 0 32rpx;
@@ -154,7 +171,27 @@ const goSearch = () => {
 .topbar--border {
   border-bottom: 1rpx solid var(--border-light, #F3F4F6);
 }
+.topbar__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  color: var(--text-primary, #1F2937);
+  cursor: pointer;
+}
+.topbar__back svg {
+  width: 40rpx;
+  height: 40rpx;
+}
+.topbar__back--hover {
+  opacity: 0.6;
+}
+
 .topbar__title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 36rpx;
   font-weight: 600;
   color: var(--text-primary, #111827);
@@ -170,8 +207,7 @@ const goSearch = () => {
   color: var(--text-secondary, #4B5563);
 }
 .topbar__action svg {
-  width: 36rpx;
-  height: 36rpx;
+  width: 36rpx; height: 36rpx;
 }
 
 /* ===== Category Tabs ===== */

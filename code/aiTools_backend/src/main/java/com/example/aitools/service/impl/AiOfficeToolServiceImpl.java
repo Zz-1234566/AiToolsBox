@@ -351,7 +351,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         long start = System.currentTimeMillis();
         Long toolId = findToolIdByCode(toolCode);
-        Long historyId = historyService.createPendingHistory(userId, toolId, null, toolCode, content);
+        // 写历史时把用户当时 textarea 的原值也带过去（用于历史面板回填"原参数重发"）
+        Long historyId = historyService.createPendingHistory(userId, toolId, null, toolCode, content, promptFormat, promptGenerate);
         StringBuilder sb = new StringBuilder();
         try {
             String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, toolCode);
