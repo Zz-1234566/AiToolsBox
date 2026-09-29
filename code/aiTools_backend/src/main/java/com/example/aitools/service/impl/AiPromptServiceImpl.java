@@ -149,6 +149,8 @@ public class AiPromptServiceImpl implements AiPromptService {
             vo.setToolCode(t.getToolCode());
             vo.setToolName(t.getToolName());
             vo.setToolType(t.getToolType());
+            vo.setInputType(t.getInputType());
+            vo.setOutputType(t.getOutputType());
             return vo;
         }).toList();
     }
