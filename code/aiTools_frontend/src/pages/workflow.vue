@@ -68,13 +68,46 @@
                       placeholder="请输入文本内容" placeholder-class="wfe-ph" :maxlength="5000" />
             <view v-else class="run-node__file">
               <view class="file-pick" @click="pickFile(n)">选择文件</view>
-              <text class="file-name">{{ runInputs[n.nodeId].files.length ? runInputs[n.nodeId].files.length + ' 个文件' : '未选择' }}</text>
+              <text v-if="!runInputs[n.nodeId].files.length" class="file-name">未选择</text>
+              <!-- 已选文件：显示文件名，点击可下载/预览
+                   files 元素可能是 {name,url} 对象（新）或纯 url 字符串（兼容） -->
+              <view v-else class="run-files">
+                <view v-for="(f, fi) in runInputs[n.nodeId].files" :key="fi" class="run-file-item"
+                      @click.stop="openFile(f)">
+                  <text class="run-file-item__icon">📎</text>
+                  <text class="run-file-item__name">{{ fileDisplayName(f) }}</text>
+                </view>
+              </view>
             </view>
           </view>
         </scroll-view>
         <view class="btn-solid" :class="{ 'btn-solid--disabled': running }" @click="running ? null : doRun()">
           {{ running ? '运行中…' : '开始运行' }}
         </view>
+
+        <!-- ============ 流式执行进度（边跑边展示）============ -->
+        <scroll-view v-if="streamFrames.length || streamRunning" scroll-y class="stream-panel">
+          <view class="stream-panel__head">
+            <text class="stream-panel__title">执行进度</text>
+            <text class="stream-panel__sub">{{ streamDoneCount }}/{{ streamFileTotal }} 个文件</text>
+          </view>
+          <view v-for="(fr, fi) in streamFrames" :key="fi" class="stream-file">
+            <view class="stream-file__head">
+              <text class="stream-file__idx">文件 {{ fi + 1 }}</text>
+              <text class="stream-file__st" :class="fr.ok ? 'st-ok' : 'st-fail'">
+                {{ fr.ok ? '✓ 完成' : (streamRunning && fi === streamFrames.length - 1 ? '处理中…' : '✗ 失败') }}
+              </text>
+            </view>
+            <view v-for="(nd, ni) in fr.nodes" :key="ni" class="stream-node">
+              <text class="stream-node__name">{{ nd.nodeRef || nd.nodeId }}</text>
+              <text v-if="nd.errorMsg" class="stream-node__err">{{ nd.errorMsg }}</text>
+              <view v-else-if="nd.text" class="stream-node__text">
+                <MarkdownView :source="nd.text" :streaming="!nd.done" />
+              </view>
+              <text v-else-if="!nd.done" class="stream-node__wait">处理中…</text>
+            </view>
+          </view>
+        </scroll-view>
       </view>
     </view>
 
@@ -129,6 +162,7 @@
 import { ref, reactive, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import MarkdownView from '@/components/MarkdownView.vue'
+import { BASE_URL } from '@/config/env'
 import { toolListApi } from '@/api/prompt'
 import { uploadFile } from '@/api/request'
 import {
@@ -147,6 +181,13 @@ const runInputs = reactive({})
 
 const resultVisible = ref(false)
 const runResult = ref(null)
+
+/* ===== 流式执行状态（SSE 边跑边展示）===== */
+/** 每个文件的执行进度：[{ ok, nodes: [{nodeId, nodeRef, text, done, errorMsg}] }] */
+const streamFrames = ref([])
+const streamRunning = ref(false)
+const streamFileTotal = ref(0)
+const streamDoneCount = ref(0)
 
 const runsVisible = ref(false)
 const runs = ref([])
@@ -273,7 +314,8 @@ const uploadFiles = async (n, list) => {
         return
       }
       const url = res.data && res.data.fileUrl
-      if (url) uploaded.push(url)
+      const name = (res.data && res.data.fileName) || (item && item.name) || fileDisplayName(url)
+      if (url) uploaded.push({ name, url })
     }
     // 累加：支持重复点选/多次选择，避免后一次覆盖前一次（工作流节点是数组语义）
     const existing = (runInputs[n.nodeId].files || []).slice()
@@ -295,9 +337,17 @@ const doRun = async () => {
     if (isTextInput(n)) {
       if (v.text && v.text.trim()) inputs[n.nodeId] = [v.text]
     } else if (v.files && v.files.length) {
-      inputs[n.nodeId] = v.files.slice()
+      // 兼容 {name,url} 与纯 url 字符串
+      inputs[n.nodeId] = v.files.map(f => (typeof f === 'string' ? f : (f.url || f.fileUrl || '')))
     }
   }
+
+  // 文件数 > 1 → SSE 流式（边跑边展示）；单文件/纯文本 → 原同步接口
+  const maxFiles = Math.max(0, ...Object.values(inputs).map(a => a.length))
+  if (maxFiles > 1) {
+    return doRunStream(inputs, maxFiles)
+  }
+
   running.value = true
   uni.showLoading({ title: '运行中，请稍候…' })
   try {
@@ -310,6 +360,145 @@ const doRun = async () => {
     running.value = false
     uni.hideLoading()
   }
+}
+
+/**
+ * SSE 流式运行：逐帧接收，边跑边展示（每个文件完整跑完后立即可见）
+ * 帧类型：run_start / file_start / node_start / chunk / node_done / file_done / all_done / error
+ */
+const doRunStream = (inputs, fileTotal) => {
+  const token = uni.getStorageSync('token')
+  const url = BASE_URL + `/api/workflow/${runTarget.value.workflowId}/run/stream`
+
+  // 重置流式状态
+  streamFrames.value = []
+  streamFileTotal.value = fileTotal
+  streamDoneCount.value = 0
+  streamRunning.value = true
+  running.value = true
+
+  const xhr = new XMLHttpRequest()
+  xhr.open('POST', url, true)
+  xhr.setRequestHeader('Content-Type', 'application/json')
+  if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token)
+
+  // SSE 增量解析（按空行分隔事件，事件内多行 data: 拼回）
+  let consumed = 0
+  let buffer = ''
+  const handleFrame = (obj) => {
+    const t = obj.type
+    if (t === 'file_start') {
+      streamFrames.value.push({ ok: false, nodes: [] })
+    } else if (t === 'node_start') {
+      const f = streamFrames.value[obj.fileIndex]
+      if (f) f.nodes.push({ nodeId: obj.nodeId, nodeRef: obj.nodeRef, text: '', done: false, errorMsg: null })
+    } else if (t === 'chunk') {
+      const f = streamFrames.value[obj.fileIndex]
+      const nd = f && f.nodes.find(x => x.nodeId === obj.nodeId)
+      if (nd) nd.text = (nd.text || '') + (obj.text || '')
+    } else if (t === 'node_done') {
+      const f = streamFrames.value[obj.fileIndex]
+      const nd = f && f.nodes.find(x => x.nodeId === obj.nodeId)
+      if (nd) {
+        nd.done = true
+        if (!obj.ok) nd.errorMsg = obj.errMsg || '执行失败'
+        // 非 text 节点通过 output 带回完整内容（text 节点已由 chunk 累积）
+        if (obj.output) nd.text = (nd.text || '') + obj.output
+      }
+    } else if (t === 'file_done') {
+      const f = streamFrames.value[obj.fileIndex]
+      if (f) f.ok = !!obj.ok
+      streamDoneCount.value = Math.max(streamDoneCount.value, obj.fileIndex + 1)
+    } else if (t === 'all_done') {
+      streamRunning.value = false
+      running.value = false
+      streamFrames.value = streamFrames.value.slice()
+    } else if (t === 'error') {
+      streamRunning.value = false
+      running.value = false
+      uni.showToast({ title: obj.message || '运行失败', icon: 'none', duration: 3000 })
+    }
+  }
+
+  const feed = (fullText, done) => {
+    buffer += fullText.slice(consumed)
+    consumed = fullText.length
+    const events = buffer.split(/\r?\n\r?\n/)
+    buffer = events.pop()
+    for (const ev of events) {
+      const lines = ev.split(/\r?\n/).filter(l => l.startsWith('data:'))
+      if (!lines.length) continue
+      const payload = lines.map(l => l.slice(5).replace(/^ /, '')).join('\n')
+      if (!payload || payload === '[DONE]') continue
+      try { handleFrame(JSON.parse(payload)) } catch (e) { /* 忽略非 JSON 帧 */ }
+    }
+    if (done && buffer) {
+      const lines = buffer.split(/\r?\n/).filter(l => l.startsWith('data:'))
+      if (lines.length) {
+        const payload = lines.map(l => l.slice(5).replace(/^ /, '')).join('\n')
+        try { handleFrame(JSON.parse(payload)) } catch (e) { /* ignore */ }
+      }
+      buffer = ''
+    }
+  }
+
+  xhr.onprogress = () => feed(xhr.responseText)
+  xhr.onload = () => {
+    if (xhr.status >= 400) {
+      streamRunning.value = false
+      running.value = false
+      let msg = '请求失败（' + xhr.status + '）'
+      try {
+        const body = JSON.parse(xhr.responseText || '{}')
+        if (body && body.message) msg = body.message
+      } catch (e) { /* ignore */ }
+      uni.showToast({ title: msg, icon: 'none', duration: 3000 })
+      return
+    }
+    feed(xhr.responseText, true)
+    streamRunning.value = false
+    running.value = false
+    loadList()
+  }
+  xhr.onerror = () => {
+    streamRunning.value = false
+    running.value = false
+    uni.showToast({ title: '网络异常，运行中断', icon: 'none' })
+  }
+  xhr.send(JSON.stringify({ inputs }))
+}
+
+/** 文件显示名：兼容 {name,url} 与纯 url 字符串 */
+const fileDisplayName = (f) => {
+  if (!f) return '文件'
+  if (typeof f === 'string') {
+    const s = f.split('?')[0]
+    const seg = s.split('/').pop() || '文件'
+    const cut = seg.indexOf('_')   // 形如 8eb03bf1_文件名.pdf
+    return cut > 0 && cut < 40 ? seg.slice(cut + 1) : seg
+  }
+  return f.name || f.fileName || '文件'
+}
+
+/** 点击文件：跳下载（新窗口打开签名 URL） */
+const openFile = (f) => {
+  const url = typeof f === 'string' ? f : (f && (f.url || f.fileUrl))
+  if (!url) {
+    uni.showToast({ title: '文件链接不可用', icon: 'none' })
+    return
+  }
+  // #ifdef H5
+  window.open(url, '_blank')
+  // #endif
+  // #ifndef H5
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      if (res.statusCode === 200) uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
+    },
+    fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
+  })
+  // #endif
 }
 
 /* ==================== 历史 ==================== */
@@ -484,6 +673,68 @@ const openRunDetail = async (runId) => {
   font-weight: 500;
 }
 .file-name { font-size: 24rpx; color: #9CA3AF; }
+
+/* 已选文件列表（工作流节点上传后显示文件名，点击下载） */
+.run-files { margin-top: 12rpx; }
+.run-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 14rpx 16rpx;
+  margin-top: 8rpx;
+  background: #F9FAFB;
+  border-radius: 12rpx;
+}
+.run-file-item__icon { font-size: 26rpx; }
+.run-file-item__name {
+  flex: 1;
+  font-size: 24rpx;
+  color: #2563EB;
+  text-decoration: underline;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 流式执行进度面板 */
+.stream-panel {
+  max-height: 60vh;
+  margin-top: 20rpx;
+  padding: 20rpx;
+  background: #F9FAFB;
+  border-radius: 16rpx;
+}
+.stream-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.stream-panel__title { font-size: 28rpx; font-weight: 600; color: #111827; }
+.stream-panel__sub { font-size: 24rpx; color: #6B7280; }
+
+.stream-file {
+  background: #fff;
+  border-radius: 14rpx;
+  padding: 18rpx;
+  margin-bottom: 14rpx;
+}
+.stream-file__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10rpx;
+}
+.stream-file__idx { font-size: 26rpx; font-weight: 600; color: #111827; }
+.stream-file__st { font-size: 22rpx; }
+.st-ok { color: #10B981; }
+.st-fail { color: #EF4444; }
+
+.stream-node { margin-top: 12rpx; padding-left: 8rpx; border-left: 4rpx solid #E5E7EB; }
+.stream-node__name { display: block; font-size: 22rpx; color: #6B7280; margin-bottom: 6rpx; }
+.stream-node__err { display: block; font-size: 24rpx; color: #EF4444; }
+.stream-node__wait { display: block; font-size: 24rpx; color: #9CA3AF; }
+.stream-node__text { font-size: 26rpx; color: #374151; }
 
 .res-node { border-bottom: 2rpx solid #F3F4F6; padding: 24rpx 0; }
 .res-node__head { display: flex; align-items: center; justify-content: space-between; }
