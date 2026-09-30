@@ -108,7 +108,7 @@ public class MinimaxClient {
 
         } catch (IOException e) {
             log.error("MiniMax M3 调用异常", e);
-            throw new RuntimeException("MiniMax M3 服务调用失败：" + e.getMessage(), e);
+            throw new RuntimeException("AI 服务调用失败，请稍后重试", e);
         }
     }
 
@@ -210,7 +210,7 @@ public class MinimaxClient {
 
         } catch (IOException e) {
             log.error("MiniMax M3 audio 调用异常", e);
-            throw new RuntimeException("MiniMax M3 audio 服务调用失败：" + e.getMessage(), e);
+            throw new RuntimeException("AI 服务调用失败，请稍后重试", e);
         }
     }
 
@@ -290,7 +290,7 @@ public class MinimaxClient {
 
         } catch (IOException e) {
             log.error("MiniMax M3 调用异常", e);
-            throw new RuntimeException("MiniMax M3 服务调用失败：" + e.getMessage(), e);
+            throw new RuntimeException("AI 服务调用失败，请稍后重试", e);
         }
     }
 

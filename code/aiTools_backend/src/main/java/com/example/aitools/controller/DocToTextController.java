@@ -35,7 +35,7 @@ public class DocToTextController {
                                                HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         if (file == null || file.isEmpty()) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "请选择要转换的文档");
+            throw new BusinessException(ResultCode.DOC_EMPTY.getCode(), "请选择要转换的文档");
         }
         return Result.success("转换成功", docToTextService.toText(userId, file));
     }

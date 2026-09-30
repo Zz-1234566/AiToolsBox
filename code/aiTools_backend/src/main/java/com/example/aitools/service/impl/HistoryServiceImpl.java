@@ -123,7 +123,14 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public void failHistory(Long historyId, String errorMsg) {
-        // 主表 status 保持 0（处理中即失败）
+        // 主表置为明确的失败态（2），与「处理中」（0）区分，避免失败记录永久显示为处理中。
+        // 前端历史页以 status==1 判定成功，2/0 均显示失败，故兼容。
+        LambdaUpdateWrapper<History> mainWrapper = new LambdaUpdateWrapper<>();
+        mainWrapper.eq(History::getId, historyId)
+                .eq(History::getDr, Constants.DR_NORMAL)
+                .set(History::getStatus, Constants.HISTORY_STATUS_FAILED);
+        historyMapper.update(null, mainWrapper);
+
         // 更新明细 errorMsg
         LambdaUpdateWrapper<HistoryDetail> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(HistoryDetail::getHistoryId, historyId)

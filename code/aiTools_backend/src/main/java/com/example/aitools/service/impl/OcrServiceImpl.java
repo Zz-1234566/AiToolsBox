@@ -1,5 +1,6 @@
 package com.example.aitools.service.impl;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.CosConfig;
 import com.example.aitools.config.OcrConfig;
 import com.example.aitools.exception.BusinessException;
@@ -40,7 +41,8 @@ public class OcrServiceImpl implements OcrService {
         try {
             return doOcr(file.getBytes(), file.getOriginalFilename());
         } catch (Exception e) {
-            throw new BusinessException("OCR 识别失败：" + e.getMessage());
+            log.error("OCR 识别失败", e);
+            throw new BusinessException(ResultCode.OCR_FAILED.getCode(), ResultCode.OCR_FAILED.getMessage());
         }
     }
 
@@ -94,10 +96,12 @@ public class OcrServiceImpl implements OcrService {
             return sb.toString().trim();
         } catch (TencentCloudSDKException e) {
             log.error("腾讯云 OCR 调用失败 fileName={}", originalFilename, e);
-            throw new BusinessException("OCR 识别失败：" + e.getMessage());
+            log.error("OCR 识别失败", e);
+            throw new BusinessException(ResultCode.OCR_FAILED.getCode(), ResultCode.OCR_FAILED.getMessage());
         } catch (Exception e) {
             log.error("OCR 异常 fileName={}", originalFilename, e);
-            throw new BusinessException("OCR 识别失败：" + e.getMessage());
+            log.error("OCR 识别失败", e);
+            throw new BusinessException(ResultCode.OCR_FAILED.getCode(), ResultCode.OCR_FAILED.getMessage());
         }
     }
 }

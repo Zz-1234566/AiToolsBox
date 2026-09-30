@@ -113,6 +113,15 @@ public class Constants {
 
     // ==================== 历史记录（/api/history） ====================
 
+    /** 历史状态：处理中 */
+    public static final int HISTORY_STATUS_PROCESSING = 0;
+
+    /** 历史状态：成功 */
+    public static final int HISTORY_STATUS_SUCCESS = 1;
+
+    /** 历史状态：失败 */
+    public static final int HISTORY_STATUS_FAILED = 2;
+
     /** 默认历史记录查询条数 */
     public static final int HISTORY_LIST_DEFAULT_LIMIT = 10;
 

@@ -34,15 +34,15 @@ public class FileController {
                                              HttpServletRequest request) {
         // 1) 参数校验
         if (file == null || file.isEmpty()) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "请选择要上传的文件");
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "请选择要上传的文件");
         }
         if (file.getSize() > Constants.MAX_FILE_SIZE) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "文件大小不能超过20MB");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
         }
         String originalFilename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         String ext = FileStorageService.extractExtension(originalFilename).replaceFirst("^\\.", "");
         if (!Constants.ALLOWED_FILE_EXTENSIONS.contains(ext)) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
+            throw new BusinessException(ResultCode.FILE_UNSUPPORTED.getCode(),
                     "不支持的文件类型，仅支持图片（jpg/png/gif/webp）、文档（pdf/doc/docx/txt）和音频（mp3/wav/m4a/aac/flac/ogg/amr）");
         }
 

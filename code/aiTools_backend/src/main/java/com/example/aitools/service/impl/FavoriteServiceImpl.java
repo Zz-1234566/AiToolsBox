@@ -104,7 +104,13 @@ public class FavoriteServiceImpl implements FavoriteService {
     private AiPrompt findPrompt(String promptId) {
         try {
             return aiPromptTemplateService.getById(Long.parseLong(promptId));
+        } catch (NumberFormatException e) {
+            // promptId 非数字：数据异常，记录以便排查（列表侧会跳过该条补全）
+            log.warn("收藏记录 promptId 非法: {}", promptId);
+            return null;
         } catch (Exception e) {
+            // 提示词已被删除等：属预期情况，但需留痕，避免列表静默残缺却无任何线索
+            log.warn("查询收藏提示词失败 promptId={}", promptId, e);
             return null;
         }
     }

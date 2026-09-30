@@ -1,5 +1,6 @@
 package com.example.aitools.controller;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.Result;
 import com.example.aitools.common.StreamHelper;
@@ -208,10 +209,14 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
                 try {
                     return BatchFilePayload.from(f);
                 } catch (java.io.IOException e) {
-                    throw new BusinessException("读取文件失败：" + e.getMessage());
+                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
                 }
             }).toList();
         } catch (BusinessException e) {
+            // 读文件失败：刚建的任务必须置为失败，否则永久停留在 PENDING，
+            // 前端若已拿到 batchId 会一直轮询等不到终态，且任务表堆积孤儿数据
+            log.error("[B2] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
+            safeFailBatch(batchId, files.size());
             throw e;  /* P2-B4 */
         }
 
@@ -273,10 +278,14 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
                 try {
                     return BatchFilePayload.from(f);
                 } catch (java.io.IOException e) {
-                    throw new BusinessException("读取文件失败：" + e.getMessage());
+                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
                 }
             }).toList();
         } catch (BusinessException e) {
+            // 读文件失败：刚建的任务必须置为失败，否则永久停留在 PENDING，
+            // 前端若已拿到 batchId 会一直轮询等不到终态，且任务表堆积孤儿数据
+            log.error("[B2] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
+            safeFailBatch(batchId, files.size());
             throw e;  /* P2-B4 */
         }
 
@@ -344,12 +353,24 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         Long userId = authUtil.getUserIdFromRequest(request);
         BatchTask task = batchTaskService.getByBatchId(batchId);
         if (task == null) {
-            return Result.fail("任务不存在或已过期");
+            return Result.fail(ResultCode.NOT_FOUND.getCode(), "任务不存在或已过期");
         }
         if (!task.getUserId().equals(userId)) {
-            return Result.fail("无权访问此任务");
+            return Result.fail(ResultCode.FORBIDDEN.getCode(), "无权访问此任务");
         }
         // 旧端点返回全部 items（since=0）
         return Result.success(BatchStatusVO.from(task, 0));
+    }
+
+    /**
+     * 兜底把批量任务标记为失败（用于「已建任务但后续同步步骤失败」的场景，避免孤儿 PENDING 任务）。
+     * <p>自身异常只记日志，绝不掩盖调用处要抛出的原始异常。
+     */
+    private void safeFailBatch(String batchId, int fileCount) {
+        try {
+            batchTaskService.completeBatch(batchId, 0, fileCount, "[]");
+        } catch (Exception e) {
+            log.error("[B2] 兜底标记任务失败时出错 batchId={}", batchId, e);
+        }
     }
 }

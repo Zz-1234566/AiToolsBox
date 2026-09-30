@@ -1,5 +1,6 @@
 package com.example.aitools.handler;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.ai.AiClient;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.dto.BatchProcessResult;
@@ -139,7 +140,7 @@ public class JsonSingleHandler implements AiToolHandler {
         try {
             root = objectMapper.readTree(jsonStr);
         } catch (Exception e) {
-            throw new BusinessException("JSON 解析失败：" + e.getMessage());
+            throw new BusinessException(ResultCode.AI_TOOL_FAILED.getCode(), "AI 返回内容解析失败，请重试");
         }
         if (!root.isArray()) {
             throw new BusinessException("期望 JSON 数组，实际是 " + root.getNodeType());

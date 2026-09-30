@@ -1,5 +1,6 @@
 package com.example.aitools.controller;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.common.Result;
 import com.example.aitools.dto.TranscribeResponse;
 import com.example.aitools.exception.BusinessException;
@@ -41,7 +42,7 @@ public class TranscribeController {
             throw e;
         } catch (Exception e) {
             log.error("[meeting-minutes/transcribe] failed", e);
-            throw new BusinessException("录音转文本失败：" + e.getMessage());
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
         }
     }
 }

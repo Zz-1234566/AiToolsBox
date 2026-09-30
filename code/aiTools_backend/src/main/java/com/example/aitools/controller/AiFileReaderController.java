@@ -1,5 +1,6 @@
 package com.example.aitools.controller;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.common.Result;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.dto.BatchUploadResponse;
@@ -63,7 +64,7 @@ public class AiFileReaderController {
                 try {
                     return BatchFilePayload.from(f);
                 } catch (java.io.IOException e) {
-                    throw new BusinessException("读取文件失败：" + e.getMessage());
+                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
                 }
             }).toList();
         } catch (BusinessException e) {
@@ -80,7 +81,11 @@ public class AiFileReaderController {
                 log.error("[B2-FILE] 异常 batchId={}", batchId, e);
                 try {
                     batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
-                } catch (Exception ignore) {}
+                } catch (Exception ex) {
+                    // 不能静默吞：兜底 completeBatch 失败会让任务永久停留在 RUNNING，
+                    // 前端轮询永远等不到终态，且服务端无任何痕迹
+                    log.error("[B2-FILE] 兜底 completeBatch 失败 batchId={}", batchId, ex);
+                }
             }
         });
 

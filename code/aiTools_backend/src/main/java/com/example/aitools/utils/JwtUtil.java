@@ -1,6 +1,8 @@
 package com.example.aitools.utils;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.JwtConfig;
+import com.example.aitools.exception.BusinessException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -90,6 +92,8 @@ public class JwtUtil {
             Claims claims = parseToken(token);
             return claims.getId();
         } catch (Exception e) {
+            // 原实现静默返回 null：会导致 logout 跳过黑名单（登出实际失效）却仍打印成功日志
+            log.warn("解析 token 的 jti 失败，该 token 无法加入黑名单", e);
             return null;
         }
     }
@@ -102,6 +106,7 @@ public class JwtUtil {
             Claims claims = parseToken(token);
             return claims.getExpiration().getTime() - System.currentTimeMillis();
         } catch (Exception e) {
+            log.warn("解析 token 剩余有效期失败，按已过期处理", e);
             return 0;
         }
     }
@@ -127,8 +132,15 @@ public class JwtUtil {
      * @return userId
      */
     public Long getUserIdFromToken(String token) {
-        Claims claims = parseToken(token);
-        return claims.get("userId", Long.class);
+        try {
+            Claims claims = parseToken(token);
+            return claims.get("userId", Long.class);
+        } catch (Exception e) {
+            // token 无效/过期属鉴权失败，必须 401；
+            // 若冒泡会被兜底 handler 转成 500「系统内部错误」，前端不触发重新登录且污染监控
+            log.warn("token 解析失败（按未登录处理）: {}", e.getMessage());
+            throw new BusinessException(ResultCode.UNAUTHORIZED);
+        }
     }
 
     /**
