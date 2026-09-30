@@ -2,6 +2,11 @@
   <view class="hist-page">
     <!-- 头部：标题 + 操作 -->
     <view class="hist-head">
+      <view class="hist-back" @click="goBack">
+        <svg class="hist-back__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 19L8 12L15 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </view>
       <text class="hist-head__title">历史记录</text>
       <view class="hist-head__icon" @click="onClearAll">
         <text>🗑</text>
@@ -37,7 +42,15 @@
               <view class="hist-badge" :class="item.status === 1 ? 'hist-badge--ok' : 'hist-badge--fail'">
                 <text>{{ item.status === 1 ? '✓ 成功' : '✗ 失败' }}</text>
               </view>
-              <text class="hist-card__more" @click.stop="onDelete(item)">···</text>
+              <view class="hist-card__del" @click.stop="onDelete(item)">
+                <svg class="hist-del__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 6H21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M19 6V20C19 20.5523 18.5523 21 18 21H6C5.44772 21 5 20.5523 5 20V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M10 11V17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M14 11V17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </view>
             </view>
             <text class="hist-card__line">输入：{{ brief(item.inputContent) }}</text>
             <text class="hist-card__line">结果：{{ item.status === 1 ? brief(item.outputContent) : (item.errorMsg || '处理失败') }}</text>
@@ -47,19 +60,30 @@
       </view>
     </block>
 
+    <!-- 底部加载状态 -->
+    <view v-if="!loading && historyList.length > 0" class="hist-foot">
+      <text v-if="loadingMore" class="hist-foot__text">加载中…</text>
+      <text v-else-if="!hasMore" class="hist-foot__text">没有更多了</text>
+    </view>
+
     <view class="safe-bottom"></view>
   </view>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { onShow, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { historyListApi, historyDeleteApi, historyClearAllApi } from '@/api/history'
 import { requireLogin } from '@/utils/auth'
+import { safeBack } from '@/utils/pageTransition'
 
 const loading = ref(false)
+const loadingMore = ref(false)
+const hasMore = ref(true)
 const historyList = ref([])
 const activeTab = ref('all')
+/** 每页条数 */
+const PAGE_SIZE = 10
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -131,33 +155,79 @@ const groupedList = computed(() => {
   return groups.filter(g => g.items.length > 0)
 })
 
-const fetchHistory = async () => {
-  loading.value = true
+const fetchHistory = async (append = false) => {
+  if (append) {
+    if (loadingMore.value || !hasMore.value) return
+    loadingMore.value = true
+  } else {
+    loading.value = true
+  }
   try {
-    const res = await historyListApi()
-    historyList.value = res.data || []
+    const offset = append ? historyList.value.length : 0
+    const res = await historyListApi(PAGE_SIZE, offset)
+    const list = (res && res.data) || []
+    if (append) {
+      // 去重兜底：分页期间若有新增/删除，offset 可能错位导致重复
+      const existIds = new Set(historyList.value.map((h) => String(h.id)))
+      historyList.value = historyList.value.concat(list.filter((h) => !existIds.has(String(h.id))))
+    } else {
+      historyList.value = list
+    }
+    // 返回不足一页 → 没有更多了
+    hasMore.value = list.length >= PAGE_SIZE
   } catch (err) {
     // request.js 已统一提示错误，这里清空列表避免残留旧数据
-    historyList.value = []
+    if (!append) historyList.value = []
+    hasMore.value = false
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
 }
 
 onShow(() => {
   if (!requireLogin()) return
+  hasMore.value = true
   fetchHistory()
 })
 
 onPullDownRefresh(async () => {
+  hasMore.value = true
   await fetchHistory()
   uni.stopPullDownRefresh()
 })
+
+/** 滚动到底部：自动加载下一页 */
+onReachBottom(() => {
+  fetchHistory(true)
+})
+
+// H5 兜底：uni 的 onReachBottom 依赖页面滚动监听注册，实测在 H5 下未生效，
+// 改用原生 scroll 事件判定触底（App/小程序仍走上面的 onReachBottom）
+// #ifdef H5
+let h5ScrollHandler = null
+onMounted(() => {
+  h5ScrollHandler = () => {
+    const doc = document.documentElement
+    const distance = 80
+    if (window.scrollY + window.innerHeight + distance >= doc.scrollHeight) {
+      fetchHistory(true)
+    }
+  }
+  window.addEventListener('scroll', h5ScrollHandler, { passive: true })
+})
+onUnmounted(() => {
+  if (h5ScrollHandler) window.removeEventListener('scroll', h5ScrollHandler)
+})
+// #endif
 
 const onItemClick = (item) => {
   if (!item || !item.id) return
   uni.navigateTo({ url: `/pages/history-detail?id=${item.id}&aiCode=${encodeURIComponent(item.aiCode || '')}` })
 }
+
+/** 返回：栈内有上一页则返回，否则回「我的」页（本页入口来源） */
+const goBack = () => safeBack('/pages/my')
 
 const onDelete = (item) => {
   uni.showModal({
@@ -209,8 +279,19 @@ const onClearAll = () => {
 .hist-head {
   display: flex;
   align-items: center;
+  gap: 8rpx;
   padding: 32rpx 32rpx 16rpx;
 }
+.hist-back {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -12rpx;
+  border-radius: 50%;
+}
+.hist-back__icon { width: 44rpx; height: 44rpx; color: #111827; }
 .hist-head__title {
   flex: 1;
   font-size: 48rpx;
@@ -276,7 +357,29 @@ const onClearAll = () => {
 }
 .hist-badge--ok { background: #D1FAE5; color: #10B981; }
 .hist-badge--fail { background: #FEE2E2; color: #EF4444; }
-.hist-card__more { color: #9CA3AF; font-size: 36rpx; padding-left: 8rpx; line-height: 1; }
+.hist-card__del {
+  width: 52rpx;
+  height: 52rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.hist-del__icon {
+  width: 34rpx;
+  height: 34rpx;
+  color: #9CA3AF;
+}
+
+/* 底部加载提示 */
+.hist-foot {
+  padding: 16rpx 0 32rpx;
+  text-align: center;
+}
+.hist-foot__text {
+  font-size: 24rpx;
+  color: #9CA3AF;
+}
 
 .hist-card__line {
   display: block;

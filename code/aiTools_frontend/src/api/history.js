@@ -13,20 +13,23 @@ function _resolveUserId() {
 }
 
 // 查询最近历史记录（全部工具）
-export const historyListApi = () => {
+// @param limit   每页条数（默认 10）
+// @param offset  跳过条数，供滚动加载更多（默认 0）
+export const historyListApi = (limit = 10, offset = 0) => {
   const userId = _resolveUserId()
-  return request({ url: '/api/history/list', method: 'GET', data: { userId } })
+  return request({ url: '/api/history/list', method: 'GET', data: { userId, limit, offset } })
 }
 
-// 查询指定工具的历史记录（按 aiCode 过滤，limit 可选）
+// 查询指定工具的历史记录（按 aiCode 过滤）
 // @param aiCode  工具编码（work-summary / meeting-minutes / ...）
 // @param limit   返回条数上限（1 <= limit <= 50）
-export const historyListByToolApi = (aiCode, limit = 10) => {
+// @param offset  跳过条数，供滚动加载更多（默认 0）
+export const historyListByToolApi = (aiCode, limit = 10, offset = 0) => {
   const userId = _resolveUserId()
   return request({
     url: '/api/history/list',
     method: 'GET',
-    data: { userId, aiCode, limit }
+    data: { userId, aiCode, limit, offset }
   })
 }
 

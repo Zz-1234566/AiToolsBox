@@ -24,15 +24,18 @@ public class HistoryController {
      * @param userId  用户 id（账号，必填）
      * @param aiCode  可选，按工具编码过滤（如 work-summary / meeting-minutes）
      * @param limit   可选，返回条数上限（1 <= limit <= 50，默认 Constants.HISTORY_LIST_DEFAULT_LIMIT）
+     * @param offset  可选，跳过条数（从 0 开始），供前端滚动加载更多使用；默认 0
      */
     @GetMapping("/list")
     public Result<List<HistoryVO>> list(
             @RequestParam Long userId,
             @RequestParam(required = false) String aiCode,
-            @RequestParam(required = false) Integer limit) {
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Integer offset) {
         int n = (limit == null || limit <= 0) ? Constants.HISTORY_LIST_DEFAULT_LIMIT
                 : Math.min(limit, 50); // 硬上限 50 防滥用
-        return Result.success(historyService.listRecent(userId, aiCode, n));
+        int off = (offset == null || offset < 0) ? 0 : offset;
+        return Result.success(historyService.listRecent(userId, aiCode, n, off));
     }
 
     /**

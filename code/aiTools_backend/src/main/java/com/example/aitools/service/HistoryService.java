@@ -58,6 +58,12 @@ public interface HistoryService {
     List<HistoryVO> listRecent(Long userId, String aiCode, int limit);
 
     /**
+     * 查询指定用户历史（按 aiCode 过滤 + 偏移量），供前端滚动加载更多
+     * @param offset 跳过条数（从 0 开始）
+     */
+    List<HistoryVO> listRecent(Long userId, String aiCode, int limit, int offset);
+
+    /**
      * 删除历史记录（逻辑删除主表，明细/文件子表一并逻辑删除）
      */
     void delete(Long id, Long userId);

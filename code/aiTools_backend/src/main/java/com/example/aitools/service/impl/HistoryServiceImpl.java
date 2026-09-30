@@ -139,14 +139,21 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public List<HistoryVO> listRecent(Long userId, String aiCode, int limit) {
-        // 1) 主查询：取最近 limit 条历史
+        return listRecent(userId, aiCode, limit, 0);
+    }
+
+    @Override
+    public List<HistoryVO> listRecent(Long userId, String aiCode, int limit, int offset) {
+        // 1) 主查询：取最近 limit 条历史（offset 用于滚动加载更多）
         //    aiCode 为空时不过滤,等同于按用户拉全部
+        //    create_time 精度到秒，同秒记录顺序不稳定会导致翻页错乱，故用 id 兜底排序
         LambdaQueryWrapper<History> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(History::getUserId, userId)
                 .eq(History::getDr, Constants.DR_NORMAL)
                 .eq(aiCode != null && !aiCode.isEmpty(), History::getAiCode, aiCode)
                 .orderByDesc(History::getCreateTime)
-                .last("LIMIT " + limit);
+                .orderByDesc(History::getId)
+                .last("LIMIT " + limit + " OFFSET " + Math.max(offset, 0));
         List<History> histories = historyMapper.selectList(wrapper);
         if (histories.isEmpty()) {
             return java.util.Collections.emptyList();
