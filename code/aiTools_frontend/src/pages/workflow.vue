@@ -237,21 +237,22 @@ const pickFile = (n) => {
   // #ifdef H5
   const input = document.createElement('input')
   input.type = 'file'
-  input.multiple = false
+  // 多选：工作流节点是数组语义（N 个文件 → N 个独立输入），支持一次选多个
+  input.multiple = true
   input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : '.pdf,.docx,.txt'
   input.onchange = async () => {
-    const f = (input.files || [])[0]
-    if (f) await uploadFiles(n, [f])
+    const list = Array.from(input.files || [])
+    if (list.length) await uploadFiles(n, list)
   }
   input.click()
   // #endif
   // #ifndef H5
   uni.chooseMessageFile({
-    count: 1,
+    count: 10,
     type: isAudio ? 'audio' : 'file',
     success: async (res) => {
-      const f = (res.tempFiles || [])[0]
-      if (f) await uploadFiles(n, [f.path || f])
+      const list = (res.tempFiles || []).map(f => f.path || f)
+      if (list.length) await uploadFiles(n, list)
     }
   })
   // #endif
@@ -274,8 +275,10 @@ const uploadFiles = async (n, list) => {
       const url = res.data && res.data.fileUrl
       if (url) uploaded.push(url)
     }
-    runInputs[n.nodeId].files = uploaded
-    uni.showToast({ title: `已上传 ${uploaded.length} 个`, icon: 'success' })
+    // 累加：支持重复点选/多次选择，避免后一次覆盖前一次（工作流节点是数组语义）
+    const existing = (runInputs[n.nodeId].files || []).slice()
+    runInputs[n.nodeId].files = existing.concat(uploaded)
+    uni.showToast({ title: `已上传 ${uploaded.length} 个，共 ${runInputs[n.nodeId].files.length} 个`, icon: 'success' })
   } catch (e) {
     // 网络异常等：request 层已提示，此处兜底
     uni.showToast({ title: '上传失败，请检查网络后重试', icon: 'none' })

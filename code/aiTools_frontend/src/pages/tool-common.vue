@@ -674,8 +674,69 @@ const applyQuickPrompt = (text) => { inputText.value = text }
 
 const askText = ref('')
 const applySuggested = (text) => { askText.value = text }
-const uploadedFiles = ref([{ fileName: '示例文件.pdf', size: '1.6 MB', date: '2025-09-22' }])
-const onFilePickerClick = () => { uni.showToast({ title: '文件选择开发中', icon: 'none' }) }
+const uploadedFiles = ref([])   // 批量工具已选文件（mockup 阶段的示例数据已移除）
+/** 批量工具选文件（文档重点提取 / 智能识别 / AI 文件解读）：H5 原生多选，App 用 chooseMessageFile */
+const onFilePickerClick = () => {
+  const rule = toolInfo.value.fileRule || {}
+  const maxCount = rule.maxCount || 10
+  const accept = rule.accept || '.pdf,.docx,.txt'
+  const isImage = toolInfo.value.fileType === 'image'
+  const isAudio = toolInfo.value.fileType === 'audio'
+
+  const addPicked = (items) => {
+    if (!items.length) return
+    const merged = uploadedFiles.value.filter(f => f && f.fileName).concat(items)
+    if (merged.length > maxCount) {
+      uni.showToast({ title: `最多 ${maxCount} 个文件，已截断`, icon: 'none' })
+      merged.splice(maxCount)
+    }
+    uploadedFiles.value = merged
+  }
+
+  // #ifdef H5
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = maxCount > 1
+  input.accept = accept
+  input.onchange = () => {
+    const picked = Array.from(input.files || []).map(f => ({
+      fileName: f.name, file: f, size: f.size || 0
+    }))
+    addPicked(picked)
+  }
+  input.click()
+  // #endif
+  // #ifndef H5
+  if (isImage && typeof uni.chooseImage === 'function') {
+    uni.chooseImage({
+      count: maxCount,
+      success: (res) => {
+        const paths = res.tempFilePaths || []
+        const files = res.tempFiles || []
+        addPicked(paths.map((p, i) => ({
+          fileName: (files[i] && files[i].name) || p.split('/').pop() || ('图片' + (i + 1)),
+          path: p, size: (files[i] && files[i].size) || 0
+        })))
+      }
+    })
+    return
+  }
+  // 文档/音频：chooseMessageFile
+  uni.chooseMessageFile({
+    count: maxCount,
+    type: isAudio ? 'audio' : 'file',
+    extension: accept.split(',').map(s => s.trim()).filter(Boolean),
+    success: (res) => {
+      const files = res.tempFiles || []
+      addPicked(files.map((f, i) => ({
+        fileName: f.name || f.path.split('/').pop() || ('文件' + (i + 1)),
+        path: f.path || f,
+        size: f.size || 0
+      })))
+    }
+  })
+  // #endif
+}
 const removeFile = (idx) => { uploadedFiles.value.splice(idx, 1) }
 
 const weeklyDoneText = ref('')
@@ -1034,9 +1095,7 @@ const removePureConvertFile = (idx) => {
 // 在 handleGenerate 入口前置校验，不通过直接 return + toast，不进 if-else 分支
 const runValidation = () => validate(toolId.value, currentInputType.value, {
   filePath: isPureConvert.value ? (pureConvertFiles.value.length ? 'selected' : '') : filePath.value,
-  batchFiles: isPureConvert.value
-    ? pureConvertFiles.value
-    : ((batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []),
+  batchFiles: isPureConvert.value ? pureConvertFiles.value : uploadedFiles.value,
   inputText: inputText.value,
   promptFormat: promptFormatText.value,
   promptGenerate: promptGenerateText.value,
@@ -1201,10 +1260,8 @@ const switchInputType = (type) => {
   pureConvertFiles.value = []
   pureConvertFile.value = null
   fileUrl.value = ''
-  // 清空 BatchFilePicker 组件内部文件列表
-  if (batchPickerRef.value && batchPickerRef.value.clear) {
-    batchPickerRef.value.clear()
-  }
+  // 清空批量工具已选文件（原 BatchFilePicker 组件未渲染，改由 uploadedFiles 维护）
+  uploadedFiles.value = []
 }
 
 const onFileChoose = async (info) => {
@@ -1643,7 +1700,7 @@ const handleGenerate = async () => {
     // 录音转写若选中多个文件，走批量；单个则退回原有单文件纯转换路径
     const audioBatchFiles = pureConvertFiles.value.length > 1
       ? pureConvertFiles.value
-      : ((batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : [])
+      : uploadedFiles.value.slice()
     if (id === 'audio-transcribe' && audioBatchFiles.length > 0) {
       // 录音转写：B2 多文件批量（轮询方案）
       const { batchId, fileCount } = await audioBatchUpload({ files: audioBatchFiles })
@@ -1686,7 +1743,7 @@ const handleGenerate = async () => {
     } else if (id === 'doc-keypoint-extract') {
       // 文档重点提取：B2 多文件批量（轮询方案）
       // 流程：batchUpload 拿 batchId → 轮询 batchCompleted 拉增量 items → 渲染到 BatchResultCards
-      const docBatchFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
+      const docBatchFiles = uploadedFiles.value.slice()
       const {batchId, fileCount} = await batchUpload({
         files: docBatchFiles,
         fields: {
@@ -1701,7 +1758,7 @@ const handleGenerate = async () => {
     } else if (id === 'ai-file-reader') {
       // AI 文件解读：B2 多文件批量（轮询方案），后端只接单个 prompt 字符串
       // 格式提示词 + 生成内容提示词拼接后传入；两者皆空时后端用默认解读提示词
-      const readerFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
+      const readerFiles = uploadedFiles.value.slice()
       const promptParts = []
       if (promptFormatText.value.trim()) promptParts.push(promptFormatText.value.trim())
       if (promptGenerateText.value.trim()) promptParts.push(promptGenerateText.value.trim())
@@ -1756,7 +1813,7 @@ const handleGenerate = async () => {
     } else if (id === 'ocr-recognize') {
       // OCR 智能识别：上传图片/PDF → 腾讯云 OCR → 调 AI 整理（前置校验已统一处理）
       // 兼容两种模式：老用户用单文件 filePath，新用户用组件多文件
-      const ocrFiles = (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []
+      const ocrFiles = uploadedFiles.value.slice()
       const useBatch = ocrFiles.length > 0
 
       if (useBatch) {
