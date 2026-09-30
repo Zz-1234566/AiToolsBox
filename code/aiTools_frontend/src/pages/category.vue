@@ -70,6 +70,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import { safeBack } from '@/utils/pageTransition'
 import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
 import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 
@@ -160,18 +161,7 @@ async function loadFavorites() {
 onShow(() => {
   loadFavorites()
 })
-const goBack = () => {
-  // #ifdef H5
-  if (window.history.length > 1) {
-    window.history.back()
-  } else {
-    uni.showToast({ title: '已是最上层页面', icon: 'none' })
-  }
-  // #endif
-  // #ifndef H5
-  uni.navigateBack({ delta: 1 })
-  // #endif
-}
+const goBack = () => safeBack('/pages/index')
 
 const goSearch = () => {
   uni.navigateTo({ url: '/pages/search' })

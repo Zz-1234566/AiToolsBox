@@ -86,6 +86,7 @@
 
 <script setup>
 import { ref, nextTick, onBeforeUnmount } from 'vue'
+import { safeBack } from '@/utils/pageTransition'
 import { request } from '../api/request'
 import { sendCodeApi } from '../api/user'
 
@@ -232,9 +233,7 @@ const goToLoginPage = () => {
   uni.navigateTo({ url: '/pages/login' })
 }
 
-const goBack = () => {
-  uni.navigateBack({ delta: 1 })
-}
+const goBack = () => safeBack('/pages/login')
 </script>
 
 <style lang="scss" scoped>

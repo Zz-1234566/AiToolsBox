@@ -562,6 +562,7 @@
 import { ref, computed } from 'vue'
 import { BASE_URL } from '@/config/env'
 import { onLoad } from '@dcloudio/uni-app'
+import { safeBack } from '@/utils/pageTransition'
 import { requireLogin } from '@/utils/auth'
 import PageHeader from '@/components/PageHeader.vue'
 import InputSwitcher from '@/components/InputSwitcher.vue'
@@ -661,18 +662,7 @@ const bottomActionText = computed(() => {
   return (meta && meta.action) || '开始处理'
 })
 
-const goBack = () => {
-  // #ifdef H5
-  if (window.history.length > 1) {
-    window.history.back()
-  } else {
-    uni.showToast({ title: '已是最上层页面', icon: 'none' })
-  }
-  // #endif
-  // #ifndef H5
-  uni.navigateBack({ delta: 1 })
-  // #endif
-}
+const goBack = () => safeBack('/pages/index')
 
 // ===== 各工具特化状态 =====
 const workDate = ref('2025-09-23')

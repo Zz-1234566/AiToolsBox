@@ -120,6 +120,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { toolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
 import { workflowSaveApi, workflowDetailApi } from '@/api/workflow'
 import { TOOLS } from '@/config/tools'
+import { safeBack } from '@/utils/pageTransition'
 import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
 
 const tools = ref([])
@@ -332,7 +333,7 @@ const save = async () => {
       nodes: form.nodes
     })
     uni.showToast({ title: '保存成功', icon: 'success' })
-    setTimeout(() => uni.navigateBack(), 600)
+    setTimeout(() => goBack(), 600)
   } catch (e) {
     // request.js 已统一提示
   } finally {
@@ -340,7 +341,12 @@ const save = async () => {
   }
 }
 
-const goBack = () => uni.navigateBack({ delta: 1 })
+/**
+ * 返回上一页。
+ * 用 safeBack 兜底：直接访问/刷新本页时页面栈只有自己，
+ * navigateBack 会静默失败（点了没反应），此时 reLaunch 回工作流列表。
+ */
+const goBack = () => safeBack('/pages/workflow')
 
 onLoad(async (opt) => {
   try {

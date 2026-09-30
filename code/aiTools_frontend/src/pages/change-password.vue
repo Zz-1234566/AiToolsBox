@@ -57,6 +57,7 @@
 
 <script setup>
 import { ref, computed, nextTick } from 'vue'
+import { safeBack } from '@/utils/pageTransition'
 import { changePasswordApi } from '@/api/user'
 
 const form = ref({
@@ -127,7 +128,7 @@ const handleSubmit = async () => {
     await changePasswordApi(form.value.oldPassword, form.value.newPassword)
     uni.showToast({ title: '密码修改成功', icon: 'success' })
     setTimeout(() => {
-      uni.navigateBack()
+      safeBack('/pages/my')
     }, 800)
   } catch (e) {
     // request.js 已经统一弹出错误提示（旧密码错误返回 1003）
@@ -136,9 +137,7 @@ const handleSubmit = async () => {
   }
 }
 
-const goBack = () => {
-  uni.navigateBack({ delta: 1 })
-}
+const goBack = () => safeBack('/pages/my')
 </script>
 
 <style lang="scss" scoped>

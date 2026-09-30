@@ -79,6 +79,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { safeBack } from '@/utils/pageTransition'
 
 const toolName = ref('图片去背景')
 const progress = ref(45)
@@ -106,9 +107,7 @@ const toggleFav = () => {
   uni.showToast({ title: favored.value ? '已收藏' : '已取消收藏', icon: 'none' })
 }
 
-const goBack = () => {
-  uni.navigateBack({ delta: 1 })
-}
+const goBack = () => safeBack('/pages/index')
 
 const cancelProcess = () => {
   uni.showModal({
@@ -116,7 +115,7 @@ const cancelProcess = () => {
     content: '确定要取消当前任务吗？已处理的进度将不会保留。',
     success: (res) => {
       if (res.confirm) {
-        uni.navigateBack({ delta: 1 })
+        safeBack('/pages/index')
       }
     }
   })
