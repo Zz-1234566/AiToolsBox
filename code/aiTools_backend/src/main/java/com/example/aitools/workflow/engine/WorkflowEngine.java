@@ -1,6 +1,7 @@
 package com.example.aitools.workflow.engine;
 
 import com.example.aitools.common.Constants;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.common.WorkflowRunStatusEnum;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.workflow.dto.WorkflowNode;
@@ -62,7 +63,10 @@ public class WorkflowEngine {
                 });
         try {
             for (List<WorkflowNode> level : plan.levels) {
-                List<Future<LevelTask>> futures = new ArrayList<>(level.size());
+                // 记录每个 Future 对应的 nodeId：Future 级异常（Error/OOM/线程池拒绝）时
+                // 必须把该节点记为失败，否则它会从 results 中完全消失，
+                // 导致 success=0 且 fail=0 → decideStatus(0,0) 返回 COMPLETED（静默假成功）
+                List<Map.Entry<String, Future<LevelTask>>> futures = new ArrayList<>(level.size());
                 for (WorkflowNode node : level) {
                     // 上游有失败 → 本节点不执行
                     boolean upstreamFailed = node.getDeps().stream().anyMatch(failedNodes::contains);
@@ -77,15 +81,27 @@ public class WorkflowEngine {
                         failedNodes.add(node.getNodeId());
                         continue;
                     }
-                    futures.add(pool.submit(() -> runNode(node, sourceInputs, outputsByNode)));
+                    String nodeId = node.getNodeId();
+                    try {
+                        futures.add(Map.entry(nodeId, pool.submit(() -> runNode(node, sourceInputs, outputsByNode))));
+                    } catch (Exception e) {
+                        // 提交失败（线程池饱和/关闭）：同样要记为失败，不能丢
+                        log.error("[workflow] 节点提交失败 nodeId={}", nodeId, e);
+                        results.put(nodeId, failedResult("节点提交失败，请重试"));
+                        failedNodes.add(nodeId);
+                    }
                 }
                 // 等待本层全部完成后再进入下一层
-                for (Future<LevelTask> f : futures) {
+                for (Map.Entry<String, Future<LevelTask>> entry : futures) {
+                    String nodeId = entry.getKey();
                     LevelTask t;
                     try {
-                        t = f.get();
+                        t = entry.getValue().get();
                     } catch (Exception e) {
-                        log.error("[workflow] 节点任务异常", e);
+                        // 关键：不能 continue 跳过——必须落一条失败结果，避免静默假成功
+                        log.error("[workflow] 节点任务异常 nodeId={}", nodeId, e);
+                        results.put(nodeId, failedResult("节点执行异常，请重试"));
+                        failedNodes.add(nodeId);
                         continue;
                     }
                     results.put(t.nodeId, t.result);
@@ -131,12 +147,21 @@ public class WorkflowEngine {
             r.setCostMs((int) (System.currentTimeMillis() - start));
             return new LevelTask(nodeId, r);
         } catch (Exception e) {
-            log.warn("[workflow] 节点 {} 执行失败: {}", nodeId, e.getMessage());
+            // 错误信息脱敏：业务异常本身就是面向用户的文案；
+            // 其他异常（IO/HTTP/SDK）的 message 含服务器路径、上游地址等，只进日志
+            String userMsg;
+            if (e instanceof BusinessException) {
+                userMsg = e.getMessage();
+                log.warn("[workflow] 节点 {} 执行失败: {}", nodeId, userMsg);
+            } else {
+                userMsg = ResultCode.WORKFLOW_NODE_FAILED.getMessage();
+                log.error("[workflow] 节点 {} 执行异常", nodeId, e);
+            }
             r.setStatus(NODE_FAILED);
             r.setInputs(new ArrayList<>());
             r.setOutputs(new ArrayList<>());
             r.setCostMs((int) (System.currentTimeMillis() - start));
-            r.setErrorMsg(e.getMessage());
+            r.setErrorMsg(userMsg);
             return new LevelTask(nodeId, r);
         }
     }
@@ -161,8 +186,20 @@ public class WorkflowEngine {
         return merged;
     }
 
-    /** 整体状态判定：全成功=2 / 部分=3 / 全失败=4 */
+    /** 构造一条失败的节点结果（用于 Future 级异常/提交失败等兜底场景） */
+    private WorkflowNodeResult failedResult(String errorMsg) {
+        WorkflowNodeResult r = new WorkflowNodeResult();
+        r.setStatus(NODE_FAILED);
+        r.setInputs(new ArrayList<>());
+        r.setOutputs(new ArrayList<>());
+        r.setCostMs(0);
+        r.setErrorMsg(errorMsg);
+        return r;
+    }
+
     private int decideStatus(int success, int fail) {
+        // 兜底：一个节点都没有结果（如计划为空/全部异常丢失）不能算成功
+        if (success == 0 && fail == 0) return WorkflowRunStatusEnum.FAILED.getCode();
         if (fail == 0) return WorkflowRunStatusEnum.COMPLETED.getCode();
         if (success == 0) return WorkflowRunStatusEnum.FAILED.getCode();
         return WorkflowRunStatusEnum.PARTIAL.getCode();

@@ -7,6 +7,7 @@ import com.example.aitools.entity.AiTool;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.common.Constants;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.service.OcrService;
 import com.example.aitools.service.TranscribeService;
@@ -185,16 +186,20 @@ public class NodeExecutor {
             // 3) 本地文件路径
             java.io.File f = new java.io.File(pathOrDataUrl);
             if (!f.exists() || !f.isFile()) {
-                throw new BusinessException("节点输入文件不存在：" + pathOrDataUrl);
+                // 脱敏：pathOrDataUrl 可能是服务器本地路径；仅日志记录，不透给前端
+                log.warn("节点输入文件不存在: {}", pathOrDataUrl);
+                throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点输入文件不存在，请重新上传");
             }
             if (f.length() > Constants.BATCH_SINGLE_FILE_MAX_SIZE) {
-                throw new BusinessException("节点输入文件超过单文件大小上限（20MB）");
+                throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "节点输入文件超过单文件大小上限（20MB）");
             }
             return payloadToMultipart(new BatchFilePayload(java.nio.file.Files.readAllBytes(f.toPath()), f.getName()));
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException("读取节点输入文件失败：" + e.getMessage());
+            // 脱敏：NoSuchFileException 等 message 含服务器绝对路径，只进日志
+            log.error("读取节点输入文件失败", e);
+            throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "读取节点输入文件失败，请重新上传");
         }
     }
 
@@ -222,7 +227,9 @@ public class NodeExecutor {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            throw new BusinessException("节点输入文件下载失败：" + e.getMessage());
+            // 脱敏：HttpURLConnection 异常 message 含完整 COS 签名 URL（含签名参数），只进日志
+            log.error("节点输入文件下载失败", e);
+            throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点输入文件下载失败，可能链接已过期，请重新上传");
         } finally {
             if (conn != null) conn.disconnect();
         }

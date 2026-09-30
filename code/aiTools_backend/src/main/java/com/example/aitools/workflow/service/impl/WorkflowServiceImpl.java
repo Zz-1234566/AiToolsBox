@@ -167,7 +167,8 @@ public class WorkflowServiceImpl implements WorkflowService {
             er = workflowEngine.execute(plan, sourceInputs);
         } catch (Exception e) {
             log.error("[workflow] 运行异常 workflowId={}", workflowId, e);
-            fatal = e.getMessage();
+            // 脱敏：原始异常 message 可能含内部细节（如节点输入路径/上游地址），只进日志
+            fatal = ResultCode.WORKFLOW_RUN_FAILED.getMessage();
             er = null;
         }
 
@@ -296,7 +297,8 @@ public class WorkflowServiceImpl implements WorkflowService {
                 vo.setNodeResults(objectMapper.readValue(r.getNodeResults(),
                         new TypeReference<LinkedHashMap<String, WorkflowNodeResult>>() {}));
             } catch (Exception e) {
-                log.warn("解析 node_results 失败: {}", e.getMessage());
+                // 传异常对象以保留堆栈：原实现只打 message，数据损坏时无法定位
+                log.warn("解析 node_results 失败 runId={}", r.getRunId(), e);
             }
         }
         return vo;
@@ -313,7 +315,9 @@ public class WorkflowServiceImpl implements WorkflowService {
         try {
             return objectMapper.readValue(json, new TypeReference<List<WorkflowNode>>() {});
         } catch (Exception e) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "节点结构解析失败：" + e.getMessage());
+            // 脱敏：Jackson 异常 message 含目标类全限定名与字段名，只进日志
+            log.error("节点结构解析失败", e);
+            throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流节点数据有误，请检查后重试");
         }
     }
 
@@ -321,7 +325,8 @@ public class WorkflowServiceImpl implements WorkflowService {
         try {
             return objectMapper.writeValueAsString(o);
         } catch (Exception e) {
-            throw new BusinessException("序列化失败：" + e.getMessage());
+            log.error("工作流序列化失败", e);
+            throw new BusinessException(ResultCode.SYSTEM_ERROR.getCode(), ResultCode.SYSTEM_ERROR.getMessage());
         }
     }
 }

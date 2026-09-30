@@ -3,6 +3,7 @@ package com.example.aitools.service;
 import com.example.aitools.ai.MinimaxClient;
 import com.example.aitools.config.AsrConfig;
 import com.example.aitools.dto.TranscribeResponse;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +39,7 @@ public class TranscribeService {
 
     public TranscribeResponse transcribe(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new BusinessException("音频文件为空");
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频文件为空");
         }
 
         Path inputTemp = null;
@@ -46,7 +47,13 @@ public class TranscribeService {
         try {
             String safeName = file.getOriginalFilename() == null ? "audio.bin" : file.getOriginalFilename();
             inputTemp = Files.createTempFile("asr_in_", "_" + sanitizeName(safeName));
-            file.transferTo(inputTemp.toFile());
+            // 用 getInputStream 落盘，而非 file.transferTo：
+            // 工作流场景传入的是 BatchFilePayload 的内存版 MultipartFile，
+            // 其 transferTo 抛 UnsupportedOperationException（仅真实 multipart 支持），
+            // 会导致工作流中「录音转写」节点必然失败。
+            try (java.io.InputStream in = file.getInputStream()) {
+                Files.copy(in, inputTemp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
 
             // 1. ffmpeg 转码为 16k mono mp3（MiniMax chatAudio 支持）
             outputTemp = Files.createTempFile("asr_out_", ".mp3");
@@ -67,7 +74,8 @@ public class TranscribeService {
             throw e;
         } catch (Exception e) {
             log.error("[ASR-minimax] 转写失败", e);
-            throw new BusinessException("录音转文本失败：" + e.getMessage());
+            // 脱敏：ffmpeg 输出 / MiniMax HTTP 错误 / IO 路径只进日志
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
         } finally {
             if (inputTemp != null) try { Files.deleteIfExists(inputTemp); } catch (IOException ignored) {}
             if (outputTemp != null) try { Files.deleteIfExists(outputTemp); } catch (IOException ignored) {}
