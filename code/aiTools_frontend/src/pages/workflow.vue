@@ -84,8 +84,8 @@
           </view>
         </scroll-view>
 
-        <!-- 运行中/已完成：进度区（占满剩余空间，内部滚动） -->
-        <scroll-view v-else scroll-y class="stream-panel" :scroll-top="streamScrollTop">
+        <!-- 运行中/已完成：进度区（独立可滚动区域；不显示滚动条，可自由下滑） -->
+        <scroll-view v-else scroll-y :show-scrollbar="false" class="stream-panel" :scroll-top="streamScrollTop">
           <view class="stream-panel__head">
             <text class="stream-panel__title">执行进度</text>
             <text class="stream-panel__sub">{{ streamDoneCount }}/{{ streamFileTotal }} 个文件</text>
@@ -745,21 +745,49 @@ const openRunDetail = async (runId) => {
   text-overflow: ellipsis;
 }
 
-/* 流式执行进度面板：占满剩余空间并内部滚动（不再固定 max-height，避免挤压按钮） */
+/* 流式执行进度面板：独立可滚动区域（滚动条可见）
+   注意：uni-h5 的 scroll-view 会渲染两层 .uni-scroll-view（外层 overflow:visible，
+   高度跟随内容；内层 overflow:auto 才是真正的滚动容器）。
+   仅给自定义元素设 flex/max-height 不够——必须约束外层 .uni-scroll-view 的高度，
+   否则内层高度跟随内容、整块溢出，表现为「看不到按钮 + 无法滚动」。 */
 .stream-panel {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  max-height: 46vh;
   margin-top: 20rpx;
   padding: 20rpx;
   background: #F9FAFB;
   border-radius: 16rpx;
   box-sizing: border-box;
+  overflow: hidden;
+}
+.stream-panel > .uni-scroll-view {
+  height: 100%;
+  max-height: 46vh;
+  overflow: hidden;
+}
+.stream-panel > .uni-scroll-view > .uni-scroll-view {
+  height: 100%;
+}
+/* 不显示滚动条（保留滚动能力）：uni 的 scrollbar-hidden 类 + WebKit 兜底 */
+.stream-panel .uni-scroll-view-scrollbar-hidden::-webkit-scrollbar,
+.stream-panel .uni-scroll-view::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.stream-panel .uni-scroll-view {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* IE/Edge */
 }
 
 /* 底部操作按钮：固定在弹层底部，不随内容滚动/被挤压 */
 .sheet__footer {
   flex-shrink: 0;
   padding-top: 20rpx;
+  background: #fff;
+  position: relative;
+  z-index: 2;
 }
 .stream-panel__head {
   display: flex;
