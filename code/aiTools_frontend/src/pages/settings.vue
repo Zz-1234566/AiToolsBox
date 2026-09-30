@@ -120,6 +120,24 @@
         </view>
       </view>
 
+      <!-- 退出登录（仅登录状态下显示） -->
+      <view v-if="isLoggedIn" class="settings-group">
+        <view class="group-card">
+          <view class="setting-item setting-item--logout" @click="handleLogout">
+            <view class="item-left">
+              <view class="item-icon logout-icon">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9 21H5C4.44772 21 4 20.5523 4 20V4C4 3.44772 4.44772 3 5 3H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M16 17L21 12L16 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M21 12H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </view>
+              <text class="item-text item-text--logout">退出登录</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
       <!-- 版本信息 -->
       <view class="version-info">
         <text class="version-text">{{ $t('common.appName') }} v{{ appVersion }}</text>
@@ -137,6 +155,7 @@ import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/PageHeader.vue'
 import { initTheme, toggleTheme as doToggleTheme } from '@/utils/theme'
 import { requireLogin } from '@/utils/auth'
+import { logoutApi } from '@/api/user'
 
 const { t, locale } = useI18n()
 
@@ -197,6 +216,39 @@ const clearCache = () => {
   })
 }
 
+/**
+ * 退出登录：调后端吊销 token（尽力而为）+ 清本地登录态 + 回首页
+ * 说明：后端 logout 会把 jti 加入黑名单；即便接口失败也要清本地态，
+ * 保证用户「点了就能退出」，不因网络问题卡住。
+ */
+const handleLogout = () => {
+  uni.showModal({
+    title: '退出登录',
+    content: '确定要退出当前账号吗？',
+    confirmColor: '#C0392B',
+    success: async (res) => {
+      if (!res.confirm) return
+      uni.showLoading({ title: '退出中…' })
+      try {
+        await logoutApi()
+      } catch (e) {
+        // 后端吊销失败不阻断退出：本地登录态必须清掉
+      } finally {
+        uni.hideLoading()
+      }
+      uni.removeStorageSync('token')
+      uni.removeStorageSync('userInfo')
+      isLoggedIn.value = false
+      // 通知其他页面（如「我的」）刷新登录状态
+      uni.$emit('loginStatusChanged')
+      uni.showToast({ title: '已退出登录', icon: 'none' })
+      setTimeout(() => {
+        uni.switchTab({ url: '/pages/index' })
+      }, 800)
+    }
+  })
+}
+
 const goToAbout = () => {
   uni.navigateTo({ url: '/pages/about' })
 }
@@ -231,6 +283,23 @@ const goToAbout = () => {
     padding: 0 $spacing-md;
     box-shadow: $shadow-card;
   }
+}
+
+/* 退出登录：红色醒目，独立分组 */
+.setting-item--logout {
+  justify-content: center;
+}
+.setting-item--logout .item-left {
+  justify-content: center;
+  flex: none;
+}
+.item-icon.logout-icon {
+  background-color: rgba(192, 57, 43, 0.08);
+  color: #C0392B;
+}
+.item-text--logout {
+  color: #C0392B;
+  font-weight: 500;
 }
 
 .setting-item {
