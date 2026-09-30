@@ -73,6 +73,71 @@ public class NodeExecutor {
         return outputs;
     }
 
+    /**
+     * 流式执行节点（单文件）：与 {@link #execute} 语义一致，但仅处理 1 个输入，
+     * 且对文本类节点使用流式 AI 调用，逐 chunk 回调，便于上层实时推送给前端。
+     * <p>
+     * 说明：非文本节点（audio/document/image）没有流式接口，一次性拿到结果后
+     * 作为单个 chunk 回调一次，行为对上层一致。
+     *
+     * @param toolCode 工具编码
+     * @param input    单个输入（文本内容 或 文件路径/URL）
+     * @param params   节点参数
+     * @param onChunk  文本片段回调（可为 null；非文本节点只会被调用一次，或零次）
+     * @return 该输入的完整输出
+     */
+    public String executeStreaming(String toolCode, String input, Map<String, String> params,
+                                   java.util.function.Consumer<String> onChunk) {
+        if (input == null || input.isBlank()) {
+            throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点缺少输入内容，请检查上游节点配置");
+        }
+        AiTool tool = findByCode(toolCode);
+        String inputType = firstInputType(tool.getInputType());
+
+        // 文本节点：走流式 AI 调用，逐 chunk 回调
+        if ("text".equals(inputType)) {
+            String result = aiTextStreaming(toolCode, input, params, onChunk);
+            log.info("[workflow-node] toolCode={} inputType=text 流式完成 outLen={}", toolCode,
+                    result == null ? 0 : result.length());
+            return result;
+        }
+
+        // 非文本节点：无流式接口，一次性执行后回调一次（保证上层收到内容）
+        String out = executeOne(toolCode, inputType, input, params);
+        if (onChunk != null && out != null && !out.isEmpty()) {
+            onChunk.accept(out);
+        }
+        log.info("[workflow-node] toolCode={} inputType={} 一次性完成 outLen={}", toolCode, inputType,
+                out == null ? 0 : out.length());
+        return out;
+    }
+
+    /**
+     * 文本节点流式版本：AI 调用改为 chatStream，逐 chunk 回调。
+     * <p>提示词解析逻辑与 {@link #aiText} 完全一致，避免两处漂移。
+     */
+    private String aiTextStreaming(String toolCode, String content, Map<String, String> params,
+                                   java.util.function.Consumer<String> onChunk) {
+        Map<String, String> p = params == null ? Map.of() : params;
+        String formatPrompt = resolveNodePrompt(
+                p.get("promptFormat"), parseLong(p.get("promptIdFormat")), "format", toolCode);
+        String generatePrompt = resolveNodePrompt(
+                p.get("promptGenerate"), parseLong(p.get("promptIdGenerate")), "generate", toolCode);
+        if (isBlank(formatPrompt)) {
+            throw new BusinessException(ResultCode.PROMPT_INVALID.getCode(), "节点的格式提示词无效或已被删除，请重新选择");
+        }
+        if (isBlank(generatePrompt)) {
+            throw new BusinessException(ResultCode.PROMPT_INVALID.getCode(), "节点的生成提示词无效或已被删除，请重新选择");
+        }
+        String userPrompt = generatePrompt + "\n\n原文：\n" + content;
+        StringBuilder sb = new StringBuilder();
+        aiClient.chatStream(formatPrompt, userPrompt, chunk -> {
+            sb.append(chunk);
+            if (onChunk != null) onChunk.accept(chunk);
+        });
+        return sb.toString();
+    }
+
     /** 逐项执行：按该工具支持的输入类型分派到能力层 */
     private String executeOne(String toolCode, String inputType, String input, Map<String, String> params) {
         if (input == null || input.isBlank()) {
