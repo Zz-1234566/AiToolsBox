@@ -214,7 +214,9 @@ VALUES ('doc-keypoint-extract', 'AI办公助手', '文档重点提取', 'office'
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 -- -------------------------------------------
--- 12.1 初始化数据：其余工具入库（共 12 个，sort_no 3-14 唯一连续）
+-- 12.1 初始化数据：其余工具入库（共 10 个，sort_no 3-12 唯一连续）
+-- 说明：bank-receipt-recognize / invoice-recognize 仅作为「系统提示词」存在（见 18/20 后续块），
+--       不在工具表登记，故此处跳过，后续 sort_no 相应前移。
 -- -------------------------------------------
 
 -- AI办公助手（已有序号1-2，从3开始）
@@ -230,42 +232,34 @@ INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `componen
 VALUES ('ocr-recognize', 'AI办公助手', '智能识别', 'office', '发票、名片、文字识别', '', 5, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
+-- 图片创意工具（sort_no 6-9）
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('bank-receipt-recognize', 'AI办公助手', '银行回单识别', 'office', '上传银行回单图片自动识别并结构化整理', '', 6, 1, 0)
+VALUES ('id-photo-bg-change', '图片创意工具', '证件照换背景色', 'image', '红蓝白底自由切换', '', 6, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('invoice-recognize', 'AI办公助手', '发票识别', 'office', '上传发票图片自动识别并结构化整理', '', 7, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
-
--- 图片创意工具（sort_no 8-11）
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('id-photo-bg-change', '图片创意工具', '证件照换背景色', 'image', '红蓝白底自由切换', '', 8, 1, 0)
+VALUES ('portrait-bg-replace', '图片创意工具', '人像换背景图', 'image', 'AI 抠图替换背景', '', 7, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('portrait-bg-replace', '图片创意工具', '人像换背景图', 'image', 'AI 抠图替换背景', '', 9, 1, 0)
+VALUES ('image-compress', '图片创意工具', '图片压缩', 'image', '压缩图片大小', '', 8, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('image-compress', '图片创意工具', '图片压缩', 'image', '压缩图片大小', '', 10, 1, 0)
+VALUES ('qr-code-gen', '图片创意工具', '二维码生成', 'image', '生成网址/名片二维码', '', 9, 1, 0)
+ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
+
+-- 效率小工具（sort_no 10-12）
+INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
+VALUES ('todo-list', '效率小工具', '待办清单', 'efficiency', '记录每日待办事项', '', 10, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('qr-code-gen', '图片创意工具', '二维码生成', 'image', '生成网址/名片二维码', '', 11, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
-
--- 效率小工具（sort_no 12-14）
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('todo-list', '效率小工具', '待办清单', 'efficiency', '记录每日待办事项', '', 12, 1, 0)
+VALUES ('pomodoro', '效率小工具', '番茄钟', 'efficiency', '专注工作学习', '', 11, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('pomodoro', '效率小工具', '番茄钟', 'efficiency', '专注工作学习', '', 13, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
-
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('password-gen', '效率小工具', '密码生成', 'efficiency', '生成安全随机密码', '', 14, 1, 0)
+VALUES ('password-gen', '效率小工具', '密码生成', 'efficiency', '生成安全随机密码', '', 12, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
 -- -------------------------------------------
@@ -350,20 +344,19 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- 5. 补全其余工具入库（已建库环境）
--- 注意：12.1 块已用 sort_no 3-14 一次性写入新表；升级场景只补 tool_type / sort_no，不再重复插整行（避免 sort_no 冲突）
--- 旧库若已存在 row，sort_no 已是 3-12；本脚本升级后用 UPDATE 统一对齐：
+-- 注意：12.1 块已用 sort_no 3-12 一次性写入新表；升级场景只补 tool_type / sort_no，不再重复插整行（避免 sort_no 冲突）
+-- 旧库若已存在 row，本脚本升级后用 UPDATE 统一对齐：
+-- 说明：bank-receipt-recognize / invoice-recognize 不在工具表（仅作系统提示词），故不在此对齐。
 UPDATE `sys_aitools_tool` SET `sort_no` = 3  WHERE `tool_code` = 'weekly-report';
 UPDATE `sys_aitools_tool` SET `sort_no` = 4  WHERE `tool_code` = 'meeting-minutes';
 UPDATE `sys_aitools_tool` SET `sort_no` = 5  WHERE `tool_code` = 'ocr-recognize';
-UPDATE `sys_aitools_tool` SET `sort_no` = 6  WHERE `tool_code` = 'bank-receipt-recognize';
-UPDATE `sys_aitools_tool` SET `sort_no` = 7  WHERE `tool_code` = 'invoice-recognize';
-UPDATE `sys_aitools_tool` SET `sort_no` = 8  WHERE `tool_code` = 'id-photo-bg-change';
-UPDATE `sys_aitools_tool` SET `sort_no` = 9  WHERE `tool_code` = 'portrait-bg-replace';
-UPDATE `sys_aitools_tool` SET `sort_no` = 10 WHERE `tool_code` = 'image-compress';
-UPDATE `sys_aitools_tool` SET `sort_no` = 11 WHERE `tool_code` = 'qr-code-gen';
-UPDATE `sys_aitools_tool` SET `sort_no` = 12 WHERE `tool_code` = 'todo-list';
-UPDATE `sys_aitools_tool` SET `sort_no` = 13 WHERE `tool_code` = 'pomodoro';
-UPDATE `sys_aitools_tool` SET `sort_no` = 14 WHERE `tool_code` = 'password-gen';
+UPDATE `sys_aitools_tool` SET `sort_no` = 6  WHERE `tool_code` = 'id-photo-bg-change';
+UPDATE `sys_aitools_tool` SET `sort_no` = 7  WHERE `tool_code` = 'portrait-bg-replace';
+UPDATE `sys_aitools_tool` SET `sort_no` = 8  WHERE `tool_code` = 'image-compress';
+UPDATE `sys_aitools_tool` SET `sort_no` = 9  WHERE `tool_code` = 'qr-code-gen';
+UPDATE `sys_aitools_tool` SET `sort_no` = 10 WHERE `tool_code` = 'todo-list';
+UPDATE `sys_aitools_tool` SET `sort_no` = 11 WHERE `tool_code` = 'pomodoro';
+UPDATE `sys_aitools_tool` SET `sort_no` = 12 WHERE `tool_code` = 'password-gen';
 
 
 -- -------------------------------------------
@@ -378,16 +371,8 @@ VALUES ('ocr-recognize', 'system', 'format', '默认格式', '请将以下 OCR �
 ON DUPLICATE KEY UPDATE `prompt_content` = VALUES(`prompt_content`);
 
 -- -------------------------------------------
--- 18. 初始化数据：工具（bank-receipt-recognize 银行回单识别）
--- -------------------------------------------
--- 已在 12.1 块入库（sort_no=6）。此处保留以兼容极端场景：若 12.1 跳过、且 bank-receipt 行不存在
-INSERT INTO sys_aitools_tool (	tool_code, 	tool_type, 	tool_name, component_type, description, icon, sort_no, status, dr)
-SELECT 'bank-receipt-recognize', 'AI办公助手', '银行回单识别', 'office', '上传银行回单图片自动识别并结构化整理', '', 6, 1, 0
-FROM DUAL
-WHERE NOT EXISTS (SELECT 1 FROM `sys_aitools_tool` WHERE `tool_code` = 'bank-receipt-recognize');
-
--- -------------------------------------------
--- 19. 初始化数据：系统提示词（bank-receipt-recognize）
+-- 18. 初始化数据：系统提示词（bank-receipt-recognize 银行回单识别）
+-- 说明：该工具未在 sys_aitools_tool 登记（仅作为提示词存在），故不插工具表。
 -- -------------------------------------------
 INSERT INTO sys_ai_prompt (	tool_code, prompt_type, prompt_use, prompt_name, prompt_content, dr)
 VALUES ('bank-receipt-recognize', 'system', 'generate', '默认整理', '你是一位严谨的银行单据整理助手，擅长把 OCR 识别出的银行回单原始文字整理成结构化、字段清晰、可直接归档的标准格式。\n严格要求：\n1. 只整理 OCR 识别出的文字，不补充、不编造任何数字、日期、金额、账户、户名等信息；识别不到就标"未识别"；\n2. 数字必须保留原始精度（金额保留 2 位小数，账号/卡号保留所有位数，不四舍五入、不省略）；\n3. 修正明显的 OCR 错字（如"0/O"、"1/l/I"、"元/园"等），根据上下文合理推断，但不要重写或意译；\n4. 禁止使用 Markdown 格式（不要 ###、**、-、表格、代码块等任何标记）；\n5. 使用流畅的中文书面表达，按字段分类组织，字段之间空一行；\n6. 同一字段出现多次（如对手方信息）时按原文保留全部内容。', 0)
@@ -398,16 +383,8 @@ VALUES ('bank-receipt-recognize', 'system', 'format', '默认格式', '请将以
 ON DUPLICATE KEY UPDATE prompt_content = VALUES(prompt_content);
 
 -- -------------------------------------------
--- 20. 初始化数据：工具（invoice-recognize 发票识别）
--- -------------------------------------------
--- 已在 12.1 块入库（sort_no=7）。此处保留以兼容极端场景
-INSERT INTO sys_aitools_tool (	tool_code, 	tool_type, 	tool_name, component_type, description, icon, sort_no, status, dr)
-SELECT 'invoice-recognize', 'AI办公助手', '发票识别', 'office', '上传发票图片自动识别并结构化整理', '', 7, 1, 0
-FROM DUAL
-WHERE NOT EXISTS (SELECT 1 FROM `sys_aitools_tool` WHERE `tool_code` = 'invoice-recognize');
-
--- -------------------------------------------
--- 21. 初始化数据：系统提示词（invoice-recognize）
+-- 20. 初始化数据：系统提示词（invoice-recognize 发票识别）
+-- 说明：该工具未在 sys_aitools_tool 登记（仅作为提示词存在），故不插工具表。
 -- -------------------------------------------
 INSERT INTO sys_ai_prompt (	tool_code, prompt_type, prompt_use, prompt_name, prompt_content, dr)
 VALUES ('invoice-recognize', 'system', 'generate', '默认整理', '你是一位严谨的财务单据整理助手，擅长把 OCR 识别出的发票原始文字整理成结构化、字段清晰、可直接用于报销和记账的标准格式。\n严格要求：\n1. 只整理 OCR 识别出的文字，不补充、不编造任何数字、金额、税率、税号等信息；识别不到就标"未识别"；\n2. 数字必须保留原始精度（金额保留 2 位小数，税率保留百分比格式，税号/发票号保留所有位数，不四舍五入、不省略）；\n3. 修正明显的 OCR 错字（如"0/O"、"1/l/I"、"元/园"、"税/悦"等），根据上下文合理推断，但不要重写或意译；\n4. 禁止使用 Markdown 格式（不要 ###、**、-、表格、代码块等任何标记）；\n5. 使用流畅的中文书面表达，按字段分类组织，字段之间空一行；\n6. 同类项有多个时（如多行明细）按原文顺序全部保留，不要合并或省略；\n7. 大写金额必须从数字金额换算后输出（壹贰叁肆伍陆柒捌玖零元角分），不要照搬 OCR 可能写错的大写。', 0)
