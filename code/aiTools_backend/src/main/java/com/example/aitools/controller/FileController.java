@@ -43,7 +43,7 @@ public class FileController {
         String ext = FileStorageService.extractExtension(originalFilename).replaceFirst("^\\.", "");
         if (!Constants.ALLOWED_FILE_EXTENSIONS.contains(ext)) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
-                    "不支持的文件类型，仅支持 jpg/png/gif/webp/pdf/doc/docx/txt");
+                    "不支持的文件类型，仅支持图片（jpg/png/gif/webp）、文档（pdf/doc/docx/txt）和音频（mp3/wav/m4a/aac/flac/ogg/amr）");
         }
 
         // 2) 目录校验 + 用户文件区路由

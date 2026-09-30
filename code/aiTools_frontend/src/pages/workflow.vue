@@ -263,14 +263,22 @@ const uploadFiles = async (n, list) => {
   try {
     const uploaded = []
     for (const item of list) {
-      const up = await uploadFile('/api/file/upload', item, 'file', { prefix: 'file' })
-      const url = up && up.data && up.data.fileUrl
+      const res = await uploadFile('/api/file/upload', item, 'file', { prefix: 'file' })
+      // 后端约定 code=200 成功；其余情况携带用户可读的 message（如"不支持的文件类型…"）
+      const ok = res && res.code === 200
+      if (!ok) {
+        // 直接展示后端给的提示（后端已保证是可读文案，不含技术细节）
+        uni.showToast({ title: (res && res.message) || '上传失败，请重试', icon: 'none', duration: 3000 })
+        return
+      }
+      const url = res.data && res.data.fileUrl
       if (url) uploaded.push(url)
     }
     runInputs[n.nodeId].files = uploaded
     uni.showToast({ title: `已上传 ${uploaded.length} 个`, icon: 'success' })
   } catch (e) {
-    uni.showToast({ title: '上传失败', icon: 'none' })
+    // 网络异常等：request 层已提示，此处兜底
+    uni.showToast({ title: '上传失败，请检查网络后重试', icon: 'none' })
   } finally {
     uni.hideLoading()
   }

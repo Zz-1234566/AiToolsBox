@@ -76,9 +76,10 @@ public class Constants {
     /** 单文件大小上限：20MB */
     public static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
 
-    /** 支持的文件扩展名（图片 + 文档） */
+    /** 支持的文件扩展名（图片 + 文档 + 音频） */
     public static final java.util.Set<String> ALLOWED_FILE_EXTENSIONS =
-            java.util.Set.of("jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "txt");
+            java.util.Set.of("jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "txt",
+                    "mp3", "wav", "m4a", "aac", "flac", "ogg", "amr");
 
     /** 支持的存储前缀（目录）：头像 / AI 图片 / 去背景 / 通用用户文件区，空串表示根目录 */
     public static final java.util.Set<String> ALLOWED_FILE_PREFIXES =
