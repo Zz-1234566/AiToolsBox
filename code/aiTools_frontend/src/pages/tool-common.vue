@@ -76,14 +76,17 @@
         <text class="upload-card__title">{{ toolInfo.uploadTitle || '点击上传文件' }}</text>
         <text class="upload-card__desc">{{ toolInfo.uploadDesc || '' }}</text>
       </view>
-      <view v-if="pureConvertFile" class="file-list">
-        <view class="file-item">
-          <view class="file-item__icon">{{ pureConvertFile.name.charAt(0).toUpperCase() }}</view>
+      <view v-if="pureConvertFiles.length > 1" class="section-title">
+        <text>已选 {{ pureConvertFiles.length }} 个文件</text>
+      </view>
+      <view v-if="pureConvertFiles.length > 0" class="file-list">
+        <view v-for="(f, idx) in pureConvertFiles" :key="idx" class="file-item">
+          <view class="file-item__icon">{{ (f.name || 'F').charAt(0).toUpperCase() }}</view>
           <view class="file-item__body">
-            <text class="file-item__name">{{ pureConvertFile.name }}</text>
+            <text class="file-item__name">{{ f.name }}</text>
             <text class="file-item__meta">已选择</text>
           </view>
-          <view class="file-item__close" @click="pureConvertFile = null">
+          <view class="file-item__close" @click="removePureConvertFile(idx)">
             <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </view>
         </view>
@@ -924,37 +927,79 @@ const isPureConvert = computed(() => !!toolInfo.value.pureConvert)
 
 // 纯转换工具选中的单个文件（{ name, file } —— file 为 H5 File 对象，App 端为 null 走路径）
 const pureConvertFile = ref(null)
+/** 多选文件列表（录音转写等多文件场景；单文件工具时长度为 1） */
+const pureConvertFiles = ref([])
 
 /** 选择文件（纯转换工具）：H5 用原生 input，App 用 chooseMessageFile */
 const onPureConvertPick = () => {
   const isAudio = toolId.value === 'audio-transcribe'
+  const maxCount = (toolInfo.value.fileRule && toolInfo.value.fileRule.maxCount) || 1
   // #ifdef H5
   const input = document.createElement('input')
   input.type = 'file'
+  // 方案 B：保留现有 mockup 外观，仅把选择逻辑改为支持多选（不引入新组件/样式）
+  input.multiple = maxCount > 1
   input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : '.pdf,.docx,.txt'
   input.onchange = () => {
-    const f = (input.files || [])[0]
-    if (f) pureConvertFile.value = { name: f.name, file: f }
+    const picked = Array.from(input.files || [])
+    if (!picked.length) return
+    if (maxCount > 1) {
+      // 多选：累加到 pureConvertFiles
+      const merged = pureConvertFiles.value.concat(
+        picked.map(f => ({ name: f.name, file: f, size: f.size || 0 }))
+      )
+      if (merged.length > maxCount) {
+        uni.showToast({ title: `最多 ${maxCount} 个文件，已截断`, icon: 'none' })
+        merged.splice(maxCount)
+      }
+      pureConvertFiles.value = merged
+      // 兼容旧逻辑：pureConvertFile 始终指向第一个
+      pureConvertFile.value = merged[0] || null
+    } else {
+      // 单文件：保持原行为
+      pureConvertFile.value = { name: picked[0].name, file: picked[0] }
+      pureConvertFiles.value = [pureConvertFile.value]
+    }
   }
   input.click()
   // #endif
   // #ifndef H5
   uni.chooseMessageFile({
-    count: 1,
+    count: maxCount > 1 ? maxCount : 1,
     type: isAudio ? 'audio' : 'file',
     success: (res) => {
-      const f = (res.tempFiles || [])[0]
-      if (f) pureConvertFile.value = { name: f.name || f.path, file: null, path: f.path }
+      const picked = (res.tempFiles || []).map(f => ({ name: f.name || f.path, file: null, path: f.path, size: f.size || 0 }))
+      if (!picked.length) return
+      if (maxCount > 1) {
+        const merged = pureConvertFiles.value.concat(picked)
+        if (merged.length > maxCount) {
+          uni.showToast({ title: `最多 ${maxCount} 个文件，已截断`, icon: 'none' })
+          merged.splice(maxCount)
+        }
+        pureConvertFiles.value = merged
+        pureConvertFile.value = merged[0] || null
+      } else {
+        pureConvertFile.value = picked[0]
+        pureConvertFiles.value = [picked[0]]
+      }
     }
   })
   // #endif
 }
 
+/** 从多选列表中移除一个 */
+const removePureConvertFile = (idx) => {
+  pureConvertFiles.value.splice(idx, 1)
+  pureConvertFile.value = pureConvertFiles.value[0] || null
+}
+
 // 通用校验（按工具 + 输入方式）：返回第一个失败的错误文案，null = 通过
 // 在 handleGenerate 入口前置校验，不通过直接 return + toast，不进 if-else 分支
 const runValidation = () => validate(toolId.value, currentInputType.value, {
-  filePath: isPureConvert.value ? (pureConvertFile.value ? 'selected' : '') : filePath.value,
-  batchFiles: (batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : [],
+  filePath: isPureConvert.value ? (pureConvertFiles.value.length ? 'selected' : '') : filePath.value,
+  batchFiles: isPureConvert.value
+    ? pureConvertFiles.value
+    : ((batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : []),
   inputText: inputText.value,
   promptFormat: promptFormatText.value,
   promptGenerate: promptGenerateText.value,
@@ -1115,6 +1160,9 @@ const switchInputType = (type) => {
   filePath.value = ''
   fileName.value = ''
   fileObj.value = null
+  // 重置纯转换工具的多选列表（避免切换后残留上一个工具的文件）
+  pureConvertFiles.value = []
+  pureConvertFile.value = null
   fileUrl.value = ''
   // 清空 BatchFilePicker 组件内部文件列表
   if (batchPickerRef.value && batchPickerRef.value.clear) {
@@ -1555,9 +1603,10 @@ const handleGenerate = async () => {
   try {
     const id = toolId.value
 
-    // 录音转写若使用多文件选择器（fileRule 已配置），优先走批量；否则退回单文件纯转换
-    const audioBatchFiles = (batchPickerRef.value && batchPickerRef.value.getFiles)
-      ? batchPickerRef.value.getFiles() : []
+    // 录音转写若选中多个文件，走批量；单个则退回原有单文件纯转换路径
+    const audioBatchFiles = pureConvertFiles.value.length > 1
+      ? pureConvertFiles.value
+      : ((batchPickerRef.value && batchPickerRef.value.getFiles) ? batchPickerRef.value.getFiles() : [])
     if (id === 'audio-transcribe' && audioBatchFiles.length > 0) {
       // 录音转写：B2 多文件批量（轮询方案）
       const { batchId, fileCount } = await audioBatchUpload({ files: audioBatchFiles })
