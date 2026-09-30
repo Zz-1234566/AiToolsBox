@@ -52,7 +52,7 @@ public class LocalFileStorageService implements FileStorageService {
         // 阻止 prefix 含 "../" 跳出 uploads 目录（即便白名单被未来放宽也不会裸奔）
         if (!dir.startsWith(uploadDir)) {
             log.warn("Resolved path escapes uploadDir: prefix={}, dir={}", prefix, dir);
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "非法的存储路径");
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "非法的存储路径");
         }
         try {
             Files.createDirectories(dir);

@@ -96,7 +96,7 @@ public class JsonSingleHandler implements AiToolHandler {
             }
         }
         historyService.failHistory(historyId, "JSON 解析重试耗尽：" + lastErr);
-        throw new BusinessException("AI 返回内容无法解析为 JSON（已重试 " + maxRetry + " 次）：" + lastErr);
+        throw new BusinessException(ResultCode.AI_TOOL_FAILED.getCode(), "AI 返回内容格式异常，请重试");
     }
 
     @Override
@@ -122,7 +122,7 @@ public class JsonSingleHandler implements AiToolHandler {
 
     /** 容忍 AI 输出前后废话：从响应中抠 JSON 数组子串 */
     private String extractJson(String raw) {
-        if (raw == null) throw new BusinessException("AI 返回为空");
+        if (raw == null) throw new BusinessException(ResultCode.AI_EMPTY_RESULT.getCode(), "AI 未返回内容，请重试");
         String trimmed = raw.trim();
         if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
             return trimmed;
@@ -131,7 +131,7 @@ public class JsonSingleHandler implements AiToolHandler {
         if (m.find()) {
             return m.group();
         }
-        throw new BusinessException("AI 返回内容中未发现 JSON 数组");
+        throw new BusinessException(ResultCode.AI_TOOL_FAILED.getCode(), "AI 返回内容格式异常，请重试");
     }
 
     /** 校验：必须是非空数组，每项含 key/title/type/content */
@@ -143,14 +143,14 @@ public class JsonSingleHandler implements AiToolHandler {
             throw new BusinessException(ResultCode.AI_TOOL_FAILED.getCode(), "AI 返回内容解析失败，请重试");
         }
         if (!root.isArray()) {
-            throw new BusinessException("期望 JSON 数组，实际是 " + root.getNodeType());
+            throw new BusinessException(ResultCode.AI_TOOL_FAILED.getCode(), "AI 返回内容格式异常，请重试");
         }
         if (root.isEmpty()) {
-            throw new BusinessException("JSON 数组为空");
+            throw new BusinessException(ResultCode.AI_EMPTY_RESULT.getCode(), "AI 未返回有效内容，请重试");
         }
         for (JsonNode item : root) {
             if (!item.isObject()) {
-                throw new BusinessException("JSON 数组元素必须是对象");
+                throw new BusinessException(ResultCode.AI_TOOL_FAILED.getCode(), "AI 返回内容格式异常，请重试");
             }
             for (String field : new String[]{"key", "title", "type", "content"}) {
                 if (item.get(field) == null) {
@@ -160,7 +160,7 @@ public class JsonSingleHandler implements AiToolHandler {
             }
             String type = item.get("type").asText();
             if (!isValidType(type)) {
-                throw new BusinessException("JSON 元素 type 非法：" + type);
+                throw new BusinessException(ResultCode.AI_TOOL_FAILED.getCode(), "AI 返回内容格式异常，请重试");
             }
         }
         return root;

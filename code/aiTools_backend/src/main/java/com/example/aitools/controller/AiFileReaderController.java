@@ -44,14 +44,14 @@ public class AiFileReaderController {
                                                    HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         if (files == null || files.isEmpty()) {
-            throw new BusinessException("请至少上传 1 个文件");
+            throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw new BusinessException("单次最多上传 10 个文件");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "单次最多上传 10 个文件");
         }
         long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
         if (totalSize > 200L * 1024 * 1024) {
-            throw new BusinessException("批量文件总大小超过 200MB");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "批量文件总大小超过 200MB");
         }
 
         String batchId = batchTaskService.createTask(userId, "ai-file-reader", files.size());

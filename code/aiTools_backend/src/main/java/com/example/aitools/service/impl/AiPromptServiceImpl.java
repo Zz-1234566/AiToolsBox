@@ -123,7 +123,7 @@ public class AiPromptServiceImpl implements AiPromptService {
             wrapper.ne(AiUserPrompt::getId, excludeId);
         }
         if (aiUserPromptMapper.selectCount(wrapper) > 0) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "该工具下已存在同名提示词");
+            throw new BusinessException(ResultCode.PROMPT_NAME_DUPLICATE.getCode(), "该工具下已存在同名提示词");
         }
     }
 

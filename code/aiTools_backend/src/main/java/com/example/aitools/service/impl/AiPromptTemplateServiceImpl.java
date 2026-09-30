@@ -1,6 +1,7 @@
 package com.example.aitools.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.common.Constants;
 import com.example.aitools.entity.AiPrompt;
 import com.example.aitools.entity.AiTool;
@@ -47,7 +48,7 @@ public class AiPromptTemplateServiceImpl implements AiPromptTemplateService {
         AiPrompt prompt = aiPromptMapper.selectById(promptId);
         if (prompt == null) {
             log.error("提示词不存在: promptId={}", promptId);
-            throw new BusinessException("提示词不存在");
+            throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "提示词不存在");
         }
         return prompt;
     }
@@ -122,11 +123,11 @@ public class AiPromptTemplateServiceImpl implements AiPromptTemplateService {
         validateUse(request.getPromptUse());
         AiPrompt prompt = aiPromptMapper.selectById(promptId);
         if (prompt == null) {
-            throw new BusinessException("提示词不存在");
+            throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "提示词不存在");
         }
         // 只允许改系统提示词，避免误改用户数据
         if (!"system".equals(prompt.getPromptType())) {
-            throw new BusinessException("只能修改系统提示词");
+            throw new BusinessException(ResultCode.OPERATION_NOT_ALLOWED.getCode(), "只能修改系统提示词");
         }
         prompt.setToolCode(request.getToolCode());
         prompt.setPromptUse(request.getPromptUse());
@@ -140,10 +141,10 @@ public class AiPromptTemplateServiceImpl implements AiPromptTemplateService {
     public void deleteSystem(Long promptId) {
         AiPrompt prompt = aiPromptMapper.selectById(promptId);
         if (prompt == null) {
-            throw new BusinessException("提示词不存在");
+            throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "提示词不存在");
         }
         if (!"system".equals(prompt.getPromptType())) {
-            throw new BusinessException("只能删除系统提示词");
+            throw new BusinessException(ResultCode.OPERATION_NOT_ALLOWED.getCode(), "只能删除系统提示词");
         }
         // @TableLogic 逻辑删除
         aiPromptMapper.deleteById(promptId);
@@ -153,7 +154,7 @@ public class AiPromptTemplateServiceImpl implements AiPromptTemplateService {
     /** 校验用途取值 */
     private void validateUse(String promptUse) {
         if (!"format".equals(promptUse) && !"generate".equals(promptUse)) {
-            throw new BusinessException("promptUse 只能是 format 或 generate");
+            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "提示词用途只能是「生成提示词」或「格式提示词」");
         }
     }
 }

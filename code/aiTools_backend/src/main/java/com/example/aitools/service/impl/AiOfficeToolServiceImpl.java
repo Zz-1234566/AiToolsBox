@@ -181,7 +181,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw ErrorFactory.of(ResultCode.PARAM_ERROR, "单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
         Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
@@ -260,7 +260,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw ErrorFactory.of(ResultCode.PARAM_ERROR, "单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
         Long toolId = findToolIdByCode(TOOL_CODE_DOC_SUMMARY);
@@ -464,7 +464,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw ErrorFactory.of(ResultCode.PARAM_ERROR, "单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
         int successCount = 0;

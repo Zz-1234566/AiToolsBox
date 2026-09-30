@@ -57,7 +57,7 @@ public class NodeExecutor {
      */
     public List<String> execute(String toolCode, List<String> inputs, Map<String, String> params) {
         if (inputs == null || inputs.isEmpty()) {
-            throw new BusinessException("节点 " + toolCode + " 没有输入");
+            throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点缺少输入内容，请检查上游节点配置");
         }
         AiTool tool = findByCode(toolCode);
         String inputType = firstInputType(tool.getInputType());
@@ -89,9 +89,9 @@ public class NodeExecutor {
             case "text":
                 return aiText(toolCode, input, params);
             case "none":
-                throw new BusinessException("节点 " + toolCode + " 无输入类型，不能作为工作流节点执行");
+                throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "该工具不能作为工作流节点执行");
             default:
-                throw new BusinessException("不支持的节点输入类型：" + inputType);
+                throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "不支持的节点输入类型");
         }
     }
 
@@ -113,10 +113,10 @@ public class NodeExecutor {
                 p.get("promptGenerate"), parseLong(p.get("promptIdGenerate")), "generate", toolCode);
 
         if (isBlank(formatPrompt)) {
-            throw new BusinessException("节点「" + toolCode + "」的格式提示词无效或已被删除，请重新选择提示词");
+            throw new BusinessException(ResultCode.PROMPT_INVALID.getCode(), "节点的格式提示词无效或已被删除，请重新选择");
         }
         if (isBlank(generatePrompt)) {
-            throw new BusinessException("节点「" + toolCode + "」的生成提示词无效或已被删除，请重新选择提示词");
+            throw new BusinessException(ResultCode.PROMPT_INVALID.getCode(), "节点的生成提示词无效或已被删除，请重新选择");
         }
         String userPrompt = generatePrompt + "\n\n原文：\n" + content;
         return aiClient.chat(formatPrompt, userPrompt);
@@ -165,7 +165,7 @@ public class NodeExecutor {
             // 1) data URL（data:application/pdf;base64,xxxx）→ 解码
             if (pathOrDataUrl.startsWith("data:")) {
                 int comma = pathOrDataUrl.indexOf(',');
-                if (comma < 0) throw new BusinessException("非法的 data URL 输入");
+                if (comma < 0) throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点输入数据格式非法");
                 String meta = pathOrDataUrl.substring(5, comma);
                 byte[] bytes = java.util.Base64.getDecoder().decode(pathOrDataUrl.substring(comma + 1));
                 String name = meta.contains("/") ? meta.substring(meta.indexOf('/') + 1).split(";")[0] : fallbackName;
@@ -176,10 +176,10 @@ public class NodeExecutor {
             if (pathOrDataUrl.startsWith("http://") || pathOrDataUrl.startsWith("https://")) {
                 byte[] bytes = downloadBytes(pathOrDataUrl);
                 if (bytes.length == 0) {
-                    throw new BusinessException("节点输入文件下载为空：" + pathOrDataUrl);
+                    throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点输入文件为空，请重新上传");
                 }
                 if (bytes.length > Constants.BATCH_SINGLE_FILE_MAX_SIZE) {
-                    throw new BusinessException("节点输入文件超过单文件大小上限（20MB）");
+                    throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "节点输入文件超过单文件大小上限（20MB）");
                 }
                 return payloadToMultipart(new BatchFilePayload(bytes, fileNameOf(pathOrDataUrl)));
             }
@@ -213,7 +213,7 @@ public class NodeExecutor {
             conn.setReadTimeout(30_000);
             int code = conn.getResponseCode();
             if (code < 200 || code >= 300) {
-                throw new BusinessException("节点输入文件下载失败（HTTP " + code + "）：可能链接已过期，请重新上传");
+                throw new BusinessException(ResultCode.FILE_NOT_FOUND.getCode(), "节点输入文件下载失败，可能链接已过期，请重新上传");
             }
             try (java.io.InputStream in = conn.getInputStream();
                  java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
@@ -254,7 +254,7 @@ public class NodeExecutor {
         w.eq(AiTool::getToolCode, toolCode).last("LIMIT 1");
         AiTool tool = aiToolMapper.selectOne(w);
         if (tool == null) {
-            throw new BusinessException("工作流节点引用的工具不存在：" + toolCode);
+            throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "节点引用的工具不存在，请重新选择工具");
         }
         return tool;
     }

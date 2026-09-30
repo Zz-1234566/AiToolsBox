@@ -36,7 +36,7 @@ public class OcrServiceImpl implements OcrService {
     public String recognizeText(MultipartFile file) {
         // 改用 getSize() < 0 判断（避免 H5 fetch 提交 multipart 时 Spring getSize()=0 的边界误判）
         if (file == null || file.getSize() < 0) {
-            throw new BusinessException("请上传图片文件");
+            throw new BusinessException(ResultCode.OCR_UNSUPPORTED.getCode(), "请上传图片文件");
         }
         try {
             return doOcr(file.getBytes(), file.getOriginalFilename());
@@ -50,7 +50,7 @@ public class OcrServiceImpl implements OcrService {
     public String recognizeBytes(byte[] imageBytes, String originalFilename) {
         // 字节流重载：批量任务中文件已在内存，避开 MultipartFile 临时文件被清理问题
         if (imageBytes == null || imageBytes.length == 0) {
-            throw new BusinessException("请上传图片文件");
+            throw new BusinessException(ResultCode.OCR_UNSUPPORTED.getCode(), "请上传图片文件");
         }
         return doOcr(imageBytes, originalFilename);
     }
@@ -60,10 +60,10 @@ public class OcrServiceImpl implements OcrService {
      */
     private String doOcr(byte[] bytes, String originalFilename) {
         if (!ocrConfig.getEnabled()) {
-            throw new BusinessException("OCR 能力未启用（请在 application-dev.yml 里设 ocr.enabled=true）");
+            throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(), "识别能力未启用，请联系管理员");
         }
         if (originalFilename != null && originalFilename.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-            throw new BusinessException("当前 OCR 工具仅支持图片（PNG/JPG/JPEG/BMP），PDF 请改用【文档重点提取】工具");
+            throw new BusinessException(ResultCode.OCR_UNSUPPORTED.getCode(), "仅支持图片（PNG/JPG/JPEG/BMP），PDF 请改用【文档重点提取】");
         }
         try {
             // 密钥优先级：OcrConfig 自己的 > CosConfig 复用

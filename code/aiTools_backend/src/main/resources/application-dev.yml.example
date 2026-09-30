@@ -93,3 +93,8 @@ asr:
   ffmpeg-binary-path: ${ASR_FFMPEG_PATH:D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe}
   sample-rate: 16000
   channels: 1
+  # MiniMax 官方语音识别接口（/v1/chat/completions 不支持音频输入）
+  api-url: ${ASR_API_URL:https://api.minimaxi.com/v1/speech_to_text}
+  api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
+  model: asr-1.0
+  language: zh

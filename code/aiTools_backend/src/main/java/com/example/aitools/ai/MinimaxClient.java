@@ -1,19 +1,23 @@
 package com.example.aitools.ai;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.AiVisionConfig;
+import com.example.aitools.config.AsrConfig;
+import com.example.aitools.exception.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
- * MiniMax M3 多模态客户端（OpenAI 兼容接口）
- * <p>支持：图片（base64）、多图、纯文本对话
+ * MiniMax 客户端：多模态（图片/视频/文本）走 OpenAI 兼容 chat/completions；
+ * 音频转写走官方语音识别接口 /v1/speech_to_text。
  */
 @Slf4j
 @Component
@@ -21,6 +25,7 @@ import java.util.*;
 public class MinimaxClient {
 
     private final AiVisionConfig visionConfig;
+    private final AsrConfig asrConfig;
     private final ObjectMapper objectMapper;
 
     /**
@@ -113,105 +118,100 @@ public class MinimaxClient {
     }
 
     /**
-     * 音频转文本（MiniMax M3 多模态 audio input）
+     * 音频转文本：调用 MiniMax 官方语音识别接口 {@code POST /v1/speech_to_text}。
+     * <p>
+     * <b>重要</b>：{@code /v1/chat/completions}（chatAudio 旧实现走的端点）**不支持音频输入**，
+     * 传入 {@code input_audio} 会被服务端静默忽略，表现为模型回复"没有收到录音文件"。
+     * 官方 ASR 接口要求 multipart/form-data，参数 {@code model=asr-1.0} + {@code file=音频文件}。
      *
-     * @param systemPrompt   系统提示词（如：请将这段录音准确转写为中文文字，不要修改用词和标点）
-     * @param audioBytes     音频字节（mp3 / wav / m4a）
-     * @param mimeType       音频 MIME，如 audio/mpeg
-     * @return 模型返回的识别文本
+     * @param systemPrompt 忽略（官方 ASR 不接受自定义提示词，仅做识别）
+     * @param audioBytes   音频字节
+     * @param mimeType     音频 MIME，如 audio/mpeg（用于推断扩展名）
+     * @return 识别出的文本
      */
     public String chatAudio(String systemPrompt, byte[] audioBytes, String mimeType) {
-        try {
-            // 1. content blocks: text + input_audio
-            List<Map<String, Object>> contentBlocks = new ArrayList<>();
-
-            Map<String, Object> textBlock = new HashMap<>();
-            textBlock.put("type", "text");
-            textBlock.put("text", systemPrompt);
-            contentBlocks.add(textBlock);
-
-            String base64 = Base64.getEncoder().encodeToString(audioBytes);
-            Map<String, Object> audioBlock = new HashMap<>();
-            audioBlock.put("type", "input_audio");
-            Map<String, Object> inputAudio = new HashMap<>();
-            inputAudio.put("data", base64);
-            inputAudio.put("format", normalizeAudioFormat(mimeType, audioBytes));
-            audioBlock.put("input_audio", inputAudio);
-            contentBlocks.add(audioBlock);
-
-            // 2. request body
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", visionConfig.getModel());
-            requestBody.put("stream", false);
-            requestBody.put("thinking", Map.of("type", "disabled"));
-
-            List<Map<String, Object>> messages = new ArrayList<>();
-            Map<String, Object> userMsg = new HashMap<>();
-            userMsg.put("role", "user");
-            userMsg.put("content", contentBlocks);
-            messages.add(userMsg);
-            requestBody.put("messages", messages);
-
-            String json = objectMapper.writeValueAsString(requestBody);
-
-            // 3. HTTP call
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                    new java.net.URL(visionConfig.getApiUrl()).openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + visionConfig.getApiKey());
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setDoOutput(true);
-            conn.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
-
-            int code = -1;
-            String resp = null;
-            int maxRetries = 3;
-            long backoffMs = 2000;
-            for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    code = conn.getResponseCode();
-                    // 遇 5xx / 429 过载：重试
-                    if ((code >= 500 || code == 429) && attempt < maxRetries) {
-                        log.warn("MiniMax audio 调用遇 status={} attempt={}/{} -> retry after {}ms", code, attempt, maxRetries, backoffMs);
-                        try { Thread.sleep(backoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                        backoffMs *= 2;
-                        continue;
-                    }
-                    try (Scanner s = new Scanner(conn.getInputStream(), StandardCharsets.UTF_8)) {
-                        resp = s.useDelimiter("\\A").next();
-                    }
-                    break;
-                } catch (java.io.IOException ioe) {
-                    // 网络异常（SSL / EOF / 超时）：重试
-                    log.warn("MiniMax audio 调用 IOException attempt={}/{} -> retry: {}", attempt, maxRetries, ioe.getMessage());
-                    if (attempt < maxRetries) {
-                        try { Thread.sleep(backoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                        backoffMs *= 2;
-                    } else {
-                        throw ioe;
-                    }
-                }
-            }
-
-            if (code != 200) {
-                log.error("MiniMax M3 audio 调用失败 status={} body={}", code, resp);
-                throw new RuntimeException("MiniMax M3 audio 调用失败：" + code);
-            }
-
-            JsonNode root = objectMapper.readTree(resp);
-            JsonNode choices = root.get("choices");
-            if (choices == null || choices.isEmpty()) {
-                throw new RuntimeException("MiniMax M3 audio 返回为空");
-            }
-            JsonNode message = choices.get(0).get("message");
-            String content = message.get("content").asText();
-            log.debug("MiniMax M3 audio 响应 length={}", content == null ? 0 : content.length());
-            return content;
-
-        } catch (IOException e) {
-            log.error("MiniMax M3 audio 调用异常", e);
-            throw new RuntimeException("AI 服务调用失败，请稍后重试", e);
+        if (audioBytes == null || audioBytes.length == 0) {
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频内容为空");
         }
+        try {
+            String boundary = "----AiToolsBox" + UUID.randomUUID().toString().replace("-", "");
+            String fileName = "audio" + extensionOf(mimeType, audioBytes);
+
+            ByteArrayOutputStream buf = new ByteArrayOutputStream();
+            writeFormField(buf, boundary, "model", asrConfig.getModel());
+            writeFormField(buf, boundary, "response_format", "json");
+            // 文件字段
+            buf.write(("--" + boundary + "\r\n"
+                    + "Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n"
+                    + "Content-Type: " + (mimeType == null ? "application/octet-stream" : mimeType) + "\r\n\r\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            buf.write(audioBytes);
+            buf.write("\r\n".getBytes(StandardCharsets.UTF_8));
+            buf.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+            byte[] body = buf.toByteArray();
+
+            String apiKey = (asrConfig.getApiKey() == null || asrConfig.getApiKey().isBlank())
+                    ? visionConfig.getApiKey() : asrConfig.getApiKey();
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                    new java.net.URL(asrConfig.getApiUrl()).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+            if (asrConfig.getLanguage() != null && !asrConfig.getLanguage().isBlank()) {
+                conn.setRequestProperty("language", asrConfig.getLanguage());
+            }
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(300_000);
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body);
+
+            int code = conn.getResponseCode();
+            String resp = readAll(code == 200 ? conn.getInputStream() : conn.getErrorStream());
+            if (code != 200) {
+                // 只进日志：响应体可能含 trace_id 等内部信息
+                log.error("MiniMax ASR 调用失败 status={} body={}", code, resp);
+                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
+            }
+            JsonNode root = objectMapper.readTree(resp);
+            JsonNode textNode = root.get("text");
+            if (textNode == null || textNode.isNull()) {
+                log.error("MiniMax ASR 返回缺少 text 字段: {}", resp);
+                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
+            }
+            String text = textNode.asText();
+            log.info("MiniMax ASR 成功 text-len={} duration={}", text.length(),
+                    root.has("duration") ? root.get("duration").asText() : "-");
+            return text;
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("MiniMax ASR 调用异常", e);
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
+        }
+    }
+
+    /** 写 multipart 文本字段 */
+    private void writeFormField(ByteArrayOutputStream buf, String boundary, String name, String value) throws IOException {
+        buf.write(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
+                + value + "\r\n").getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** 读取输入流全部内容 */
+    private String readAll(java.io.InputStream in) throws IOException {
+        if (in == null) return "";
+        try (in; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] b = new byte[8192];
+            int n;
+            while ((n = in.read(b)) != -1) out.write(b, 0, n);
+            return out.toString(StandardCharsets.UTF_8);
+        }
+    }
+
+    /** 按 MIME/文件头推断音频扩展名 */
+    private String extensionOf(String mimeType, byte[] bytes) {
+        String fmt = normalizeAudioFormat(mimeType, bytes);
+        return "." + fmt;
     }
 
     /**

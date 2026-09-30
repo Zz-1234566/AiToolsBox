@@ -52,7 +52,7 @@ public class DocToTextServiceImpl implements DocToTextService {
             String text = documentParser.parse(file);
             if (text == null || text.isBlank()) {
                 // 后续扩展位：此处应降级 OCR → 多模态兜底；本次直接报错
-                throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
+                throw new BusinessException(ResultCode.DOC_UNSUPPORTED.getCode(),
                         "未能从文档中提取到文字（可能是扫描件）。请改用【智能识别】工具上传图片");
             }
             int duration = (int) (System.currentTimeMillis() - start);

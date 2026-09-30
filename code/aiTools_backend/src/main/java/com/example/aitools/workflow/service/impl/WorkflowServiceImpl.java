@@ -53,7 +53,7 @@ public class WorkflowServiceImpl implements WorkflowService {
     @Transactional
     public String save(Long userId, String workflowId, String name, String description, String nodesJson) {
         if (name == null || name.isBlank()) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "工作流名称不能为空");
+            throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流名称不能为空");
         }
         if (name.length() > Constants.WORKFLOW_NAME_MAX_LENGTH) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
@@ -142,7 +142,7 @@ public class WorkflowServiceImpl implements WorkflowService {
             if (isSource) {
                 List<String> in = sourceInputs.get(n.getNodeId());
                 if (in == null || in.isEmpty()) {
-                    throw new BusinessException("节点「" + n.getName() + "」缺少输入，请先填写或上传");
+                    throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "存在起始节点未填写输入，请先填写或上传");
                 }
             }
         }
@@ -220,7 +220,7 @@ public class WorkflowServiceImpl implements WorkflowService {
         LambdaQueryWrapper<WorkflowRun> w = new LambdaQueryWrapper<>();
         w.eq(WorkflowRun::getRunId, runId).eq(WorkflowRun::getUserId, userId).last("LIMIT 1");
         WorkflowRun r = workflowRunMapper.selectOne(w);
-        if (r == null) throw new BusinessException("运行记录不存在");
+        if (r == null) throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "运行记录不存在");
         LambdaQueryWrapper<Workflow> qw = new LambdaQueryWrapper<>();
         qw.eq(Workflow::getWorkflowId, r.getWorkflowId()).last("LIMIT 1");
         Workflow wf = workflowMapper.selectOne(qw);
@@ -233,8 +233,8 @@ public class WorkflowServiceImpl implements WorkflowService {
         LambdaQueryWrapper<Workflow> w = new LambdaQueryWrapper<>();
         w.eq(Workflow::getWorkflowId, workflowId).last("LIMIT 1");
         Workflow wf = workflowMapper.selectOne(w);
-        if (wf == null) throw new BusinessException("工作流不存在");
-        if (!Objects.equals(wf.getUserId(), userId)) throw new BusinessException("无权访问该工作流");
+        if (wf == null) throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "工作流不存在");
+        if (!Objects.equals(wf.getUserId(), userId)) throw new BusinessException(ResultCode.FORBIDDEN.getCode(), "无权访问该工作流");
         return wf;
     }
 

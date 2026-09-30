@@ -138,7 +138,7 @@ public class WorkflowEngine {
         try {
             List<String> inputs = collectInputs(node, sourceInputs, outputsByNode);
             if (inputs.isEmpty()) {
-                throw new BusinessException("节点 " + node.getNodeRef() + " 没有可用输入");
+                throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点没有可用输入，请检查上游节点");
             }
             r.setStatus(NODE_SUCCESS);
             r.setInputs(inputs);

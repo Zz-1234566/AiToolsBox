@@ -55,7 +55,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
     private String readPdfAsImages(BatchFilePayload payload, String prompt) {
         List<byte[]> pageImages = renderPdfToImages(payload.getContent());
         if (pageImages.isEmpty()) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "PDF 解析失败，未能提取到有效页面");
+            throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), "PDF 解析失败，未能提取到有效页面");
         }
         return minimaxClient.chatImages(prompt, pageImages);
     }
@@ -63,7 +63,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
     private String readDocument(BatchFilePayload payload, String prompt) {
         String text = documentParser.parse(payload.toMultipartFile());
         if (text == null || text.isBlank()) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "文档内容为空或解析失败");
+            throw new BusinessException(ResultCode.DOC_EMPTY.getCode(), "文档内容为空或解析失败");
         }
         String systemPrompt = "你是一个专业的文档解读助手。请根据提供的文档内容，用结构化的方式解读和总结。";
         return minimaxClient.chatText(systemPrompt, prompt + "\n\n文档内容：\n" + text);

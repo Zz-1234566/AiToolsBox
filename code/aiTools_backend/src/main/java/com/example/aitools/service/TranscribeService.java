@@ -65,7 +65,7 @@ public class TranscribeService {
             byte[] audioBytes = Files.readAllBytes(audioPath);
             String text = minimaxClient.chatAudio(TRANSCRIBE_PROMPT, audioBytes, mime);
             if (text == null || text.isBlank()) {
-                throw new BusinessException("MiniMax 返回为空");
+                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "未识别到语音内容，请检查录音后重试");
             }
             String formatted = text.trim();
             log.info("[ASR-minimax] 转写成功 text-len={} transcode={}", formatted.length(), transcodeOk);

@@ -1,5 +1,6 @@
 package com.example.aitools.workflow.engine;
 
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.NodeIoTypeEnum;
 import com.example.aitools.entity.AiTool;
@@ -47,27 +48,27 @@ public class WorkflowValidator {
      */
     public Plan validateAndPlan(List<WorkflowNode> nodes) {
         if (nodes == null || nodes.isEmpty()) {
-            throw new BusinessException("工作流至少需要一个节点");
+            throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流至少需要一个节点");
         }
 
         Plan plan = new Plan();
         // 1) 基础结构：nodeId 唯一、nodeRef 非空、deps 指向存在的节点
         for (WorkflowNode n : nodes) {
-            if (isBlank(n.getNodeId())) throw new BusinessException("存在缺少 nodeId 的节点");
+            if (isBlank(n.getNodeId())) throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流节点数据不完整，请重新编辑保存");
             if (plan.nodeMap.containsKey(n.getNodeId())) {
-                throw new BusinessException("节点 ID 重复：" + n.getNodeId());
+                throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流节点编号重复，请重新编辑保存");
             }
-            if (isBlank(n.getNodeRef())) throw new BusinessException("节点 " + n.getNodeId() + " 缺少 nodeRef");
+            if (isBlank(n.getNodeRef())) throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流存在未选择工具的节点，请检查后重试");
             plan.nodeMap.put(n.getNodeId(), n);
         }
         for (WorkflowNode n : nodes) {
             if (n.getDeps() == null) n.setDeps(new ArrayList<>());
             for (String dep : n.getDeps()) {
                 if (!plan.nodeMap.containsKey(dep)) {
-                    throw new BusinessException("节点 " + n.getNodeId() + " 依赖的节点不存在：" + dep);
+                    throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流存在无效的上游依赖，请重新编辑保存");
                 }
                 if (dep.equals(n.getNodeId())) {
-                    throw new BusinessException("节点不能依赖自己：" + n.getNodeId());
+                    throw new BusinessException(ResultCode.WORKFLOW_CYCLE.getCode(), "节点不能依赖自己，请检查上游设置");
                 }
             }
         }
@@ -91,7 +92,7 @@ public class WorkflowValidator {
             }
         }
         if (levelOf.size() != nodes.size()) {
-            throw new BusinessException("工作流存在循环依赖，无法确定执行顺序");
+            throw new BusinessException(ResultCode.WORKFLOW_CYCLE.getCode(), "工作流存在循环依赖，无法确定执行顺序");
         }
 
         // 3) 按 level 分组
@@ -105,8 +106,8 @@ public class WorkflowValidator {
 
         // 4) 深度约束（≤ 5 层）
         if (plan.depth() > Constants.WORKFLOW_MAX_DEPTH) {
-            throw new BusinessException("工作流层数 " + plan.depth()
-                    + " 超过上限 " + Constants.WORKFLOW_MAX_DEPTH + " 层");
+            throw new BusinessException(ResultCode.WORKFLOW_DEPTH_EXCEEDED.getCode(),
+                    "工作流层数 " + plan.depth() + " 超过上限 " + Constants.WORKFLOW_MAX_DEPTH + " 层");
         }
 
         // 5) 类型匹配：上游 output_type ⊆ 下游 input_type
@@ -115,7 +116,7 @@ public class WorkflowValidator {
             for (String depId : n.getDeps()) {
                 AiTool upstream = findByCode(plan.nodeMap.get(depId).getNodeRef());
                 if (!NodeIoTypeEnum.canConnect(upstream.getOutputType(), downstream.getInputType())) {
-                    throw new BusinessException("节点连线类型不匹配："
+                    throw new BusinessException(ResultCode.WORKFLOW_TYPE_MISMATCH.getCode(), "节点连线类型不匹配："
                             + upstream.getToolName() + "(" + upstream.getOutputType() + ")"
                             + " → " + downstream.getToolName() + "(" + downstream.getInputType() + ")");
                 }
@@ -133,7 +134,7 @@ public class WorkflowValidator {
         LambdaQueryWrapper<AiTool> w = new LambdaQueryWrapper<>();
         w.eq(AiTool::getToolCode, toolCode).last("LIMIT 1");
         AiTool tool = aiToolMapper.selectOne(w);
-        if (tool == null) throw new BusinessException("节点引用的工具不存在：" + toolCode);
+        if (tool == null) throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "节点引用的工具不存在，请重新选择工具");
         return tool;
     }
 

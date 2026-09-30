@@ -1,6 +1,7 @@
 package com.example.aitools.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.entity.AiPrompt;
 import com.example.aitools.entity.AiTool;
 import com.example.aitools.entity.UserFavorite;
@@ -91,7 +92,7 @@ public class FavoriteServiceImpl implements FavoriteService {
 
     private void validateType(String targetType) {
         if (!TYPE_TOOL.equals(targetType) && !TYPE_PROMPT.equals(targetType)) {
-            throw new BusinessException("收藏类型仅支持 tool / prompt");
+            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "收藏类型仅支持 tool / prompt");
         }
     }
 
