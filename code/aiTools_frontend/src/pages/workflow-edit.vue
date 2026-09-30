@@ -44,6 +44,27 @@
             <text class="wfe-type">输出: <text class="wfe-type__val">{{ typeLabel(toolByCode(node.nodeRef).outputType) }}</text></text>
           </view>
 
+          <!-- AI 节点：提示词（格式 + 生成内容），留空则用系统默认 -->
+          <view v-if="needsPrompt(node.nodeRef)" class="wfe-node__prompts">
+            <view class="wfe-prompt">
+              <text class="wfe-prompt__label">格式提示词</text>
+              <textarea class="wfe-prompt__input"
+                        v-model="node.params.promptFormat"
+                        :placeholder="promptPlaceholder(node.nodeRef, 'format')"
+                        placeholder-class="wfe-ph"
+                        :maxlength="1000" />
+            </view>
+            <view class="wfe-prompt">
+              <text class="wfe-prompt__label">生成提示词</text>
+              <textarea class="wfe-prompt__input"
+                        v-model="node.params.promptGenerate"
+                        :placeholder="promptPlaceholder(node.nodeRef, 'generate')"
+                        placeholder-class="wfe-ph"
+                        :maxlength="1000" />
+            </view>
+            <text class="wfe-prompt__hint">留空则使用该工具的系统默认提示词</text>
+          </view>
+
           <!-- 起始节点 or 输入来自 -->
           <view class="wfe-node__dep">
             <block v-if="!node.deps || node.deps.length === 0">
@@ -80,13 +101,15 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { toolListApi } from '@/api/prompt'
+import { toolListApi, systemPromptListApi } from '@/api/prompt'
 import { workflowSaveApi, workflowDetailApi } from '@/api/workflow'
 
 const tools = ref([])
 const saving = ref(false)
 const editingId = ref('')
 const form = reactive({ name: '', description: '', nodes: [] })
+/** 工具编码 → 系统默认提示词 { format, generate }，用于 placeholder 提示 */
+const defaultPrompts = reactive({})
 
 const isNew = computed(() => !editingId.value)
 
@@ -102,6 +125,31 @@ const typeLabel = (s) => {
 }
 
 const nodeIdOf = (idx) => 'n' + (idx + 1)
+
+/** 该工具是否需要用户填提示词（有系统提示词 = AI 工具） */
+const needsPrompt = (code) => !!defaultPrompts[code]
+
+/** 懒加载某工具的系统默认提示词（用于 placeholder 展示） */
+const ensureDefaultPrompts = async (code) => {
+  if (!code || defaultPrompts[code] !== undefined) return
+  try {
+    const res = await systemPromptListApi(code)
+    const list = (res && res.data) || []
+    const fmt = list.find(p => p.promptUse === 'format')
+    const gen = list.find(p => p.promptUse === 'generate')
+    defaultPrompts[code] = { format: fmt ? fmt.promptText : '', generate: gen ? gen.promptText : '' }
+  } catch (e) {
+    defaultPrompts[code] = { format: '', generate: '' }
+  }
+}
+
+/** 提示词输入框的 placeholder：显示系统默认内容（截断），便于用户知晓会用什么 */
+const promptPlaceholder = (code, use) => {
+  const d = defaultPrompts[code]
+  const text = d && d[use] ? String(d[use]).replace(/\s+/g, ' ').trim() : ''
+  if (!text) return use === 'format' ? `留空则用系统默认格式提示词` : `留空则用系统默认生成提示词`
+  return '系统默认：' + (text.length > 60 ? text.slice(0, 60) + '…' : text)
+}
 
 /** 上游候选：除自己外的所有节点 */
 const depOptions = (idx) => form.nodes.map((n, i) => i === idx ? null : `${nodeIdOf(i)} · ${toolName(n.nodeRef) || '未选工具'}`).filter(Boolean)
@@ -122,7 +170,13 @@ const depDisplay = (idx) => {
 
 const onToolChange = (nodeIdx, e) => {
   const t = tools.value[Number(e.detail.value)]
-  if (t) form.nodes[nodeIdx].nodeRef = t.toolCode
+  if (!t) return
+  const node = form.nodes[nodeIdx]
+  const changed = node.nodeRef !== t.toolCode
+  node.nodeRef = t.toolCode
+  // 换工具时清掉旧的提示词参数，避免张冠李戴
+  if (changed) node.params = {}
+  ensureDefaultPrompts(t.toolCode)
 }
 const onDepChange = (nodeIdx, e) => {
   const opts = depOptions(nodeIdx)
@@ -212,6 +266,8 @@ onLoad(async (opt) => {
       form.nodes = (d.nodes || []).map(n => ({
         nodeId: n.nodeId, nodeRef: n.nodeRef, name: n.name || '', deps: n.deps || [], params: n.params || {}
       }))
+      // 预加载各节点工具的默认提示词，使「格式/生成提示词」输入框正常显示
+      await Promise.all(form.nodes.map(n => ensureDefaultPrompts(n.nodeRef)))
     } catch (e) { /* ignore */ }
   } else {
     addNode()
@@ -341,6 +397,36 @@ onLoad(async (opt) => {
 }
 
 .wfe-node__dep { display: flex; align-items: center; gap: 16rpx; margin-top: 20rpx; }
+
+/* AI 节点：提示词区 */
+.wfe-node__prompts {
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 2rpx dashed #E5E7EB;
+}
+.wfe-prompt { margin-bottom: 16rpx; }
+.wfe-prompt__label {
+  display: block;
+  font-size: 24rpx;
+  color: #4B5563;
+  margin-bottom: 8rpx;
+}
+.wfe-prompt__input {
+  width: 100%;
+  min-height: 120rpx;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 16rpx;
+  padding: 16rpx 20rpx;
+  font-size: 24rpx;
+  color: #111827;
+  background: #fff;
+  box-sizing: border-box;
+}
+.wfe-prompt__hint {
+  display: block;
+  font-size: 22rpx;
+  color: #9CA3AF;
+}
 .wfe-dep__label { font-size: 26rpx; color: #4B5563; }
 .wfe-dep__select {
   height: 64rpx;
