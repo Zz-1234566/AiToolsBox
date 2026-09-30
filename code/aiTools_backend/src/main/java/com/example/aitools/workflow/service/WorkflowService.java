@@ -26,6 +26,16 @@ public interface WorkflowService {
     /** 运行（同步执行，返回运行结果） */
     WorkflowRunVO run(Long userId, String workflowId, WorkflowRunRequest request);
 
+    /**
+     * 流式运行工作流（SSE）：立即返回 emitter，后台按文件逐个执行，
+     * 每个节点开始/片段/完成实时推送，前端可边跑边展示。
+     * <p>执行过程中会持续写库（RUNNING → 终态），断线后仍可在运行历史查看结果。
+     *
+     * @param onEmitter 由调用方创建并配置好的 SseEmitter（超时、错误回调已设置）
+     */
+    void runStream(Long userId, String workflowId, WorkflowRunRequest request,
+                   org.springframework.web.servlet.mvc.method.annotation.SseEmitter onEmitter);
+
     /** 运行历史列表（当前用户，按时间倒序） */
     List<WorkflowRunVO> listRuns(Long userId, String workflowId, int limit);
 

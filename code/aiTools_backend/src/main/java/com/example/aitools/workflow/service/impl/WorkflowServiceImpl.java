@@ -46,6 +46,8 @@ public class WorkflowServiceImpl implements WorkflowService {
     private final WorkflowValidator workflowValidator;
     private final WorkflowEngine workflowEngine;
     private final ObjectMapper objectMapper;
+    /** SSE 流式任务线程池（与工具流式接口共用） */
+    private final java.util.concurrent.Executor streamExecutor;
 
     // ==================== 保存 ====================
 
@@ -188,6 +190,153 @@ public class WorkflowServiceImpl implements WorkflowService {
         workflowRunMapper.updateById(run);
 
         return toRunVO(run, wf.getName());
+    }
+
+    // ==================== 流式运行（SSE）====================
+
+    @Override
+    public void runStream(Long userId, String workflowId, WorkflowRunRequest request,
+                          org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter) {
+        // 1) 同步校验（在请求线程内完成，异常可直接被 GlobalExceptionHandler 捕获）
+        Workflow wf = getOwned(userId, workflowId);
+        List<WorkflowNode> nodes = parseNodes(wf.getNodes());
+        WorkflowValidator.Plan plan = workflowValidator.validateAndPlan(nodes);
+
+        Map<String, List<String>> sourceInputs = request == null || request.getInputs() == null
+                ? new HashMap<>() : request.getInputs();
+        for (WorkflowNode n : nodes) {
+            boolean isSource = n.getDeps() == null || n.getDeps().isEmpty();
+            if (isSource) {
+                List<String> in = sourceInputs.get(n.getNodeId());
+                if (in == null || in.isEmpty()) {
+                    throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "存在起始节点未填写输入，请先填写或上传");
+                }
+            }
+        }
+
+        // 2) 建运行记录（RUNNING）
+        WorkflowRun run = new WorkflowRun();
+        run.setRunId(UUID.randomUUID().toString().replace("-", ""));
+        run.setWorkflowId(workflowId);
+        run.setUserId(userId);
+        run.setStatus(WorkflowRunStatusEnum.RUNNING.getCode());
+        run.setSuccessCount(0);
+        run.setFailCount(0);
+        run.setMaxDepth(plan.depth());
+        run.setDuration(0);
+        run.setInputSnapshot(writeJson(sourceInputs));
+        workflowRunMapper.insert(run);
+
+        // 3) 异步执行 + 实时推送
+        streamExecutor.execute(() -> {
+            try {
+                sendEvent(emitter, Map.of("type", "run_start", "runId", run.getRunId()));
+
+                // 本次运行内「已推送过 chunk 的节点」集合（局部变量，无并发共享问题）
+                java.util.Set<String> chunkedNodeIds = java.util.Collections.newSetFromMap(
+                        new java.util.concurrent.ConcurrentHashMap<>());
+
+                WorkflowEngine.ExecutionResult er = workflowEngine.executeWithProgress(
+                        plan, sourceInputs, new WorkflowEngine.ProgressListener() {
+                            @Override
+                            public void onFileStart(int fileIndex, int fileTotal) {
+                                sendEvent(emitter, Map.of("type", "file_start",
+                                        "fileIndex", fileIndex, "fileTotal", fileTotal));
+                            }
+
+                            @Override
+                            public void onNodeStart(String nodeId, String nodeRef, int fileIndex, int fileTotal) {
+                                Map<String, Object> m = new LinkedHashMap<>();
+                                m.put("type", "node_start");
+                                m.put("nodeId", nodeId);
+                                m.put("nodeRef", nodeRef);
+                                m.put("fileIndex", fileIndex);
+                                m.put("fileTotal", fileTotal);
+                                sendEvent(emitter, m);
+                            }
+
+                            @Override
+                            public void onNodeChunk(String nodeId, int fileIndex, String chunk) {
+                                chunkedNodeIds.add(nodeId);
+                                Map<String, Object> m = new LinkedHashMap<>();
+                                m.put("type", "chunk");
+                                m.put("nodeId", nodeId);
+                                m.put("fileIndex", fileIndex);
+                                m.put("text", chunk);
+                                sendEvent(emitter, m);
+                            }
+
+                            @Override
+                            public void onNodeDone(String nodeId, int fileIndex, boolean ok, String output, String errMsg) {
+                                Map<String, Object> m = new LinkedHashMap<>();
+                                m.put("type", "node_done");
+                                m.put("nodeId", nodeId);
+                                m.put("fileIndex", fileIndex);
+                                m.put("ok", ok);
+                                m.put("errMsg", errMsg);
+                                // 非 text 节点没有 chunk 帧，这里带上完整输出，避免前端丢内容；
+                                // text 节点已通过 chunk 帧推送，front-end 自行拼接，故不带 output
+                                m.put("output", chunkedNodeIds.contains(nodeId) ? null : output);
+                                sendEvent(emitter, m);
+                            }
+
+                            @Override
+                            public void onFileDone(int fileIndex, int fileTotal, boolean ok) {
+                                sendEvent(emitter, Map.of("type", "file_done",
+                                        "fileIndex", fileIndex, "fileTotal", fileTotal, "ok", ok));
+                            }
+                        });
+
+                // 4) 落库终态
+                run.setStatus(er.status);
+                run.setNodeResults(writeJson(er.nodeResults));
+                run.setSuccessCount(er.successCount);
+                run.setFailCount(er.failCount);
+                run.setMaxDepth(er.depth);
+                run.setDuration(er.duration);
+                run.setFinishedAt(LocalDateTime.now());
+                workflowRunMapper.updateById(run);
+
+                Map<String, Object> done = new LinkedHashMap<>();
+                done.put("type", "all_done");
+                done.put("runId", run.getRunId());
+                done.put("status", er.status);
+                done.put("successCount", er.successCount);
+                done.put("failCount", er.failCount);
+                done.put("duration", er.duration);
+                sendEvent(emitter, done);
+                emitter.complete();
+            } catch (Exception e) {
+                log.error("[workflow] 流式运行异常 workflowId={}", workflowId, e);
+                // 落库失败态
+                try {
+                    run.setStatus(WorkflowRunStatusEnum.FAILED.getCode());
+                    run.setErrorMsg(ResultCode.WORKFLOW_RUN_FAILED.getMessage());
+                    run.setFinishedAt(LocalDateTime.now());
+                    workflowRunMapper.updateById(run);
+                } catch (Exception ex) {
+                    log.error("[workflow] 流式运行失败态落库异常 runId={}", run.getRunId(), ex);
+                }
+                try {
+                    sendEvent(emitter, Map.of("type", "error",
+                            "message", ResultCode.WORKFLOW_RUN_FAILED.getMessage()));
+                    emitter.complete();
+                } catch (Exception ex) {
+                    log.warn("[workflow] 推送错误帧失败（连接可能已关闭）", ex);
+                }
+            }
+        });
+    }
+
+    /** 发送一帧 SSE；失败只记日志，不中断主流程（客户端可能已断开） */
+    private void sendEvent(org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter,
+                           Map<String, ?> payload) {
+        try {
+            emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+                    .event().data(writeJson(payload)));
+        } catch (Exception e) {
+            log.warn("[workflow] SSE 推送失败（客户端可能已断开）: {}", e.getMessage());
+        }
     }
 
     // ==================== 运行历史 ====================
