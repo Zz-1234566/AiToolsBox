@@ -101,7 +101,7 @@ public class WorkflowServiceImpl implements WorkflowService {
         List<Workflow> list = workflowMapper.selectList(w);
         List<WorkflowVO> out = new ArrayList<>();
         for (Workflow wf : list) {
-            WorkflowVO vo = toVO(wf, false);
+            WorkflowVO vo = toVO(wf, true);
             // 最近一次运行状态
             WorkflowRun last = latestRun(userId, wf.getWorkflowId());
             if (last != null) vo.setLastRunStatus(last.getStatus());

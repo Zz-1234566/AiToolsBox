@@ -248,12 +248,17 @@ onShow(() => {
 }
 
 /* ===== 工具卡 ===== */
+/* 用 flex 替代 grid：uni-app H5 下 grid-template-columns 的 fr 解析异常，
+   会把列撑到内容宽度导致横向溢出（实测 430px 视口下卡片宽 685px） */
 .tool-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20rpx;
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 -10rpx;
 }
 .tool-card {
+  width: calc(50% - 20rpx);
+  margin: 0 10rpx 20rpx;
+  box-sizing: border-box;
   background: var(--bg-card, #FFFFFF);
   border-radius: 24rpx;
   padding: 24rpx;
