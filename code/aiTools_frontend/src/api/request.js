@@ -72,10 +72,20 @@ export const uploadFile = (url, filePath, name = 'file', formData = {}) => {
 
     const options = {
       url: BASE_URL + url,
-      filePath,
       name,
       header: headers
     }
+
+    // uni-app H5 端：File/Blob 必须走 file 参数；
+    // 若塞进 filePath，会在内部 getRealPath() 调用 filePath.indexOf() 报错 → 上传失败。
+    // App/小程序端无 File 对象，filePath 是本地路径字符串，保持原样。
+    if (typeof Blob !== 'undefined' && filePath instanceof Blob) {
+      options.file = filePath
+      options.filePath = filePath.name || 'file'
+    } else {
+      options.filePath = filePath
+    }
+
     // 仅当 formData 非空时才附带，保证现有调用（如头像上传）行为不变
     if (formData && Object.keys(formData).length > 0) {
       options.formData = formData
@@ -110,12 +120,17 @@ export const uploadWithFormData = (url, filePath, formData = {}, name = 'image')
       header['Authorization'] = 'Bearer ' + token
     }
 
+    // 同 uploadFile：H5 端 File/Blob 必须走 file 参数，否则内部 getRealPath 报错
+    const opts = { url: BASE_URL + url, name, formData, header }
+    if (typeof Blob !== 'undefined' && filePath instanceof Blob) {
+      opts.file = filePath
+      opts.filePath = filePath.name || 'file'
+    } else {
+      opts.filePath = filePath
+    }
+
     uni.uploadFile({
-      url: BASE_URL + url,
-      filePath,
-      name,
-      formData,
-      header,
+      ...opts,
       success: (res) => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           // remove-bg 返回二进制，不解析 JSON
