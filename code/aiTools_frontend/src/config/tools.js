@@ -207,6 +207,7 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
       apiPath: '/api/ai-office/meeting-minutes/batch-transcribe'
     },
     actionText: '开始转写', resultTitle: '转写结果', resultPlaceholder: '转写文字将在这里显示...',
+    uploadTitle: '上传录音', uploadDesc: '支持 MP3、WAV、M4A 等格式 · 可多选',
     validateRules: {
       file:   { token: true, file: { type: 'batch', min: 1, error: '请先上传录音' } },
       text:   { unsupported: true, error: '该工具请上传录音' },

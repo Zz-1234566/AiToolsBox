@@ -740,67 +740,104 @@ const resetMeetingScroll = () => {
 // 纯文本转义 / H5 渲染 / App 节点转换原先都在这里，现已全部收敛到
 // src/components/MarkdownView.vue（内部复用 src/utils/markdown 管线）
 const mmPlanText = ref('')
-// H5 端用隐藏 input 选文件，返回 base64 dataURL（uni.uploadFile H5 需要 Blob/File）
+// H5 端用隐藏 input 选文件，返回 base64 dataURL 数组（支持多选）
 const pickAudioByInput = () => {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'audio/*'
+    // 多选：可一次选中多个录音（按住 Ctrl / Command，或重复点选累加）
+    input.multiple = true
     input.style.display = 'none'
-    input.onchange = (e) => {
-      const file = e.target.files && e.target.files[0]
-      document.body.removeChild(input)
-      if (!file) return resolve('')
-      // H5 端 uni.uploadFile 需要 filePath，这里把 File 转 base64 dataURL 用作路径
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result)  // data:audio/mpeg;base64,xxx
-      reader.onerror = () => reject(new Error('读取文件失败'))
-      reader.readAsDataURL(file)
+    input.onchange = async (e) => {
+      const files = Array.from((e.target && e.target.files) || [])
+      if (document.body.contains(input)) document.body.removeChild(input)
+      if (!files.length) return resolve([])
+      try {
+        const results = await Promise.all(files.map((file) => new Promise((res, rej) => {
+          const reader = new FileReader()
+          reader.onload = () => res({ name: file.name, dataUrl: reader.result })
+          reader.onerror = () => rej(new Error('读取文件失败'))
+          reader.readAsDataURL(file)
+        })))
+        resolve(results)
+      } catch (err) {
+        reject(err)
+      }
     }
     document.body.appendChild(input)
     input.click()
   })
 }
 
-// 上传录音 → 后端 ASR 转写 → 自动填入会议内容
+// 上传录音（支持多选）→ 后端 ASR 逐个转写 → 分别拼接进会议内容输入框
 const isTranscribing = ref(false)
 const onUploadRecording = async () => {
   try {
     // 兼容 H5 + App：
     //   H5 端用原生 <input type=file>（uni.chooseMessageFile 仅微信小程序支持）
     //   App 端用 uni.chooseMedia（mediaType:audio）
-    let filePath = ''
+    // 多选：选中 N 个录音 → 逐个调用 ASR → 每段结果单独拼进输入框
+    let picked = []   // [{ name, path }]
     // #ifdef H5
-    filePath = await pickAudioByInput()
+    picked = await pickAudioByInput()
     // #endif
     // #ifndef H5
     const chooseRes = await uni.chooseMedia({
-      count: 1,
+      count: 10,                       // 最多 10 个录音
       mediaType: ['audio'],
       sourceType: ['album', 'file']
     })
-    filePath = (chooseRes.tempFiles && chooseRes.tempFiles[0] && chooseRes.tempFiles[0].tempFilePath)
-      || (chooseRes[1] && chooseRes[1].tempFiles && chooseRes[1].tempFiles[0].tempFilePath)
-      || ''
+    const tempFiles = (chooseRes && (chooseRes.tempFiles
+      || (chooseRes[1] && chooseRes[1].tempFiles))) || []
+    picked = tempFiles.map((f, i) => ({
+      name: f.name || ('录音' + (i + 1)),
+      path: f.tempFilePath || f.path
+    })).filter(x => !!x.path)
     // #endif
-    if (!filePath) {
+    if (!picked.length) {
       uni.showToast({ title: '未选择文件', icon: 'none' })
       return
     }
+
     isTranscribing.value = true
-    uni.showLoading({ title: 'AI 转写中...' })
-    const res = await transcribeMeeting(filePath)
+    uni.showLoading({ title: picked.length > 1 ? ('AI 转写中 0/' + picked.length) : 'AI 转写中...' })
+
+    const texts = []
+    const failures = []
+    for (let i = 0; i < picked.length; i++) {
+      const item = picked[i]
+      const filePath = item.path || item.dataUrl
+      if (picked.length > 1) {
+        uni.showLoading({ title: 'AI 转写中 ' + (i + 1) + '/' + picked.length })
+      }
+      try {
+        const res = await transcribeMeeting(filePath)
+        const text = res && res.data && res.data.text
+        if (text && String(text).trim()) {
+          texts.push(String(text).trim())
+        } else {
+          failures.push(item.name || ('第' + (i + 1) + '个'))
+        }
+      } catch (e) {
+        failures.push(item.name || ('第' + (i + 1) + '个'))
+        console.error('录音转写失败:', item.name, e)
+      }
+    }
     uni.hideLoading()
-    if (res && res.data && res.data.text) {
-      // 智能合并：当前已有内容则换行追加，否则直接填入
-            const oldText = inputText.value
-      const newText = (res && res.data && res.data.text) || ''
-      inputText.value = oldText
-        ? oldText + String.fromCharCode(10, 10) + newText
-        : newText
-      uni.showToast({ title: '转写完成', icon: 'success' })
+
+    if (texts.length) {
+      // 每段转写结果单独拼接（换行分隔，空两行），追加到已有内容之后
+      const joined = texts.join(String.fromCharCode(10, 10))
+      const oldText = inputText.value
+      inputText.value = oldText ? oldText + String.fromCharCode(10, 10) + joined : joined
+      if (failures.length) {
+        uni.showToast({ title: '成功 ' + texts.length + ' 个，失败 ' + failures.length + ' 个', icon: 'none', duration: 3000 })
+      } else {
+        uni.showToast({ title: '转写完成' + (texts.length > 1 ? '（' + texts.length + ' 个）' : ''), icon: 'success' })
+      }
     } else {
-      uni.showToast({ title: '转写失败', icon: 'none' })
+      uni.showToast({ title: '转写失败，请重试', icon: 'none' })
     }
   } catch (e) {
     uni.hideLoading()
