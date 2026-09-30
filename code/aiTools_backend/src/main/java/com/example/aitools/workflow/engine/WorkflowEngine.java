@@ -128,6 +128,185 @@ public class WorkflowEngine {
         return er;
     }
 
+    // ==================== 流式执行（按文件串行，逐节点上报）====================
+
+    /**
+     * 工作流进度监听：用于把执行过程实时推送给前端（SSE）。
+     * <p>所有回调都在业务线程内同步调用，实现方需自行保证线程安全与异常不影响主流程。
+     */
+    public interface ProgressListener {
+        /** 某个文件开始执行 */
+        void onFileStart(int fileIndex, int fileTotal);
+
+        /** 某个节点开始执行 */
+        void onNodeStart(String nodeId, String nodeRef, int fileIndex, int fileTotal);
+
+        /** 文本节点流式片段 */
+        void onNodeChunk(String nodeId, int fileIndex, String chunk);
+
+        /** 某个节点执行完成（ok=false 时 errMsg 为用户可读文案） */
+        void onNodeDone(String nodeId, int fileIndex, boolean ok, String output, String errMsg);
+
+        /** 某个文件完整链路跑完 */
+        void onFileDone(int fileIndex, int fileTotal, boolean ok);
+    }
+
+    /**
+     * 流式执行：<b>按文件（源节点输入项）逐个跑完整链路</b>，每个节点完成后即回调上报。
+     * <p>
+     * 与 {@link #execute} 的区别：
+     * <ul>
+     *   <li>进度粒度：以「源节点输入项」为单位，一个文件跑完 n1→n2… 全链路后才处理下一个</li>
+     *   <li>实时上报：每个节点开始/片段/完成都会回调，便于前端边跑边展示</li>
+     *   <li>并行度：文件之间串行（牺牲并行换取可见性）；单文件内仍按拓扑分层执行</li>
+     * </ul>
+     *
+     * @param plan         执行计划
+     * @param sourceInputs 源节点输入（nodeId → 输入数组）
+     * @param listener     进度监听（可为 null）
+     * @return 汇总结果（nodeResults 中每个节点的 outputs 按文件顺序拼接）
+     */
+    public ExecutionResult executeWithProgress(WorkflowValidator.Plan plan,
+                                               Map<String, List<String>> sourceInputs,
+                                               ProgressListener listener) {
+        long start = System.currentTimeMillis();
+
+        // 汇总容器：nodeId -> WorkflowNodeResult（outputs 按文件顺序累加）
+        Map<String, WorkflowNodeResult> results = new LinkedHashMap<>();
+
+        // 1) 找到源节点与其输入数组长度（= 文件数）
+        List<WorkflowNode> sourceNodes = plan.levels.isEmpty() ? new ArrayList<>()
+                : plan.levels.get(0);
+        List<WorkflowNode> allNodes = new ArrayList<>();
+        for (List<WorkflowNode> lv : plan.levels) allNodes.addAll(lv);
+
+        int fileTotal = 0;
+        for (WorkflowNode n : allNodes) {
+            if (n.getDeps() == null || n.getDeps().isEmpty()) {
+                List<String> in = sourceInputs == null ? null : sourceInputs.get(n.getNodeId());
+                fileTotal = Math.max(fileTotal, in == null ? 0 : in.size());
+            }
+        }
+        // 无源节点输入 → 直接返回失败汇总（与 execute 的校验语义一致）
+        if (fileTotal == 0) {
+            ExecutionResult er = new ExecutionResult();
+            er.nodeResults = results;
+            er.successCount = 0;
+            er.failCount = allNodes.size();
+            er.depth = plan.depth();
+            er.duration = (int) (System.currentTimeMillis() - start);
+            er.status = decideStatus(0, allNodes.size());
+            return er;
+        }
+
+        // 2) 逐文件串行：每个文件独立构建 outputsByNode，跑完整条链
+        for (int fi = 0; fi < fileTotal; fi++) {
+            if (listener != null) listener.onFileStart(fi, fileTotal);
+
+            Map<String, List<String>> outputsByNode = new HashMap<>();
+            Set<String> failedNodes = new HashSet<>();
+            boolean fileOk = true;
+
+            for (List<WorkflowNode> level : plan.levels) {
+                for (WorkflowNode node : level) {
+                    String nodeId = node.getNodeId();
+                    WorkflowNodeResult agg = results.computeIfAbsent(nodeId, k -> {
+                        WorkflowNodeResult nr = new WorkflowNodeResult();
+                        nr.setStatus(NODE_SUCCESS);
+                        nr.setInputs(new ArrayList<>());
+                        nr.setOutputs(new ArrayList<>());
+                        nr.setCostMs(0);
+                        return nr;
+                    });
+
+                    // 上游失败 → 本节点不执行（该文件内）
+                    boolean upstreamFailed = node.getDeps() != null
+                            && node.getDeps().stream().anyMatch(failedNodes::contains);
+                    if (upstreamFailed) {
+                        failedNodes.add(nodeId);
+                        agg.setStatus(NODE_FAILED);
+                        if (agg.getErrorMsg() == null) agg.setErrorMsg("上游节点失败，本节点未执行");
+                        fileOk = false;
+                        if (listener != null) listener.onNodeDone(nodeId, fi, false, null, "上游节点失败，本节点未执行");
+                        continue;
+                    }
+
+                    // 取该文件在本节点的输入（源节点取第 fi 项；非源节点取上游同一文件项）
+                    String input = inputForFile(node, fi, sourceInputs, outputsByNode);
+                    if (listener != null) listener.onNodeStart(nodeId, node.getNodeRef(), fi, fileTotal);
+
+                    if (input == null || input.isBlank()) {
+                        failedNodes.add(nodeId);
+                        agg.setStatus(NODE_FAILED);
+                        if (agg.getErrorMsg() == null) agg.setErrorMsg("节点缺少可用输入");
+                        fileOk = false;
+                        if (listener != null) listener.onNodeDone(nodeId, fi, false, null, "节点缺少可用输入");
+                        continue;
+                    }
+
+                    long t0 = System.currentTimeMillis();
+                    try {
+                        final int fileIdx = fi;
+                        String out = nodeExecutor.executeStreaming(node.getNodeRef(), input, node.getParams(),
+                                chunk -> {
+                                    if (listener != null) listener.onNodeChunk(nodeId, fileIdx, chunk);
+                                });
+                        agg.getInputs().add(input);
+                        agg.getOutputs().add(out == null ? "" : out);
+                        agg.setCostMs(agg.getCostMs() + (int) (System.currentTimeMillis() - t0));
+                        outputsByNode.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(out == null ? "" : out);
+                        if (listener != null) listener.onNodeDone(nodeId, fi, true, out, null);
+                    } catch (Exception e) {
+                        String userMsg = (e instanceof BusinessException)
+                                ? e.getMessage() : ResultCode.WORKFLOW_NODE_FAILED.getMessage();
+                        log.warn("[workflow] 流式执行节点失败 nodeId={} fileIndex={}: {}", nodeId, fi, userMsg);
+                        if (!(e instanceof BusinessException)) log.error("[workflow] 节点异常", e);
+                        failedNodes.add(nodeId);
+                        agg.setStatus(NODE_FAILED);
+                        if (agg.getErrorMsg() == null) agg.setErrorMsg(userMsg);
+                        fileOk = false;
+                        if (listener != null) listener.onNodeDone(nodeId, fi, false, null, userMsg);
+                    }
+                }
+            }
+            if (listener != null) listener.onFileDone(fi, fileTotal, fileOk);
+        }
+
+        // 3) 汇总（success/fail 以节点为单位统计，与 execute 语义一致）
+        int success = (int) results.values().stream()
+                .filter(r -> Objects.equals(r.getStatus(), NODE_SUCCESS)).count();
+        int fail = results.size() - success;
+        ExecutionResult er = new ExecutionResult();
+        er.nodeResults = results;
+        er.successCount = success;
+        er.failCount = fail;
+        er.depth = plan.depth();
+        er.duration = (int) (System.currentTimeMillis() - start);
+        er.status = decideStatus(success, fail);
+        return er;
+    }
+
+    /**
+     * 取某文件在某节点的输入：
+     * - 源节点 → sourceInputs 的第 fileIndex 项
+     * - 非源节点 → 各上游输出的第 fileIndex 项（数组语义：逐项对应）
+     */
+    private String inputForFile(WorkflowNode node, int fileIndex,
+                                Map<String, List<String>> sourceInputs,
+                                Map<String, List<String>> outputsByNode) {
+        if (node.getDeps() == null || node.getDeps().isEmpty()) {
+            List<String> src = sourceInputs == null ? null : sourceInputs.get(node.getNodeId());
+            return (src == null || fileIndex >= src.size()) ? null : src.get(fileIndex);
+        }
+        for (String dep : node.getDeps()) {
+            List<String> out = outputsByNode.get(dep);
+            if (out != null && fileIndex < out.size()) {
+                return out.get(fileIndex);
+            }
+        }
+        return null;
+    }
+
     /** 执行单个节点：算输入数组 → 调 NodeExecutor → 组装结果 */
     private LevelTask runNode(WorkflowNode node,
                               Map<String, List<String>> sourceInputs,
