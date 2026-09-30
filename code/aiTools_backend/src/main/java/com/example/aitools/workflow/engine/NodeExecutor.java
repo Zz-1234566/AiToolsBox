@@ -161,7 +161,7 @@ public class NodeExecutor {
      */
     private org.springframework.web.multipart.MultipartFile toMultipart(String pathOrDataUrl, String fallbackName) {
         try {
-            // data URL（data:application/pdf;base64,xxxx）→ 解码
+            // 1) data URL（data:application/pdf;base64,xxxx）→ 解码
             if (pathOrDataUrl.startsWith("data:")) {
                 int comma = pathOrDataUrl.indexOf(',');
                 if (comma < 0) throw new BusinessException("非法的 data URL 输入");
@@ -170,7 +170,19 @@ public class NodeExecutor {
                 String name = meta.contains("/") ? meta.substring(meta.indexOf('/') + 1).split(";")[0] : fallbackName;
                 return payloadToMultipart(new BatchFilePayload(bytes, name));
             }
-            // 本地文件路径
+            // 2) HTTP(S) URL（如 COS 签名地址）→ 下载字节
+            //    前端上传文件后拿到的是 COS 的 https 地址，不能当本地路径处理
+            if (pathOrDataUrl.startsWith("http://") || pathOrDataUrl.startsWith("https://")) {
+                byte[] bytes = downloadBytes(pathOrDataUrl);
+                if (bytes.length == 0) {
+                    throw new BusinessException("节点输入文件下载为空：" + pathOrDataUrl);
+                }
+                if (bytes.length > Constants.BATCH_SINGLE_FILE_MAX_SIZE) {
+                    throw new BusinessException("节点输入文件超过单文件大小上限（20MB）");
+                }
+                return payloadToMultipart(new BatchFilePayload(bytes, fileNameOf(pathOrDataUrl)));
+            }
+            // 3) 本地文件路径
             java.io.File f = new java.io.File(pathOrDataUrl);
             if (!f.exists() || !f.isFile()) {
                 throw new BusinessException("节点输入文件不存在：" + pathOrDataUrl);
@@ -183,6 +195,36 @@ public class NodeExecutor {
             throw e;
         } catch (Exception e) {
             throw new BusinessException("读取节点输入文件失败：" + e.getMessage());
+        }
+    }
+
+    /** 下载 http(s) 资源字节（COS 签名 URL 等），失败抛业务异常 */
+    private byte[] downloadBytes(String url) {
+        java.net.HttpURLConnection conn = null;
+        try {
+            conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(30_000);
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new BusinessException("节点输入文件下载失败（HTTP " + code + "）：可能链接已过期，请重新上传");
+            }
+            try (java.io.InputStream in = conn.getInputStream();
+                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    out.write(buf, 0, n);
+                }
+                return out.toByteArray();
+            }
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException("节点输入文件下载失败：" + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
         }
     }
 
