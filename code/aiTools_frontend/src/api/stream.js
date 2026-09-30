@@ -31,10 +31,11 @@ const SSE_MARKER_PATTERN = /^---\s*\[(.+?)\]\s*---$/
  * @param {Object} options
  *   onChunk  - 普通内容回调 (text)
  *   onMarker - 批量任务标记 `--- [xxx] ---` 回调 (text)
+ *   onError  - 收到后端错误帧 `--- [ERROR] 文案 ---` 时回调 (err)
  * @returns {{ feed: (fullText: String, done?: Boolean) => void }}
  *   feed 增量喂入 xhr.responseText（内部按 lastIndex 只解析新增部分，不重复消费）
  */
-const createSseEventParser = ({ onChunk, onMarker } = {}) => {
+const createSseEventParser = ({ onChunk, onMarker, onError } = {}) => {
   let buffer = ''      // 已接收但尚未凑齐一个完整事件（未遇到空行）的文本
   let lastIndex = 0    // xhr.responseText 已消费位置
 
@@ -53,6 +54,13 @@ const createSseEventParser = ({ onChunk, onMarker } = {}) => {
     // 优先识别 B2 多文件批量标记
     const match = data.match(SSE_MARKER_PATTERN)
     if (match) {
+      // 后端约定的错误帧：--- [ERROR:文案] ---
+      // 用于 SSE 中途失败时把「可读原因」带给前端（否则只表现为连接中断）
+      if (match[1].startsWith('ERROR:')) {
+        const msg = match[1].slice('ERROR:'.length).trim() || '处理失败，请稍后重试'
+        if (onError) onError(new Error(msg))
+        return
+      }
       if (onMarker) onMarker(match[1])
       // 不再透传到 onChunk，避免重复渲染
     } else if (onChunk) {
@@ -83,7 +91,7 @@ export const streamRequest = (options) => {
   const token = uni.getStorageSync('token')
 
   // 共用 SSE 事件解析器（增量解析 xhr.responseText，按事件拼回换行）
-  const parser = createSseEventParser({ onChunk: options.onChunk, onMarker: options.onMarker })
+  const parser = createSseEventParser({ onChunk: options.onChunk, onMarker: options.onMarker, onError: options.onError })
 
   const xhr = new XMLHttpRequest()
   xhr.open('POST', BASE_URL + options.url, true)
@@ -139,7 +147,7 @@ export const streamUpload = (options) => {
   const token = uni.getStorageSync('token')
 
   // 共用 SSE 事件解析器（与 streamRequest 同一套，避免解析逻辑重复漂移）
-  const parser = createSseEventParser({ onChunk: options.onChunk, onMarker: options.onMarker })
+  const parser = createSseEventParser({ onChunk: options.onChunk, onMarker: options.onMarker, onError: options.onError })
 
   // 把文件统一转成可 append 进 FormData 的 Blob（H5 端）
   // - File/Blob 对象：直接使用，保留真实文件名
