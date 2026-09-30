@@ -76,7 +76,7 @@
         <text class="upload-card__title">{{ toolInfo.uploadTitle || '点击上传文件' }}</text>
         <text class="upload-card__desc">{{ toolInfo.uploadDesc || '' }}</text>
       </view>
-      <view v-if="pureConvertFiles.length > 1" class="section-title">
+      <view v-if="pureConvertFiles.length > 0" class="section-title">
         <text>已选 {{ pureConvertFiles.length }} 个文件</text>
       </view>
       <view v-if="pureConvertFiles.length > 0" class="file-list">
@@ -84,7 +84,7 @@
           <view class="file-item__icon">{{ (f.name || 'F').charAt(0).toUpperCase() }}</view>
           <view class="file-item__body">
             <text class="file-item__name">{{ f.name }}</text>
-            <text class="file-item__meta">已选择</text>
+            <text class="file-item__meta">{{ formatFileSize(f.size) }}</text>
           </view>
           <view class="file-item__close" @click="removePureConvertFile(idx)">
             <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
@@ -102,15 +102,15 @@
         <text class="upload-card__title">点击上传文件</text>
         <text class="upload-card__desc">{{ toolId === 'ai-file-reader' ? '支持 PDF、Word、TXT、Excel 等格式' : '支持 PDF、Word、TXT 格式' }}</text>
       </view>
-      <view v-if="uploadedFiles.length > 0" class="section-title">已上传文件</view>
+      <view v-if="uploadedFiles.length > 0" class="section-title">已上传文件（{{ uploadedFiles.length }}）</view>
       <view v-if="uploadedFiles.length > 0" class="file-list">
-        <view v-for="(f, idx) in uploadedFiles" :key="idx" class="file-item">
+        <view v-for="(f, idx) in uploadedFiles" :key="idx" class="file-item" @click="onFileItemClick(f)">
           <view class="file-item__icon">{{ (f.fileName || 'F').charAt(0).toUpperCase() }}</view>
           <view class="file-item__body">
             <text class="file-item__name">{{ f.fileName }}</text>
-            <text class="file-item__meta">{{ f.size || '1.6 MB' }} · {{ f.date || '2025-09-22' }}</text>
+            <text class="file-item__meta">{{ formatFileSize(f.size) }}<text v-if="f.url" class="file-item__dl"> · 点击下载</text></text>
           </view>
-          <view class="file-item__close" @click="removeFile(idx)">
+          <view class="file-item__close" @click.stop="removeFile(idx)">
             <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
           </view>
         </view>
@@ -738,6 +738,35 @@ const onFilePickerClick = () => {
   // #endif
 }
 const removeFile = (idx) => { uploadedFiles.value.splice(idx, 1) }
+
+/** 文件大小格式化（0 或未知显示「—」） */
+const formatFileSize = (size) => {
+  const n = Number(size || 0)
+  if (!n) return '—'
+  if (n < 1024) return n + ' B'
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB'
+  return (n / 1024 / 1024).toFixed(1) + ' MB'
+}
+
+/** 点击文件：已上传（有 url）则跳下载；否则提示先运行（运行前才上传） */
+const onFileItemClick = (f) => {
+  if (!f || !f.url) {
+    uni.showToast({ title: '文件将在运行时上传', icon: 'none' })
+    return
+  }
+  // #ifdef H5
+  window.open(f.url, '_blank')
+  // #endif
+  // #ifndef H5
+  uni.downloadFile({
+    url: f.url,
+    success: (res) => {
+      if (res.statusCode === 200) uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
+    },
+    fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
+  })
+  // #endif
+}
 
 const weeklyDoneText = ref('')
 const weeklyProblemText = ref('')
