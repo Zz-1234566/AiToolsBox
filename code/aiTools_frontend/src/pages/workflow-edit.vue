@@ -35,6 +35,20 @@
             <picker class="wfe-node__picker" :range="toolNames" :value="toolIndexOf(node.nodeRef)" @change="(e) => onToolChange(idx, e)">
               <view class="wfe-node__name">{{ toolName(node.nodeRef) || '选择工具' }}</view>
             </picker>
+            <view class="wfe-node__order">
+              <view class="wfe-node__mv" :class="{ 'is-disabled': idx === 0 }" @click.stop="moveNodeUp(idx)">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 19V5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  <path d="M6 11L12 5L18 11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </view>
+              <view class="wfe-node__mv" :class="{ 'is-disabled': idx === form.nodes.length - 1 }" @click.stop="moveNodeDown(idx)">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 5V19" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                  <path d="M6 13L12 19L18 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </view>
+            </view>
             <text class="wfe-node__del" @click="removeNode(idx)">✕</text>
           </view>
 
@@ -320,6 +334,46 @@ const removeNode = (idx) => {
   })
 }
 
+/**
+ * 重映射 nodeId（位置派生 → 新位置），同步迁移 deps 与已选提示词名。
+ * 上移/下移共用：先重排数组，再按新下标重写 nodeId。
+ */
+const remapNodeIds = () => {
+  const map = {}
+  form.nodes.forEach((n, i) => { map[n.nodeId] = nodeIdOf(i) })
+  const newPicked = {}
+  form.nodes.forEach((n, i) => {
+    const oldId = n.nodeId
+    n.nodeId = nodeIdOf(i)
+    n.deps = (n.deps || []).map(d => map[d]).filter(d => d !== undefined)
+    // 已选提示词是按 nodeId 记的，ID 变了要跟着搬，否则展示会丢
+    ;['format', 'generate'].forEach(use => {
+      const k = `${oldId}_${use}`
+      if (pickedNames.value[k] !== undefined) {
+        newPicked[`${n.nodeId}_${use}`] = pickedNames.value[k]
+        delete pickedNames.value[k]
+      }
+    })
+  })
+  Object.assign(pickedNames.value, newPicked)
+}
+
+/** 上移节点（仅改变界面展示顺序，执行顺序由 deps 拓扑决定，不受影响） */
+const moveNodeUp = (idx) => {
+  if (idx <= 0) return
+  const arr = form.nodes
+  ;[arr[idx - 1], arr[idx]] = [arr[idx], arr[idx - 1]]
+  remapNodeIds()
+}
+
+/** 下移节点 */
+const moveNodeDown = (idx) => {
+  const arr = form.nodes
+  if (idx >= arr.length - 1) return
+  ;[arr[idx + 1], arr[idx]] = [arr[idx], arr[idx + 1]]
+  remapNodeIds()
+}
+
 const save = async () => {
   if (!form.name.trim()) { uni.showToast({ title: '请填写工作流名称', icon: 'none' }); return }
   const bad = form.nodes.find(n => !n.nodeRef)
@@ -497,6 +551,34 @@ onLoad(async (opt) => {
   font-size: 32rpx;
   padding: 0 8rpx;
   flex-shrink: 0;
+}
+
+/* 上移/下移（仅调整界面展示顺序，不影响执行顺序） */
+.wfe-node__order {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  flex-shrink: 0;
+}
+.wfe-node__mv {
+  width: 52rpx;
+  height: 52rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: #F3F4F6;
+
+  svg {
+    width: 32rpx;
+    height: 32rpx;
+    color: #4B5563;
+  }
+
+  &.is-disabled {
+    opacity: 0.35;
+    svg { color: #9CA3AF; }
+  }
 }
 .wfe-node__types { display: flex; gap: 24rpx; margin-top: 12rpx; }
 .wfe-type { font-size: 22rpx; color: #9CA3AF; }
