@@ -44,25 +44,31 @@
             <text class="wfe-type">输出: <text class="wfe-type__val">{{ typeLabel(toolByCode(node.nodeRef).outputType) }}</text></text>
           </view>
 
-          <!-- AI 节点：提示词（格式 + 生成内容），留空则用系统默认 -->
+          <!-- AI 节点：提示词（点击打开抽屉选择，对齐工具详情页交互） -->
           <view v-if="needsPrompt(node.nodeRef)" class="wfe-node__prompts">
             <view class="wfe-prompt">
-              <text class="wfe-prompt__label">格式提示词</text>
-              <textarea class="wfe-prompt__input"
-                        v-model="node.params.promptFormat"
-                        :placeholder="promptPlaceholder(node.nodeRef, 'format')"
-                        placeholder-class="wfe-ph"
-                        :maxlength="1000" />
+              <view class="wfe-prompt__head">
+                <text class="wfe-prompt__label">格式提示词</text>
+                <view class="wfe-prompt__pick" @click="openPromptPicker(idx, 'format')">选择提示词</view>
+              </view>
+              <view class="wfe-prompt__box" @click="openPromptPicker(idx, 'format')">
+                <text class="wfe-prompt__text" :class="{ 'wfe-prompt__text--ph': !node.params.promptFormat }">
+                  {{ node.params.promptFormat || '留空则使用系统默认提示词' }}
+                </text>
+              </view>
             </view>
+
             <view class="wfe-prompt">
-              <text class="wfe-prompt__label">生成提示词</text>
-              <textarea class="wfe-prompt__input"
-                        v-model="node.params.promptGenerate"
-                        :placeholder="promptPlaceholder(node.nodeRef, 'generate')"
-                        placeholder-class="wfe-ph"
-                        :maxlength="1000" />
+              <view class="wfe-prompt__head">
+                <text class="wfe-prompt__label">生成提示词</text>
+                <view class="wfe-prompt__pick" @click="openPromptPicker(idx, 'generate')">选择提示词</view>
+              </view>
+              <view class="wfe-prompt__box" @click="openPromptPicker(idx, 'generate')">
+                <text class="wfe-prompt__text" :class="{ 'wfe-prompt__text--ph': !node.params.promptGenerate }">
+                  {{ node.params.promptGenerate || '留空则使用系统默认提示词' }}
+                </text>
+              </view>
             </view>
-            <text class="wfe-prompt__hint">留空则使用该工具的系统默认提示词</text>
           </view>
 
           <!-- 起始节点 or 输入来自 -->
@@ -95,14 +101,25 @@
         {{ saving ? '保存中...' : '保存工作流' }}
       </view>
     </view>
+
+    <!-- 提示词选择抽屉（复用工具详情页组件） -->
+    <PromptPickerDrawer
+      v-model:show="showPromptPicker"
+      :tool-name="pickerToolName"
+      :tool-desc="pickerToolDesc"
+      :system-prompts="systemPromptList"
+      :user-prompts="userPromptList"
+      @confirm="onPromptConfirm"
+    />
   </view>
 </template>
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { toolListApi, systemPromptListApi } from '@/api/prompt'
+import { toolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
 import { workflowSaveApi, workflowDetailApi } from '@/api/workflow'
+import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
 
 const tools = ref([])
 const saving = ref(false)
@@ -143,12 +160,49 @@ const ensureDefaultPrompts = async (code) => {
   }
 }
 
-/** 提示词输入框的 placeholder：显示系统默认内容（截断），便于用户知晓会用什么 */
-const promptPlaceholder = (code, use) => {
-  const d = defaultPrompts[code]
-  const text = d && d[use] ? String(d[use]).replace(/\s+/g, ' ').trim() : ''
-  if (!text) return use === 'format' ? `留空则用系统默认格式提示词` : `留空则用系统默认生成提示词`
-  return '系统默认：' + (text.length > 60 ? text.slice(0, 60) + '…' : text)
+/** ========== 提示词抽屉（复用工具详情页 PromptPickerDrawer） ========== */
+const showPromptPicker = ref(false)
+const pickerNodeIdx = ref(-1)        // 当前编辑的节点下标
+const pickerTarget = ref('format')   // format | generate
+const systemPromptList = ref([])
+const userPromptList = ref([])
+const pickerToolName = computed(() => {
+  const n = form.nodes[pickerNodeIdx.value]
+  return n ? toolName(n.nodeRef) : ''
+})
+const pickerToolDesc = computed(() => {
+  const n = form.nodes[pickerNodeIdx.value]
+  const t = n ? toolByCode(n.nodeRef) : null
+  return t ? (t.toolDesc || '') : ''
+})
+
+/** 打开抽屉：按节点工具 + 用途加载系统/用户提示词 */
+const openPromptPicker = async (nodeIdx, target) => {
+  pickerNodeIdx.value = nodeIdx
+  pickerTarget.value = target
+  const code = form.nodes[nodeIdx].nodeRef
+  try {
+    const [userRes, sysRes] = await Promise.all([
+      promptListApi(code),
+      systemPromptListApi(code)
+    ])
+    userPromptList.value = ((userRes && userRes.data) || []).filter(p => p.promptUse === target)
+    systemPromptList.value = ((sysRes && sysRes.data) || []).filter(p => p.promptUse === target)
+  } catch (e) {
+    userPromptList.value = []
+    systemPromptList.value = []
+  }
+  showPromptPicker.value = true
+}
+
+/** 抽屉确认：把选中的提示词写入节点 params */
+const onPromptConfirm = (item) => {
+  if (!item) return
+  const node = form.nodes[pickerNodeIdx.value]
+  if (!node) return
+  if (!node.params) node.params = {}
+  if (pickerTarget.value === 'format') node.params.promptFormat = item.promptText || ''
+  else node.params.promptGenerate = item.promptText || ''
 }
 
 /** 上游候选：除自己外的所有节点 */
@@ -398,35 +452,48 @@ onLoad(async (opt) => {
 
 .wfe-node__dep { display: flex; align-items: center; gap: 16rpx; margin-top: 20rpx; }
 
-/* AI 节点：提示词区 */
+/* AI 节点：提示词区（点击打开抽屉） */
 .wfe-node__prompts {
   margin-top: 20rpx;
   padding-top: 20rpx;
   border-top: 2rpx dashed #E5E7EB;
 }
 .wfe-prompt { margin-bottom: 16rpx; }
-.wfe-prompt__label {
-  display: block;
-  font-size: 24rpx;
-  color: #4B5563;
+.wfe-prompt__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 8rpx;
 }
-.wfe-prompt__input {
-  width: 100%;
-  min-height: 120rpx;
+.wfe-prompt__label {
+  font-size: 24rpx;
+  color: #4B5563;
+}
+.wfe-prompt__pick {
+  font-size: 22rpx;
+  color: #3B82F6;
+  padding: 4rpx 16rpx;
+  background: #EFF6FF;
+  border-radius: 9999rpx;
+}
+.wfe-prompt__box {
+  max-height: 160rpx;
+  overflow: hidden;
   border: 2rpx solid #E5E7EB;
   border-radius: 16rpx;
   padding: 16rpx 20rpx;
+  background: #fff;
+}
+.wfe-prompt__text {
   font-size: 24rpx;
   color: #111827;
-  background: #fff;
-  box-sizing: border-box;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.wfe-prompt__hint {
-  display: block;
-  font-size: 22rpx;
-  color: #9CA3AF;
-}
+.wfe-prompt__text--ph { color: #9CA3AF; }
 .wfe-dep__label { font-size: 26rpx; color: #4B5563; }
 .wfe-dep__select {
   height: 64rpx;
