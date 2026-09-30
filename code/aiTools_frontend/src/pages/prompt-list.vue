@@ -2,6 +2,11 @@
   <view class="pl-page">
     <!-- 头部 -->
     <view class="pl-head">
+      <view class="pl-back" @click="goBack">
+        <svg class="pl-back__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 19L8 12L15 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </view>
       <text class="pl-head__title">提示词</text>
       <view class="pl-add" v-if="activeTab === 'mine' || adminMode" @click="openAddModal">
         <text>＋ 新建</text>
@@ -95,6 +100,7 @@ import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { promptListApi, promptAddApi, promptUpdateApi, promptDeleteApi, toolListApi, systemPromptListApi, systemPromptAddApi, systemPromptUpdateApi, systemPromptDeleteApi } from '@/api/prompt'
 import { requireLogin, isAdmin } from '@/utils/auth'
+import { safeBack } from '@/utils/pageTransition'
 import { REALIZED_TOOLS, TOOLS } from '@/config/tools'
 
 const loading = ref(false)
@@ -160,6 +166,9 @@ const formatTime = (time) => {
   if (!time) return ''
   return String(time).replace('T', ' ').slice(0, 16)
 }
+
+/** 返回：栈内有上一页则返回，否则回「我的」页（本页入口来源） */
+const goBack = () => safeBack('/pages/my')
 
 const fetchToolList = async () => {
   try {
@@ -339,7 +348,22 @@ const onDelete = (item) => {
 .pl-head {
   display: flex;
   align-items: center;
+  gap: 8rpx;
   padding: 32rpx 32rpx 16rpx;
+}
+.pl-back {
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -12rpx;
+  border-radius: 50%;
+}
+.pl-back__icon {
+  width: 44rpx;
+  height: 44rpx;
+  color: #111827;
 }
 .pl-head__title {
   flex: 1;
