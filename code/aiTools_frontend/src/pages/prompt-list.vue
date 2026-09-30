@@ -23,10 +23,10 @@
       </view>
     </scroll-view>
 
-    <!-- 生成内容 / 格式（二级 tab） -->
+    <!-- 生成提示词 / 格式提示词（二级 tab） -->
     <view class="pl-subtabs">
-      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'generate' }" @click="switchUse('generate')">生成内容</text>
-      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'format' }" @click="switchUse('format')">格式</text>
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'generate' }" @click="switchUse('generate')">生成提示词</text>
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'format' }" @click="switchUse('format')">格式提示词</text>
     </view>
 
     <!-- 列表 -->
@@ -125,11 +125,11 @@ const filteredList = computed(() => {
   })
 })
 
-/** 空态文案：区分 系统/我的 × 生成内容/格式 */
+/** 空态文案：区分 系统/我的 × 生成提示词/格式提示词 */
 const emptyText = computed(() => {
-  const useLabel = activeUse.value === 'format' ? '格式' : '生成内容'
-  if (activeTab.value === 'system') return `该工具暂无${useLabel}系统提示词`
-  return `还没有${useLabel}提示词`
+  const useLabel = activeUse.value === 'format' ? '格式提示词' : '生成提示词'
+  if (activeTab.value === 'system') return `该工具暂无${useLabel}`
+  return `还没有${useLabel}`
 })
 
 const iconType = (code) => {
@@ -354,9 +354,10 @@ const onDelete = (item) => {
   padding: 8rpx 32rpx 0;
 }
 .pl-subtab {
+  flex: 1;
+  text-align: center;
   height: 56rpx;
   line-height: 56rpx;
-  padding: 0 28rpx;
   border-radius: 9999rpx;
   background: #F3F4F6;
   font-size: 24rpx;
