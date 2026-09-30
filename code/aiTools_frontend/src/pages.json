@@ -17,6 +17,7 @@
     { "path": "pages/about", "style": { "navigationBarTitleText": "关于", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/tool-common", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/history", "style": { "navigationBarTitleText": "历史记录", "navigationStyle": "custom", "enablePullDownRefresh": true, "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/history-detail", "style": { "navigationBarTitleText": "记录详情", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/prompt-list", "style": { "navigationBarTitleText": "我的提示词", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/tool-custom", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/tool-processing", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } }

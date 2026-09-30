@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS `sys_aitools_history_file` (
   `file_name` VARCHAR(255) DEFAULT NULL COMMENT '文件名',
   `file_url` VARCHAR(255) DEFAULT NULL COMMENT '文件URL',
   `file_type` VARCHAR(32) DEFAULT NULL COMMENT '文件类型',
-  `role` TINYINT DEFAULT 0 COMMENT '文件角色：0输入 1输出',
+  `role` TINYINT DEFAULT 0 COMMENT '文件角色：1输入 2输出',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `dr` TINYINT DEFAULT 0 COMMENT '逻辑删除：0正常 1删除',
   PRIMARY KEY (`id`),

@@ -987,7 +987,27 @@ onLoad((option) => {
     || 'text'
   // 拉取系统统一管理的格式提示词（只读展示）
   fetchSystemFormat()
+  // 从历史详情页「再次使用」进入：自动回填该条历史记录
+  if (option.historyId) {
+    applyHistoryById(option.historyId)
+  }
 })
+
+/** 按 id 拉取指定历史记录并回填（供「再次使用」进入时调用） */
+const applyHistoryById = async (historyId) => {
+  try {
+    const res = await historyListByToolApi(toolId.value, 50)
+    const list = (res && res.data) || []
+    const found = list.find((h) => String(h.id) === String(historyId))
+    if (!found) {
+      uni.showToast({ title: '历史记录不存在或已删除', icon: 'none' })
+      return
+    }
+    applyHistory(found)
+  } catch (e) {
+    uni.showToast({ title: '回填历史失败', icon: 'none' })
+  }
+}
 
 // ===== 历史记录（按当前 toolId 拉后端） =====
 // 打开/折叠历史面板：首次打开时拉一次，后续切换走缓存

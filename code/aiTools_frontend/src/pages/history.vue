@@ -154,8 +154,9 @@ onPullDownRefresh(async () => {
   uni.stopPullDownRefresh()
 })
 
-const onItemClick = () => {
-  uni.showToast({ title: '详情功能开发中', icon: 'none' })
+const onItemClick = (item) => {
+  if (!item || !item.id) return
+  uni.navigateTo({ url: `/pages/history-detail?id=${item.id}&aiCode=${encodeURIComponent(item.aiCode || '')}` })
 }
 
 const onDelete = (item) => {
