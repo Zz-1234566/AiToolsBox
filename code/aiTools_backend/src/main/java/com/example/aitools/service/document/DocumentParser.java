@@ -48,19 +48,23 @@ public class DocumentParser {
                     text = parseDocx(file);
                     break;
                 default:
-                    throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "暂不支持该文件类型，仅支持 txt/pdf/docx");
+                    throw new BusinessException(ResultCode.DOC_UNSUPPORTED.getCode(), "暂不支持该文件类型，仅支持 txt/pdf/docx");
             }
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
             log.error("Document parse failed: {}", originalFilename, e);
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "文档解析失败，请检查文件是否损坏");
+            throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), ResultCode.DOC_PARSE_FAILED.getMessage());
         }
         // 截断：按 codepoint 切，避免辅助平面字符（emoji / 罕用汉字）被切到一半
         if (text.length() > MAX_TEXT_LENGTH) {
             int end = text.offsetByCodePoints(0, MAX_TEXT_LENGTH);
             // offsetByCodePoints 在 end > length() 时抛 IndexOutOfBoundsException，这里安全（end ≤ length()）
             text = text.substring(0, end);
+        }
+        // 未提取到任何文字（如无文字层 PDF）：直接拒绝，避免把空内容喂给 AI 产生误导性输出
+        if (text.isBlank()) {
+            throw new BusinessException(ResultCode.DOC_EMPTY.getCode(), ResultCode.DOC_EMPTY.getMessage());
         }
         return text;
     }

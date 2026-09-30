@@ -3,10 +3,12 @@ package com.example.aitools.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.ai.AiClient;
 import com.example.aitools.common.Constants;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.entity.AiPrompt;
 import com.example.aitools.entity.AiTool;
 import com.example.aitools.exception.BusinessException;
+import com.example.aitools.exception.ErrorFactory;
 import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.service.AiFileReaderService;
 import com.example.aitools.service.AiOfficeToolService;
@@ -111,8 +113,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiDocumentSummaryStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         // 文档拦截：空文件直接抛业务异常，不写历史
-        if (file == null || file.getSize() < 0 || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
-            throw new BusinessException("请上传文档文件");
+        if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+            throw ErrorFactory.of(ResultCode.DOC_EMPTY, "请上传文档文件");
         }
 
         long start = System.currentTimeMillis();
@@ -137,7 +139,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             historyService.completeHistory(historyId, sb.toString(), (int) duration);
             return sb.toString();
         } catch (Exception e) {
-            historyService.failHistory(historyId, e.getMessage());
+            historyService.failHistory(historyId, safeErrorMessage(e, "[doc-summary/text-stream] historyId=" + historyId));
             throw e;
         }
     }
@@ -149,8 +151,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         // 图片拦截
-        if (file == null || file.getSize() < 0 || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
-            throw new BusinessException("请上传图片文件");
+        if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+            throw ErrorFactory.of(ResultCode.OCR_UNSUPPORTED, "请上传图片文件");
         }
 
         long start = System.currentTimeMillis();
@@ -159,7 +161,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
         // 走通用方法：先 OCR 出文字作为 content，再走 aiTextProcessStream 流式输出
         String ocrText = ocrService.recognizeText(file);
         if (ocrText == null || ocrText.isBlank()) {
-            throw new BusinessException("OCR 未识别出文字，请换一张更清晰的图片");
+            throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
         }
         // 输入用 OCR 结果 + 文件名作为占位，便于历史回溯
         String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
@@ -176,10 +178,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     public com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files,
                                                 String promptFormat, String promptGenerate, Long promptId, String batchId) {
         if (files == null || files.isEmpty()) {
-            throw new BusinessException("请至少上传 1 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw new BusinessException("单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_ERROR, "单次最多上传 10 个文件");
         }
 
         Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
@@ -208,7 +210,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                 try {
                     String ocrText = ocrService.recognizeBytes(payload.getContent(), fileName);
                     if (ocrText == null || ocrText.isBlank()) {
-                        throw new BusinessException("OCR 未识别出文字");
+                        throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
                     }
                     String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
                     aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId,
@@ -220,11 +222,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                     fileOk = true;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(fileOutput) + "\"}";
                 } catch (Exception e) {
-                    historyService.failHistory(historyId, e.getMessage());
-                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String errMsg = safeErrorMessage(e, "[B2-OCR] fileName=" + fileName);
+                    historyService.failHistory(historyId, errMsg);
                     failCount++;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
-                    log.warn("[B2-OCR] 单文件失败 userId={} fileName={} err={}", userId, fileName, errMsg);
                 }
             }
 
@@ -256,10 +257,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                                               String promptFormat, String promptGenerate, Long promptId,
                                               String batchId) {
         if (files == null || files.isEmpty()) {
-            throw new BusinessException("请至少上传 1 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw new BusinessException("单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_ERROR, "单次最多上传 10 个文件");
         }
 
         Long toolId = findToolIdByCode(TOOL_CODE_DOC_SUMMARY);
@@ -300,11 +301,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                     fileOk = true;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(fileOutput) + "\"}";
                 } catch (Exception e) {
-                    historyService.failHistory(historyId, e.getMessage());
-                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String errMsg = safeErrorMessage(e, "[B2-DOC] fileName=" + fileName);
+                    historyService.failHistory(historyId, errMsg);
                     failCount++;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
-                    log.warn("[B2-DOC] 单文件失败 userId={} fileName={} err={}", userId, fileName, errMsg);
                 }
             }
 
@@ -329,6 +329,23 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    /**
+     * 生成给用户看的失败原因：业务异常用其可读文案，其他异常统一通用文案。
+     * <p>原始异常（含路径/AI 接口细节）只写日志，不透给前端。
+     *
+     * @param e       捕获到的异常
+     * @param context 日志上下文（如 "[B2-OCR] fileName=xxx"）
+     */
+    private String safeErrorMessage(Exception e, String context) {
+        if (e instanceof BusinessException) {
+            // 业务异常本身就是面向用户的文案（如"暂不支持该文件类型…"）
+            log.warn("{} 业务失败: {}", context, e.getMessage());
+            return e.getMessage();
+        }
+        log.error("{} 处理异常", context, e);
+        return ResultCode.AI_TOOL_FAILED.getMessage();
     }
 
     /**
@@ -368,7 +385,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             historyService.completeHistory(historyId, sb.toString(), (int) duration);
             return sb.toString();
         } catch (Exception e) {
-            historyService.failHistory(historyId, e.getMessage());
+            historyService.failHistory(historyId, safeErrorMessage(e, "[doc-summary/text-stream] historyId=" + historyId));
             throw e;
         }
     }
@@ -398,7 +415,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private void validatePrompts(String formatPrompt, String generatePrompt) {
         if ((formatPrompt == null || formatPrompt.isBlank())
                 || (generatePrompt == null || generatePrompt.isBlank())) {
-            throw new BusinessException("缺少格式提示词或生成内容提示词");
+            throw ErrorFactory.of(ResultCode.PROMPT_INVALID, "缺少格式提示词或生成内容提示词");
         }
     }
 
@@ -444,10 +461,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     public com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files,
                                                                             String prompt, String batchId) {
         if (files == null || files.isEmpty()) {
-            throw new BusinessException("请至少上传 1 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw new BusinessException("单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_ERROR, "单次最多上传 10 个文件");
         }
 
         int successCount = 0;
@@ -474,10 +491,9 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                     fileOk = true;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(output) + "\"}";
                 } catch (Exception e) {
-                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String errMsg = safeErrorMessage(e, "[B2-FILE] fileName=" + fileName);
                     failCount++;
-                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
-                    log.warn("[B2-FILE] 单文件失败 userId={} fileName={} err={}", userId, fileName, errMsg);
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
                 }
             }
 
