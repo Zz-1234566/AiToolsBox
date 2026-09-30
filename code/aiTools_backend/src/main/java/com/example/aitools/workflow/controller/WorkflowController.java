@@ -67,6 +67,34 @@ public class WorkflowController {
         return Result.success("运行完成", workflowService.run(userId, workflowId, body));
     }
 
+    /**
+     * 流式运行工作流（SSE）：立即返回事件流，后台按文件逐个执行并实时推送进度。
+     * <p>帧类型见 WorkflowService#runStream；前端逐帧渲染即可实现「边跑边展示」。
+     */
+    @PostMapping(value = "/{workflowId}/run/stream", produces = "text/event-stream;charset=UTF-8")
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter runStream(
+            @PathVariable String workflowId,
+            @RequestBody(required = false) WorkflowRunRequest body,
+            HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(10 * 60 * 1000L);
+        emitter.onTimeout(() -> {
+            log.warn("[workflow] SSE 超时 workflowId={}", workflowId);
+            try {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+                        .event().data("{\"type\":\"error\",\"message\":\"运行超时，请稍后重试\"}"));
+                emitter.complete();
+            } catch (Exception e) {
+                log.warn("[workflow] SSE 超时收尾失败", e);
+            }
+        });
+        emitter.onError(t -> log.warn("[workflow] SSE 连接异常: {}", t == null ? "unknown" : t.getMessage()));
+        // 校验/建记录在请求线程内同步完成，异常由 GlobalExceptionHandler 处理
+        workflowService.runStream(userId, workflowId, body, emitter);
+        return emitter;
+    }
+
     /** 运行历史列表（可按 workflowId 过滤） */
     @GetMapping("/runs")
     public Result<List<WorkflowRunVO>> runs(@RequestParam(required = false) String workflowId,

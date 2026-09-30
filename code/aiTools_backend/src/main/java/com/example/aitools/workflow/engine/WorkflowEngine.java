@@ -231,7 +231,9 @@ public class WorkflowEngine {
                         continue;
                     }
 
-                    // 取该文件在本节点的输入（源节点取第 fi 项；非源节点取上游同一文件项）
+                    // 取该文件在本节点的输入
+                    // - 源节点：取 sourceInputs 的第 fi 项（每个文件对应一个输入）
+                    // - 非源节点：outputsByNode 在文件循环内只存「当前文件」的输出，故取索引 0
                     String input = inputForFile(node, fi, sourceInputs, outputsByNode);
                     if (listener != null) listener.onNodeStart(nodeId, node.getNodeRef(), fi, fileTotal);
 
@@ -288,8 +290,10 @@ public class WorkflowEngine {
 
     /**
      * 取某文件在某节点的输入：
-     * - 源节点 → sourceInputs 的第 fileIndex 项
-     * - 非源节点 → 各上游输出的第 fileIndex 项（数组语义：逐项对应）
+     * - 源节点 → sourceInputs 的第 fileIndex 项（每个文件对应一个输入）
+     * - 非源节点 → 上游输出的<b>第 0 项</b>。
+     *   <p>原因：流式执行时 outputsByNode 在「文件循环」内重建，只保存当前文件产生的输出，
+     *   因此数组长度恒为 1，必须取索引 0；用全局 fileIndex 会越界导致下游拿不到输入。
      */
     private String inputForFile(WorkflowNode node, int fileIndex,
                                 Map<String, List<String>> sourceInputs,
@@ -300,8 +304,8 @@ public class WorkflowEngine {
         }
         for (String dep : node.getDeps()) {
             List<String> out = outputsByNode.get(dep);
-            if (out != null && fileIndex < out.size()) {
-                return out.get(fileIndex);
+            if (out != null && !out.isEmpty()) {
+                return out.get(0);
             }
         }
         return null;
