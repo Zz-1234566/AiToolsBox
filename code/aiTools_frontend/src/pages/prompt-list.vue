@@ -14,20 +14,20 @@
       <text class="pl-tab" :class="{ 'pl-tab--active': activeTab === 'mine' }" @click="switchTab('mine')">我的</text>
     </view>
 
-    <!-- 生成内容 / 格式（二级 tab） -->
-    <view class="pl-subtabs">
-      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'generate' }" @click="switchUse('generate')">生成内容</text>
-      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'format' }" @click="switchUse('format')">格式</text>
-    </view>
-
     <!-- 工具筛选（可横向滚动） -->
-    <scroll-view scroll-x class="pl-toolbar">
+    <scroll-view scroll-x class="pl-toolbar" :show-scrollbar="false">
       <view v-for="t in flatTools" :key="t.toolCode" class="pl-toolchip"
             :class="{ 'pl-toolchip--on': selectedToolCode === t.toolCode }"
             @click="onPickTool(t)">
         {{ t.toolName }}
       </view>
     </scroll-view>
+
+    <!-- 生成内容 / 格式（二级 tab） -->
+    <view class="pl-subtabs">
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'generate' }" @click="switchUse('generate')">生成内容</text>
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'format' }" @click="switchUse('format')">格式</text>
+    </view>
 
     <!-- 搜索 -->
     <view class="pl-search">
@@ -364,7 +364,7 @@ const onDelete = (item) => {
 .pl-subtabs {
   display: flex;
   gap: 16rpx;
-  padding: 20rpx 32rpx 0;
+  padding: 8rpx 32rpx 0;
 }
 .pl-subtab {
   height: 56rpx;
