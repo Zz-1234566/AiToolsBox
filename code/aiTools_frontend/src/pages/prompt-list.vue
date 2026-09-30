@@ -29,12 +29,6 @@
       <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'format' }" @click="switchUse('format')">格式</text>
     </view>
 
-    <!-- 搜索 -->
-    <view class="pl-search">
-      <text class="pl-search__icon">🔍</text>
-      <input class="pl-search__input" v-model="keyword" placeholder="搜索提示词..." placeholder-class="pl-ph" />
-    </view>
-
     <!-- 列表 -->
     <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
     <view v-else-if="filteredList.length === 0" class="redesign-empty">
@@ -106,7 +100,6 @@ const systemList = ref([])
 const activeTab = ref('mine')
 /** 二级 tab：提示词用途（generate 生成内容 / format 格式） */
 const activeUse = ref('generate')
-const keyword = ref('')
 const flatTools = ref([])
 const selectedToolCode = ref('')
 
@@ -121,21 +114,15 @@ const toolNameOf = (item) => {
   return t ? t.name : (item.toolCode || '')
 }
 
-/** 按关键字 + 用途过滤（前端过滤） */
+/** 按用途过滤（前端过滤） */
 const filteredList = computed(() => {
   const src = activeTab.value === 'system' ? systemList.value : promptList.value
   // 用途过滤：generate 生成内容 / format 格式
   const use = activeUse.value
-  const byUse = src.filter(i => {
+  return src.filter(i => {
     const u = i.promptUse === 'format' ? 'format' : 'generate'
     return u === use
   })
-  const kw = keyword.value.trim().toLowerCase()
-  if (!kw) return byUse
-  return byUse.filter(i =>
-    (i.promptName || '').toLowerCase().includes(kw) ||
-    (i.promptText || '').toLowerCase().includes(kw)
-  )
 })
 
 /** 空态文案：区分 系统/我的 × 生成内容/格式 */
@@ -404,18 +391,6 @@ const onDelete = (item) => {
   font-weight: 500;
 }
 
-.pl-search {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  margin: 16rpx 32rpx 24rpx;
-  height: 80rpx;
-  padding: 0 24rpx;
-  background: #F3F4F6;
-  border-radius: 9999rpx;
-}
-.pl-search__icon { font-size: 30rpx; }
-.pl-search__input { flex: 1; font-size: 26rpx; background: transparent; }
 .pl-ph { color: #9CA3AF; }
 
 .pl-card {
