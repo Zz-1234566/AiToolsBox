@@ -14,6 +14,12 @@
       <text class="pl-tab" :class="{ 'pl-tab--active': activeTab === 'mine' }" @click="switchTab('mine')">我的</text>
     </view>
 
+    <!-- 生成内容 / 格式（二级 tab） -->
+    <view class="pl-subtabs">
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'generate' }" @click="switchUse('generate')">生成内容</text>
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'format' }" @click="switchUse('format')">格式</text>
+    </view>
+
     <!-- 工具筛选（可横向滚动） -->
     <scroll-view scroll-x class="pl-toolbar">
       <view v-for="t in flatTools" :key="t.toolCode" class="pl-toolchip"
@@ -33,7 +39,7 @@
     <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
     <view v-else-if="filteredList.length === 0" class="redesign-empty">
       <view class="redesign-empty__icon"><text class="redesign-empty__emoji">📝</text></view>
-      <text class="redesign-empty__text">{{ activeTab === 'system' ? '该系统提示词暂无可选项' : '还没有自定义提示词' }}</text>
+      <text class="redesign-empty__text">{{ emptyText }}</text>
     </view>
 
     <block v-else>
@@ -98,6 +104,8 @@ const loading = ref(false)
 const promptList = ref([])
 const systemList = ref([])
 const activeTab = ref('mine')
+/** 二级 tab：提示词用途（generate 生成内容 / format 格式） */
+const activeUse = ref('generate')
 const keyword = ref('')
 const flatTools = ref([])
 const selectedToolCode = ref('')
@@ -113,15 +121,28 @@ const toolNameOf = (item) => {
   return t ? t.name : (item.toolCode || '')
 }
 
-/** 按关键字过滤（前端过滤） */
+/** 按关键字 + 用途过滤（前端过滤） */
 const filteredList = computed(() => {
   const src = activeTab.value === 'system' ? systemList.value : promptList.value
+  // 用途过滤：generate 生成内容 / format 格式
+  const use = activeUse.value
+  const byUse = src.filter(i => {
+    const u = i.promptUse === 'format' ? 'format' : 'generate'
+    return u === use
+  })
   const kw = keyword.value.trim().toLowerCase()
-  if (!kw) return src
-  return src.filter(i =>
+  if (!kw) return byUse
+  return byUse.filter(i =>
     (i.promptName || '').toLowerCase().includes(kw) ||
     (i.promptText || '').toLowerCase().includes(kw)
   )
+})
+
+/** 空态文案：区分 系统/我的 × 生成内容/格式 */
+const emptyText = computed(() => {
+  const useLabel = activeUse.value === 'format' ? '格式' : '生成内容'
+  if (activeTab.value === 'system') return `该工具暂无${useLabel}系统提示词`
+  return `还没有${useLabel}提示词`
 })
 
 const iconType = (code) => {
@@ -173,6 +194,11 @@ const switchTab = (t) => {
   fetchList()
 }
 
+/** 切换二级 tab（用途）——本地过滤，无需重新请求 */
+const switchUse = (u) => {
+  activeUse.value = u
+}
+
 const fetchList = async () => {
   if (!selectedToolCode.value) {
     promptList.value = []
@@ -212,7 +238,7 @@ const openAddModal = () => {
   editingId.value = null
   modalText.value = ''
   modalName.value = ''
-  modalUse.value = 'generate'
+  modalUse.value = activeUse.value
 }
 
 const openEditModal = (item) => {
@@ -332,6 +358,27 @@ const onDelete = (item) => {
   left: 0; right: 0; bottom: -2rpx;
   height: 4rpx;
   background: #3B82F6;
+}
+
+/* 二级 tab：生成内容 / 格式（胶囊样式，与一级下划线 tab 区分） */
+.pl-subtabs {
+  display: flex;
+  gap: 16rpx;
+  padding: 20rpx 32rpx 0;
+}
+.pl-subtab {
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 28rpx;
+  border-radius: 9999rpx;
+  background: #F3F4F6;
+  font-size: 24rpx;
+  color: #6B7280;
+}
+.pl-subtab--active {
+  background: #EFF6FF;
+  color: #2563EB;
+  font-weight: 600;
 }
 
 .pl-toolbar {
