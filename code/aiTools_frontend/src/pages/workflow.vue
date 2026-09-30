@@ -60,8 +60,10 @@
     <view v-if="runVisible" class="mask" @click="runVisible = false">
       <view class="sheet" @click.stop>
         <text class="sheet__title">运行：{{ runTarget && runTarget.name }}</text>
-        <text class="sheet__desc">请为以下起始节点提供输入</text>
-        <scroll-view scroll-y class="sheet__body">
+        <text v-if="!streamFrames.length && !streamRunning" class="sheet__desc">请为以下起始节点提供输入</text>
+
+        <!-- 未运行时：输入区 -->
+        <scroll-view v-if="!streamFrames.length && !streamRunning" scroll-y class="sheet__body">
           <view v-for="n in sourceNodes" :key="n.nodeId" class="run-node">
             <text class="run-node__name">{{ n.toolName || n.name }}</text>
             <textarea v-if="isTextInput(n)" class="run-node__text" v-model="runInputs[n.nodeId].text"
@@ -81,25 +83,24 @@
             </view>
           </view>
         </scroll-view>
-        <view class="btn-solid" :class="{ 'btn-solid--disabled': running }" @click="running ? null : doRun()">
-          {{ running ? '运行中…' : '开始运行' }}
-        </view>
 
-        <!-- ============ 流式执行进度（边跑边展示）============ -->
-        <scroll-view v-if="streamFrames.length || streamRunning" scroll-y class="stream-panel">
+        <!-- 运行中/已完成：进度区（占满剩余空间，内部滚动） -->
+        <scroll-view v-else scroll-y class="stream-panel" :scroll-top="streamScrollTop">
           <view class="stream-panel__head">
             <text class="stream-panel__title">执行进度</text>
             <text class="stream-panel__sub">{{ streamDoneCount }}/{{ streamFileTotal }} 个文件</text>
           </view>
           <view v-for="(fr, fi) in streamFrames" :key="fi" class="stream-file">
             <view class="stream-file__head">
-              <text class="stream-file__idx">文件 {{ fi + 1 }}</text>
-              <text class="stream-file__st" :class="fr.ok ? 'st-ok' : 'st-fail'">
-                {{ fr.ok ? '✓ 完成' : (streamRunning && fi === streamFrames.length - 1 ? '处理中…' : '✗ 失败') }}
+              <!-- 标题：文件名（有则显示文件名，无则「文件 N」） -->
+              <text class="stream-file__idx">{{ fr.fileName || ('文件 ' + (fi + 1)) }}</text>
+              <text class="stream-file__st" :class="fr.ok ? 'st-ok' : (fr.failed ? 'st-fail' : 'st-run')">
+                {{ fr.ok ? '✓ 完成' : (fr.failed ? '✗ 失败' : '处理中…') }}
               </text>
             </view>
+            <!-- 每个节点：标题用「转写结果 / 会议纪要结果」等可读名 -->
             <view v-for="(nd, ni) in fr.nodes" :key="ni" class="stream-node">
-              <text class="stream-node__name">{{ nd.nodeRef || nd.nodeId }}</text>
+              <text class="stream-node__name">{{ nd.title || nd.nodeRef || nd.nodeId }}</text>
               <text v-if="nd.errorMsg" class="stream-node__err">{{ nd.errorMsg }}</text>
               <view v-else-if="nd.text" class="stream-node__text">
                 <MarkdownView :source="nd.text" :streaming="!nd.done" />
@@ -108,6 +109,13 @@
             </view>
           </view>
         </scroll-view>
+
+        <!-- 操作按钮：固定在弹层底部，不被内容挤压 -->
+        <view class="sheet__footer">
+          <view class="btn-solid" :class="{ 'btn-solid--disabled': running }" @click="running ? null : doRun()">
+            {{ running ? '运行中…' : (streamFrames.length ? '再次运行' : '开始运行') }}
+          </view>
+        </view>
       </view>
     </view>
 
@@ -188,6 +196,8 @@ const streamFrames = ref([])
 const streamRunning = ref(false)
 const streamFileTotal = ref(0)
 const streamDoneCount = ref(0)
+/** 流式面板滚动位置（自动滚到底部，让用户看到最新进度） */
+const streamScrollTop = ref(0)
 
 const runsVisible = ref(false)
 const runs = ref([])
@@ -377,6 +387,13 @@ const doRunStream = (inputs, fileTotal) => {
   streamRunning.value = true
   running.value = true
 
+  // 每个文件的显示名（按源节点输入顺序，取用户上传时的文件名）
+  const fileNames = []
+  const srcNode = sourceNodes.value[0]
+  if (srcNode && runInputs[srcNode.nodeId] && runInputs[srcNode.nodeId].files) {
+    runInputs[srcNode.nodeId].files.forEach(f => fileNames.push(fileDisplayName(f)))
+  }
+
   const xhr = new XMLHttpRequest()
   xhr.open('POST', url, true)
   xhr.setRequestHeader('Content-Type', 'application/json')
@@ -388,10 +405,22 @@ const doRunStream = (inputs, fileTotal) => {
   const handleFrame = (obj) => {
     const t = obj.type
     if (t === 'file_start') {
-      streamFrames.value.push({ ok: false, nodes: [] })
+      streamFrames.value.push({
+        fileName: fileNames[obj.fileIndex] || ('文件 ' + (obj.fileIndex + 1)),
+        ok: false, failed: false, nodes: []
+      })
     } else if (t === 'node_start') {
       const f = streamFrames.value[obj.fileIndex]
-      if (f) f.nodes.push({ nodeId: obj.nodeId, nodeRef: obj.nodeRef, text: '', done: false, errorMsg: null })
+      if (f) {
+        f.nodes.push({
+          nodeId: obj.nodeId,
+          nodeRef: obj.nodeRef,
+          // 可读标题：优先用工具名（如「录音转写」「会议纪要」），后端未传则退回 nodeRef
+          title: nodeTitleOf(obj.nodeRef, obj.title),
+          text: '', done: false, errorMsg: null
+        })
+        autoScrollStream()
+      }
     } else if (t === 'chunk') {
       const f = streamFrames.value[obj.fileIndex]
       const nd = f && f.nodes.find(x => x.nodeId === obj.nodeId)
@@ -405,19 +434,39 @@ const doRunStream = (inputs, fileTotal) => {
         // 非 text 节点通过 output 带回完整内容（text 节点已由 chunk 累积）
         if (obj.output) nd.text = (nd.text || '') + obj.output
       }
+      autoScrollStream()
     } else if (t === 'file_done') {
       const f = streamFrames.value[obj.fileIndex]
-      if (f) f.ok = !!obj.ok
+      if (f) {
+        f.ok = !!obj.ok
+        f.failed = !obj.ok
+      }
       streamDoneCount.value = Math.max(streamDoneCount.value, obj.fileIndex + 1)
+      autoScrollStream()
     } else if (t === 'all_done') {
       streamRunning.value = false
       running.value = false
       streamFrames.value = streamFrames.value.slice()
+      autoScrollStream()
     } else if (t === 'error') {
       streamRunning.value = false
       running.value = false
       uni.showToast({ title: obj.message || '运行失败', icon: 'none', duration: 3000 })
     }
+  }
+
+  /** 节点可读标题：用工具名（来自工具列表），查不到则退回 nodeRef */
+  const nodeTitleOf = (nodeRef, backendTitle) => {
+    if (backendTitle) return backendTitle
+    const t = tools.value.find(x => x.toolCode === nodeRef)
+    return (t && t.toolName) || nodeRef || '节点'
+  }
+
+  /** 内容增长后自动滚到底部（让用户始终看到最新进度） */
+  const autoScrollStream = () => {
+    // 用极大值触发滚动到底；下一帧再重置，避免 scroll-top 相同值不触发
+    streamScrollTop.value = 999999
+    setTimeout(() => { streamScrollTop.value = 0 }, 60)
   }
 
   const feed = (fullText, done) => {
@@ -696,13 +745,21 @@ const openRunDetail = async (runId) => {
   text-overflow: ellipsis;
 }
 
-/* 流式执行进度面板 */
+/* 流式执行进度面板：占满剩余空间并内部滚动（不再固定 max-height，避免挤压按钮） */
 .stream-panel {
-  max-height: 60vh;
+  flex: 1;
+  min-height: 0;
   margin-top: 20rpx;
   padding: 20rpx;
   background: #F9FAFB;
   border-radius: 16rpx;
+  box-sizing: border-box;
+}
+
+/* 底部操作按钮：固定在弹层底部，不随内容滚动/被挤压 */
+.sheet__footer {
+  flex-shrink: 0;
+  padding-top: 20rpx;
 }
 .stream-panel__head {
   display: flex;
@@ -729,6 +786,7 @@ const openRunDetail = async (runId) => {
 .stream-file__st { font-size: 22rpx; }
 .st-ok { color: #10B981; }
 .st-fail { color: #EF4444; }
+.st-run { color: #6B7280; }
 
 .stream-node { margin-top: 12rpx; padding-left: 8rpx; border-left: 4rpx solid #E5E7EB; }
 .stream-node__name { display: block; font-size: 22rpx; color: #6B7280; margin-bottom: 6rpx; }
