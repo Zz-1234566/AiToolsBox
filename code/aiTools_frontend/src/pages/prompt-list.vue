@@ -3,7 +3,7 @@
     <!-- 头部 -->
     <view class="pl-head">
       <text class="pl-head__title">提示词</text>
-      <view class="pl-add" @click="openAddModal">
+      <view class="pl-add" v-if="activeTab === 'mine' || adminMode" @click="openAddModal">
         <text>＋ 新建</text>
       </view>
     </view>
@@ -49,11 +49,14 @@
           </view>
           <text class="pl-card__preview">{{ item.promptText }}</text>
           <text class="pl-card__time">更新于 {{ formatTime(item.createTime) }}</text>
-          <!-- 仅「我的」可编辑/删除 -->
-          <view v-if="activeTab === 'mine'" class="pl-card__acts">
+          <!-- 「我的」可编辑/删除；「系统」仅管理员可编辑/删除 -->
+          <view v-if="activeTab === 'mine' || adminMode" class="pl-card__acts">
             <text class="pl-act pl-act--primary" @click="openEditModal(item)">编辑</text>
             <view class="pl-act__sep"></view>
             <text class="pl-act pl-act--danger" @click="onDelete(item)">删除</text>
+          </view>
+          <view v-else class="pl-card__readonly">
+            <text class="pl-card__readonly-text">系统预制 · 只读</text>
           </view>
         </view>
       </view>
@@ -90,11 +93,13 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { promptListApi, promptAddApi, promptUpdateApi, promptDeleteApi, toolListApi, systemPromptListApi } from '@/api/prompt'
-import { requireLogin } from '@/utils/auth'
+import { promptListApi, promptAddApi, promptUpdateApi, promptDeleteApi, toolListApi, systemPromptListApi, systemPromptAddApi, systemPromptUpdateApi, systemPromptDeleteApi } from '@/api/prompt'
+import { requireLogin, isAdmin } from '@/utils/auth'
 import { REALIZED_TOOLS, TOOLS } from '@/config/tools'
 
 const loading = ref(false)
+/** 当前用户是否管理员（仅控制前端显隐，权限由后端校验） */
+const adminMode = ref(false)
 const promptList = ref([])
 const systemList = ref([])
 const activeTab = ref('mine')
@@ -211,17 +216,19 @@ const fetchList = async () => {
 
 onShow(async () => {
   if (!requireLogin()) return
+  adminMode.value = isAdmin()
   await fetchToolList()
   fetchList()
 })
 
 const openAddModal = () => {
-  if (activeTab.value === 'system') {
+  // 系统 tab 下仅管理员可新增
+  if (activeTab.value === 'system' && !isAdmin()) {
     uni.showToast({ title: '系统提示词不可新增', icon: 'none' })
     return
   }
   showModal.value = true
-  modalTitle.value = '新增提示词'
+  modalTitle.value = activeTab.value === 'system' ? '新增系统提示词' : '新增提示词'
   editingId.value = null
   modalText.value = ''
   modalName.value = ''
@@ -229,8 +236,13 @@ const openAddModal = () => {
 }
 
 const openEditModal = (item) => {
+  // 系统 tab 下仅管理员可编辑
+  if (activeTab.value === 'system' && !isAdmin()) {
+    uni.showToast({ title: '仅管理员可编辑系统提示词', icon: 'none' })
+    return
+  }
   showModal.value = true
-  modalTitle.value = '编辑提示词'
+  modalTitle.value = activeTab.value === 'system' ? '编辑系统提示词' : '编辑提示词'
   editingId.value = item.id
   modalText.value = item.promptText || ''
   modalName.value = item.promptName || ''
@@ -261,7 +273,16 @@ const saveModal = async () => {
     return
   }
   try {
-    if (editingId.value) {
+    if (activeTab.value === 'system') {
+      // 系统提示词：仅管理员（后端二次校验）
+      if (editingId.value) {
+        await systemPromptUpdateApi(editingId.value, text, modalUse.value, selectedToolCode.value, name)
+        uni.showToast({ title: '修改成功', icon: 'none' })
+      } else {
+        await systemPromptAddApi(text, modalUse.value, selectedToolCode.value, name)
+        uni.showToast({ title: '新增成功', icon: 'none' })
+      }
+    } else if (editingId.value) {
       await promptUpdateApi(editingId.value, text, modalUse.value, selectedToolCode.value, name)
       uni.showToast({ title: '修改成功', icon: 'none' })
     } else {
@@ -276,15 +297,27 @@ const saveModal = async () => {
 }
 
 const onDelete = (item) => {
+  const isSystem = activeTab.value === 'system'
+  if (isSystem && !isAdmin()) {
+    uni.showToast({ title: '仅管理员可删除系统提示词', icon: 'none' })
+    return
+  }
   uni.showModal({
-    title: '删除提示词',
-    content: '确定要删除这条提示词吗？',
+    title: isSystem ? '删除系统提示词' : '删除提示词',
+    content: isSystem
+      ? '确定要删除这条【系统预制】提示词吗？删除后所有用户将无法再选用。'
+      : '确定要删除这条提示词吗？',
     confirmColor: '#211E1E',
     success: async (res) => {
       if (!res.confirm) return
       try {
-        await promptDeleteApi(item.id)
-        promptList.value = promptList.value.filter((p) => p.id !== item.id)
+        if (isSystem) {
+          await systemPromptDeleteApi(item.id)
+          systemList.value = systemList.value.filter((p) => p.id !== item.id)
+        } else {
+          await promptDeleteApi(item.id)
+          promptList.value = promptList.value.filter((p) => p.id !== item.id)
+        }
         uni.showToast({ title: '删除成功', icon: 'none' })
       } catch (err) {
         // request.js 已统一提示错误
@@ -440,6 +473,19 @@ const onDelete = (item) => {
 .pl-act--primary { color: #3B82F6; }
 .pl-act--danger { color: #EF4444; }
 .pl-act__sep { width: 2rpx; height: 28rpx; background: #F3F4F6; }
+
+/* 非管理员查看系统提示词时的只读标记 */
+.pl-card__readonly {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #F3F4F6;
+  display: flex;
+  justify-content: flex-end;
+}
+.pl-card__readonly-text {
+  font-size: 22rpx;
+  color: #9CA3AF;
+}
 
 /* 弹层 */
 .modal-mask {

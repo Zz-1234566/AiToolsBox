@@ -25,6 +25,14 @@ public class Constants {
     /** User status: disabled */
     public static final int USER_STATUS_DISABLED = 0;
 
+    // ==================== 用户角色（sys_user.role） ====================
+
+    /** 角色：管理员（可管理系统预制的系统提示词） */
+    public static final String ROLE_ADMIN = "admin";
+
+    /** 角色：普通用户（只能使用系统预制提示词，不可增删改） */
+    public static final String ROLE_USER = "user";
+
     /** Logical delete: normal */
     public static final int DR_NORMAL = 0;
 

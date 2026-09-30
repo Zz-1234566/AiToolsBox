@@ -99,4 +99,61 @@ public class AiPromptTemplateServiceImpl implements AiPromptTemplateService {
         AiTool tool = aiToolMapper.selectOne(wrapper);
         return tool == null ? null : tool.getId();
     }
+
+    // ==================== 系统提示词管理（仅管理员，角色校验在 Controller 层） ====================
+
+    @Override
+    public Long addSystem(com.example.aitools.dto.PromptRequest request) {
+        validateUse(request.getPromptUse());
+        AiPrompt prompt = new AiPrompt();
+        prompt.setToolCode(request.getToolCode());
+        prompt.setPromptType("system");
+        prompt.setPromptUse(request.getPromptUse());
+        prompt.setPromptName(request.getPromptName());
+        prompt.setPromptContent(request.getPromptText());
+        prompt.setDr(Constants.DR_NORMAL);
+        aiPromptMapper.insert(prompt);
+        log.info("System prompt added: id={}, toolCode={}, use={}", prompt.getId(), prompt.getToolCode(), prompt.getPromptUse());
+        return prompt.getId();
+    }
+
+    @Override
+    public void updateSystem(Long promptId, com.example.aitools.dto.PromptRequest request) {
+        validateUse(request.getPromptUse());
+        AiPrompt prompt = aiPromptMapper.selectById(promptId);
+        if (prompt == null) {
+            throw new BusinessException("提示词不存在");
+        }
+        // 只允许改系统提示词，避免误改用户数据
+        if (!"system".equals(prompt.getPromptType())) {
+            throw new BusinessException("只能修改系统提示词");
+        }
+        prompt.setToolCode(request.getToolCode());
+        prompt.setPromptUse(request.getPromptUse());
+        prompt.setPromptName(request.getPromptName());
+        prompt.setPromptContent(request.getPromptText());
+        aiPromptMapper.updateById(prompt);
+        log.info("System prompt updated: id={}", promptId);
+    }
+
+    @Override
+    public void deleteSystem(Long promptId) {
+        AiPrompt prompt = aiPromptMapper.selectById(promptId);
+        if (prompt == null) {
+            throw new BusinessException("提示词不存在");
+        }
+        if (!"system".equals(prompt.getPromptType())) {
+            throw new BusinessException("只能删除系统提示词");
+        }
+        // @TableLogic 逻辑删除
+        aiPromptMapper.deleteById(promptId);
+        log.info("System prompt deleted: id={}", promptId);
+    }
+
+    /** 校验用途取值 */
+    private void validateUse(String promptUse) {
+        if (!"format".equals(promptUse) && !"generate".equals(promptUse)) {
+            throw new BusinessException("promptUse 只能是 format 或 generate");
+        }
+    }
 }

@@ -79,6 +79,42 @@ public class AiPromptController {
         return Result.success("删除成功", null);
     }
 
+    // ==================== 系统提示词管理（仅管理员） ====================
+
+    /**
+     * 新增系统提示词（仅管理员）
+     */
+    @PostMapping("/system/add")
+    public Result<Long> addSystem(@Valid @RequestBody PromptRequest promptRequest, HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        authUtil.requireAdmin(userId);
+        Long id = aiPromptTemplateService.addSystem(promptRequest);
+        return Result.success("新增成功", id);
+    }
+
+    /**
+     * 修改系统提示词（仅管理员）
+     */
+    @PutMapping("/system/{id}")
+    public Result<Void> updateSystem(@PathVariable Long id, @Valid @RequestBody PromptRequest promptRequest,
+                                     HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        authUtil.requireAdmin(userId);
+        aiPromptTemplateService.updateSystem(id, promptRequest);
+        return Result.success("更新成功", null);
+    }
+
+    /**
+     * 删除系统提示词（仅管理员，逻辑删除）
+     */
+    @DeleteMapping("/system/{id}")
+    public Result<Void> deleteSystem(@PathVariable Long id, HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        authUtil.requireAdmin(userId);
+        aiPromptTemplateService.deleteSystem(id);
+        return Result.success("删除成功", null);
+    }
+
     /**
      * 查询已启用工具列表（前端按 tool_type 分组展示，用于用户提示词绑定工具下拉）
      */

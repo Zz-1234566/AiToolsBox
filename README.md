@@ -182,6 +182,37 @@ npm run dev:h5
 | 收藏 | `/api/favorite` | 工具/提示词收藏（`sys_user_favorite`，DDL 见 `sql/init_favorite.sql`） |
 | 文件 | `/api/file/upload` | 通用文件上传（COS / 本地，按 `prefix` 分目录） |
 
+## 用户角色与权限
+
+用户角色存于 `sys_user.role`（`VARCHAR(16)`），取值 **`admin`**（管理员）/ **`user`**（普通用户）。新注册用户默认 `user`。
+
+### 权限矩阵
+
+| 能力 | admin | user |
+|---|---|---|
+| 使用所有 AI 工具 / 工作流 | ✅ | ✅ |
+| 查看系统预制提示词（`/api/prompt/system/list`） | ✅ | ✅ |
+| 管理**自己的**提示词（`sys_ai_user_prompt`，增/删/改） | ✅ | ✅ |
+| 管理系统**预制**提示词（`sys_ai_prompt`，增/删/改） | ✅ | ⛔ **403** |
+
+> 权限为**双层防护**：前端按角色显隐入口（体验），后端 `AuthUtil.requireAdmin()` **强制校验**（安全）。
+> 后端校验实时查库，**调整角色立即生效**，无需重新登录。
+> 前端角色来自登录响应 `userInfo.role`，改角色后前端需重新登录才刷新显示。
+
+### 设为管理员
+
+新环境初始化后无内置账号（用户靠注册），需手动提权：
+
+```sql
+UPDATE sys_user SET role = 'admin' WHERE account = 'AIT00000000';
+```
+
+验证：
+
+```sql
+SELECT id, account, username, role FROM sys_user WHERE dr = 0;
+```
+
 
 ## ⚠️ 密钥安全提醒
 

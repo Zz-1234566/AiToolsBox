@@ -124,6 +124,7 @@ public class UserServiceImpl implements UserService {
         user.setEmail(request.getEmail());
         user.setPassword(BCrypt.hashpw(request.getPassword(), BCrypt.gensalt()));
         user.setStatus(Constants.USER_STATUS_NORMAL);
+        user.setRole(Constants.ROLE_USER);
         user.setDr(Constants.DR_NORMAL);
         try {
             userMapper.insert(user);
@@ -309,6 +310,7 @@ public class UserServiceImpl implements UserService {
         userInfo.setAccount(user.getAccount());
         userInfo.setUsername(user.getUsername());
         userInfo.setAvatar(user.getAvatar());
+        userInfo.setRole(user.getRole() == null ? Constants.ROLE_USER : user.getRole());
         return userInfo;
     }
 }

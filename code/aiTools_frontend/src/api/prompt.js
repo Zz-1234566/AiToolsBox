@@ -19,6 +19,25 @@ export const systemPromptListApi = (toolCode) => request({
   data: { toolCode }
 })
 
+// ===== 系统提示词管理（仅管理员，后端二次校验角色）=====
+
+// 新增系统提示词
+export const systemPromptAddApi = (promptText, promptUse, toolCode, promptName) => request({
+  url: '/api/prompt/system/add',
+  method: 'POST',
+  data: { promptText, promptUse, toolCode, promptName }
+})
+
+// 修改系统提示词
+export const systemPromptUpdateApi = (id, promptText, promptUse, toolCode, promptName) => request({
+  url: `/api/prompt/system/${id}`,
+  method: 'PUT',
+  data: { promptText, promptUse, toolCode, promptName }
+})
+
+// 删除系统提示词
+export const systemPromptDeleteApi = (id) => request({ url: `/api/prompt/system/${id}`, method: 'DELETE' })
+
 // 工具列表（按 tool_type 分组，用于提示词管理页工具下拉）
 export const toolListApi = () => request({ url: '/api/prompt/tools', method: 'GET' })
 

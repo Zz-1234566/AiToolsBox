@@ -44,4 +44,27 @@ public interface AiPromptTemplateService {
      * 按工具编码查工具ID（查不到返回 null）
      */
     Long findToolIdByCode(String toolCode);
+
+    /**
+     * 新增系统提示词（仅管理员，Controller 层已校验角色）
+     *
+     * @param request 提示词内容/用途/所属工具/名称
+     * @return 新增记录 ID
+     */
+    Long addSystem(com.example.aitools.dto.PromptRequest request);
+
+    /**
+     * 修改系统提示词（仅管理员）
+     *
+     * @param promptId 目标提示词 ID
+     * @param request  待更新字段
+     */
+    void updateSystem(Long promptId, com.example.aitools.dto.PromptRequest request);
+
+    /**
+     * 删除系统提示词（仅管理员，逻辑删除）
+     *
+     * @param promptId 目标提示词 ID
+     */
+    void deleteSystem(Long promptId);
 }

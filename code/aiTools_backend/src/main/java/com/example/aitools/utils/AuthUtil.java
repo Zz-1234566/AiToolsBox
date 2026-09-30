@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 public class AuthUtil {
 
     private final JwtUtil jwtUtil;
+    private final com.example.aitools.mapper.UserMapper userMapper;
 
     /**
      * 获取当前登录用户 ID
@@ -32,9 +33,36 @@ public class AuthUtil {
         if (attr instanceof Long) {
             return (Long) attr;
         }
+        if (attr instanceof Number) {
+            return ((Number) attr).longValue();
+        }
         // 回退：从 header 解析（Filter 未生效时）
         String token = getTokenFromRequest(request);
         return jwtUtil.getUserIdFromToken(token);
+    }
+
+    /**
+     * 校验当前用户是管理员，否则抛 403。
+     * <p>权限以数据库实时值为准（改角色立即生效，不依赖 token 快照）。
+     *
+     * @param userId 当前登录用户 ID
+     */
+    public void requireAdmin(Long userId) {
+        com.example.aitools.entity.User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.USER_NOT_FOUND);
+        }
+        if (!Constants.ROLE_ADMIN.equals(user.getRole())) {
+            throw new BusinessException(ResultCode.FORBIDDEN.getCode(), "该操作仅管理员可用");
+        }
+    }
+
+    /**
+     * 查询当前用户角色（查不到返回普通用户）
+     */
+    public String getRole(Long userId) {
+        com.example.aitools.entity.User user = userMapper.selectById(userId);
+        return (user == null || user.getRole() == null) ? Constants.ROLE_USER : user.getRole();
     }
 
     /**

@@ -54,3 +54,13 @@ export const requireLogin = (redirect = true) => {
   }
   return false
 }
+
+/**
+ * 当前用户是否为管理员（角色来自登录响应 userInfo.role）
+ * 注意：仅用于前端显隐控制，真正的权限由后端接口校验
+ * @returns {Boolean}
+ */
+export const isAdmin = () => {
+  const userInfo = uni.getStorageSync('userInfo')
+  return !!(userInfo && userInfo.role === 'admin')
+}
