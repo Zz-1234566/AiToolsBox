@@ -574,7 +574,7 @@ import ResultArea from '@/components/ResultArea.vue'
 import BatchFilePicker from '@/components/BatchFilePicker.vue'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
-import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting } from '@/api/ai.js'
+import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting } from '@/api/ai.js'
 import { historyListByToolApi } from '@/api/history.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
@@ -1554,6 +1554,17 @@ const handleGenerate = async () => {
 
   try {
     const id = toolId.value
+
+    // 录音转写若使用多文件选择器（fileRule 已配置），优先走批量；否则退回单文件纯转换
+    const audioBatchFiles = (batchPickerRef.value && batchPickerRef.value.getFiles)
+      ? batchPickerRef.value.getFiles() : []
+    if (id === 'audio-transcribe' && audioBatchFiles.length > 0) {
+      // 录音转写：B2 多文件批量（轮询方案）
+      const { batchId, fileCount } = await audioBatchUpload({ files: audioBatchFiles })
+      batchTotal.value = fileCount
+      await pollBatchCompleted(batchId, 'audio-transcribe')
+      return
+    }
 
     if (isPureConvert.value) {
       // 纯转换工具（文档转文本 / 录音转写）：单文件上传 → 调对应端点 → 纯文本结果

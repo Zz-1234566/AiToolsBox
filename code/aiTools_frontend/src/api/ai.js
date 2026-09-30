@@ -167,6 +167,15 @@ export const aiFileReaderBatchUpload = (options) => {
 }
 
 /**
+ * 批量上传多录音（多文件录音转写）— 第 1 步：创建任务拿 batchId
+ * @param {Object} options { files } — 录音文件数组
+ * @returns {Promise<{ batchId, fileCount }>}
+ */
+export const audioBatchUpload = (options) => {
+  return batchCreate('/api/ai-office/meeting-minutes/batch-transcribe', options.files, options.fields)
+}
+
+/**
  * 录音转文本（上传音频文件 → 后端 ASR → 返回识别文字）
  * 兼容 H5 + App：
  *   H5 端：filePath 是 dataURL 字符串（data:audio/...;base64,...），用 fetch + FormData

@@ -101,4 +101,13 @@ public interface AiOfficeToolService {
      * 单文件失败不影响整体。
      */
     com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files, String prompt, String batchId);
+
+    /**
+     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + MiniMax ASR。
+     * <p>串行处理，单文件失败不影响整体；单文件完成后立即 appendItem 入库（前端轮询可见），
+     * 最后由 Controller 调 completeBatch 写终态。
+     *
+     * @param batchId 批量任务 ID（必传）
+     */
+    com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId, List<BatchFilePayload> files, String batchId);
 }

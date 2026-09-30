@@ -193,12 +193,22 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
     name: '录音转写', icon: 'meeting', category: 'AI办公助手', realized: true,
     inputLabel: '录音内容',
     pureConvert: true,                        // 纯转换工具：提示词后端内置，不渲染提示词卡片
-    desc: '上传录音（MP3 / WAV / M4A），AI 自动转写为文字，供会议纪要等工具使用。',
+    desc: '上传录音（最多 10 个，总大小 200MB），AI 自动转写为文字，供会议纪要等工具使用。',
     inputTypes: ['file'], defaultInput: 'file', fileType: 'audio',
-    uploadTitle: '上传录音', uploadDesc: '支持 MP3、WAV、M4A 等格式',
+    // 多文件规则（BatchFilePicker 组件读取）
+    fileRule: {
+      accept: '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr',
+      maxCount: 10,
+      maxTotalSize: 200 * 1024 * 1024,         // 200MB
+      title: '上传录音',
+      desc: '支持 MP3、WAV、M4A、AAC、FLAC、OGG、AMR · 最多 10 个文件 · 总大小 200MB',
+      notice: '单个录音建议不超过 500 秒（约 8 分钟）、50MB；超长录音请先裁剪',
+      uploadType: 'audioBatch',                // 标识：调 audioBatchUpload
+      apiPath: '/api/ai-office/meeting-minutes/batch-transcribe'
+    },
     actionText: '开始转写', resultTitle: '转写结果', resultPlaceholder: '转写文字将在这里显示...',
     validateRules: {
-      file:   { token: true, file: { type: 'single', min: 1, error: '请先上传录音' } },
+      file:   { token: true, file: { type: 'batch', min: 1, error: '请先上传录音' } },
       text:   { unsupported: true, error: '该工具请上传录音' },
       image:  { unsupported: true, error: '该工具请上传录音' },
     }

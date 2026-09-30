@@ -14,6 +14,8 @@ import com.example.aitools.service.AiFileReaderService;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.service.BatchTaskService;
+import com.example.aitools.service.TranscribeService;
+import com.example.aitools.dto.TranscribeResponse;
 import com.example.aitools.service.HistoryService;
 import com.example.aitools.service.OcrService;
 import com.example.aitools.service.document.DocumentParser;
@@ -62,6 +64,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private final OcrService ocrService;
     private final BatchTaskService batchTaskService;
     private final AiFileReaderService aiFileReaderService;
+    private final TranscribeService transcribeService;
 
     /**
      * 工作总结
@@ -509,6 +512,74 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
         resultJson.append("]");
         log.info("[B2-FILE] 完成 userId={} batchId={} success={} fail={}", userId, batchId, successCount, failCount);
+        return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, files.size(), resultJson.toString(), "");
+    }
+
+    /**
+     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + MiniMax ASR。
+     * <p>串行执行（避免触发上游限流）；单文件失败不影响整体；每完成一个立即 appendItem。
+     */
+    @Override
+    public com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId,
+            List<BatchFilePayload> files, String batchId) {
+        if (files == null || files.isEmpty()) {
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个录音文件");
+        }
+        if (files.size() > Constants.BATCH_MAX_FILE_COUNT) {
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 " + Constants.BATCH_MAX_FILE_COUNT + " 个文件");
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+        StringBuilder resultJson = new StringBuilder("[");
+        log.info("[B2-ASR] 开始 userId={} fileCount={} batchId={}", userId, files.size(), batchId);
+
+        for (int i = 0; i < files.size(); i++) {
+            BatchFilePayload payload = files.get(i);
+            String fileName = (payload != null && payload.getOriginalFilename() != null)
+                    ? payload.getOriginalFilename() : "未命名-" + (i + 1);
+            String fileResultJson;
+            boolean fileOk = false;
+
+            if (payload == null || payload.getContent() == null || payload.getContent().length == 0) {
+                failCount++;
+                fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName)
+                        + "\",\"status\":\"failed\",\"errorMsg\":\"录音文件为空\",\"output\":\"\"}";
+            } else {
+                long start = System.currentTimeMillis();
+                try {
+                    // 内存版 MultipartFile（BatchFilePayload 已支持，TranscribeService 用 getInputStream 读取）
+                    TranscribeResponse resp = transcribeService.transcribe(payload.toMultipartFile());
+                    String output = resp == null ? "" : resp.getText();
+                    if (output == null || output.isBlank()) {
+                        throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "未识别到语音内容");
+                    }
+                    successCount++;
+                    fileOk = true;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName)
+                            + "\",\"status\":\"ok\",\"costMs\":" + (System.currentTimeMillis() - start)
+                            + ",\"output\":\"" + escapeJson(output) + "\"}";
+                } catch (Exception e) {
+                    String errMsg = safeErrorMessage(e, "[B2-ASR] fileName=" + fileName);
+                    failCount++;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName)
+                            + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start)
+                            + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
+                }
+            }
+
+            if (i > 0) resultJson.append(",");
+            resultJson.append(fileResultJson);
+
+            try {
+                batchTaskService.appendItem(batchId, fileResultJson, fileOk);
+            } catch (Exception e) {
+                log.error("[B2-ASR] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
+            }
+        }
+
+        resultJson.append("]");
+        log.info("[B2-ASR] 完成 userId={} batchId={} success={} fail={}", userId, batchId, successCount, failCount);
         return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, files.size(), resultJson.toString(), "");
     }
 }
