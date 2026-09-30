@@ -99,17 +99,57 @@ public class NodeExecutor {
      */
     private String aiText(String toolCode, String content, Map<String, String> params) {
         Map<String, String> p = params == null ? Map.of() : params;
-        String promptFormat = p.get("promptFormat");
-        String promptGenerate = p.get("promptGenerate");
-        Long promptId = parseLong(p.get("promptId"));
 
-        String formatPrompt = aiPromptTemplateService.resolvePrompt(promptFormat, promptId, "format", toolCode);
-        String generatePrompt = aiPromptTemplateService.resolvePrompt(promptGenerate, promptId, "generate", toolCode);
-        if (isBlank(formatPrompt) || isBlank(generatePrompt)) {
-            throw new BusinessException("节点 " + toolCode + " 缺少格式提示词或生成内容提示词");
+        // 提示词来源三选一（优先级从高到低）：
+        //   1) 直接文本（兼容旧数据 / 工具入口直接传文本）
+        //   2) 选中的系统/用户提示词（只存 id，跟随提示词更新）
+        //   3) 该工具的系统默认提示词（用户未配置时）
+        // 注意：若用户「选了具体提示词(id)」但该提示词已被删除 → 置空并报错，不静默回退，
+        //       避免用户以为自己在用某条提示词、实际却跑的是默认。
+        String formatPrompt = resolveNodePrompt(
+                p.get("promptFormat"), parseLong(p.get("promptIdFormat")), "format", toolCode);
+        String generatePrompt = resolveNodePrompt(
+                p.get("promptGenerate"), parseLong(p.get("promptIdGenerate")), "generate", toolCode);
+
+        if (isBlank(formatPrompt)) {
+            throw new BusinessException("节点「" + toolCode + "」的格式提示词无效或已被删除，请重新选择提示词");
+        }
+        if (isBlank(generatePrompt)) {
+            throw new BusinessException("节点「" + toolCode + "」的生成提示词无效或已被删除，请重新选择提示词");
         }
         String userPrompt = generatePrompt + "\n\n原文：\n" + content;
         return aiClient.chat(formatPrompt, userPrompt);
+    }
+
+    /**
+     * 解析节点提示词。
+     *
+     * @param userProvided 直接填写的提示词文本（可空）
+     * @param promptId     选中的提示词 id（可空）；非空但查不到 → 返回 null，由调用方报错
+     * @param promptUse    format / generate
+     * @param toolCode     工具编码（用于回退系统默认）
+     * @return 提示词内容；无法解析时返回 null
+     */
+    private String resolveNodePrompt(String userProvided, Long promptId, String promptUse, String toolCode) {
+        // 1) 直接文本优先
+        if (userProvided != null && !userProvided.isBlank()) {
+            return userProvided.trim();
+        }
+        // 2) 选了具体提示词：按 id 取，用途需匹配；查不到/异常 → 置空（不静默回退）
+        if (promptId != null) {
+            try {
+                com.example.aitools.entity.AiPrompt selected = aiPromptTemplateService.getById(promptId);
+                if (selected != null && promptUse.equals(selected.getPromptUse())) {
+                    return selected.getPromptContent();
+                }
+            } catch (Exception e) {
+                log.warn("[workflow-node] 提示词不可用 promptId={} use={}: {}", promptId, promptUse, e.getMessage());
+            }
+            return null;
+        }
+        // 3) 未配置：回退该系统默认提示词
+        com.example.aitools.entity.AiPrompt def = aiPromptTemplateService.getDefaultByUse(toolCode, promptUse);
+        return def == null ? null : def.getPromptContent();
     }
 
     /**

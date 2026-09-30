@@ -52,8 +52,8 @@
                 <view class="wfe-prompt__pick" @click="openPromptPicker(idx, 'format')">选择提示词</view>
               </view>
               <view class="wfe-prompt__box" @click="openPromptPicker(idx, 'format')">
-                <text class="wfe-prompt__text" :class="{ 'wfe-prompt__text--ph': !node.params.promptFormat }">
-                  {{ node.params.promptFormat || '留空则使用系统默认提示词' }}
+                <text class="wfe-prompt__text" :class="{ 'wfe-prompt__text--ph': !pickedPromptName(node, 'format') }">
+                  {{ pickedPromptName(node, 'format') ? '已选：' + pickedPromptName(node, 'format') : '未选择，将使用系统默认提示词' }}
                 </text>
               </view>
             </view>
@@ -64,20 +64,20 @@
                 <view class="wfe-prompt__pick" @click="openPromptPicker(idx, 'generate')">选择提示词</view>
               </view>
               <view class="wfe-prompt__box" @click="openPromptPicker(idx, 'generate')">
-                <text class="wfe-prompt__text" :class="{ 'wfe-prompt__text--ph': !node.params.promptGenerate }">
-                  {{ node.params.promptGenerate || '留空则使用系统默认提示词' }}
+                <text class="wfe-prompt__text" :class="{ 'wfe-prompt__text--ph': !pickedPromptName(node, 'generate') }">
+                  {{ pickedPromptName(node, 'generate') ? '已选：' + pickedPromptName(node, 'generate') : '未选择，将使用系统默认提示词' }}
                 </text>
               </view>
             </view>
           </view>
 
-          <!-- 起始节点 or 输入来自 -->
+          <!-- 起始节点 or 输入来源 -->
           <view class="wfe-node__dep">
             <block v-if="!node.deps || node.deps.length === 0">
-              <text class="wfe-dep__start">起始节点 · 运行时由你上传文件</text>
+              <text class="wfe-dep__start">起始节点 · 运行时由你提供{{ inputLabelOf(node) }}</text>
             </block>
             <block v-else>
-              <text class="wfe-dep__label">输入来自：</text>
+              <text class="wfe-dep__label">{{ inputLabelOf(node) }}来自：</text>
               <picker class="wfe-dep__picker" :range="depOptions(idx)" :value="depIndexOf(idx)" @change="(e) => onDepChange(idx, e)">
                 <view class="wfe-dep__select">{{ depDisplay(idx) }} ▾</view>
               </picker>
@@ -119,14 +119,17 @@ import { ref, reactive, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { toolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
 import { workflowSaveApi, workflowDetailApi } from '@/api/workflow'
+import { TOOLS } from '@/config/tools'
 import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
 
 const tools = ref([])
 const saving = ref(false)
 const editingId = ref('')
 const form = reactive({ name: '', description: '', nodes: [] })
-/** 工具编码 → 系统默认提示词 { format, generate }，用于 placeholder 提示 */
+/** 工具编码 → 系统默认提示词 { format, generate }，用于判断该工具是否需要提示词 */
 const defaultPrompts = reactive({})
+/** 已选提示词的展示名（内存）：键 `${nodeId}_${format|generate}`，不落库 */
+const pickedNames = ref({})
 
 const isNew = computed(() => !editingId.value)
 
@@ -141,12 +144,33 @@ const typeLabel = (s) => {
   return s.split(',').map(x => TYPE_MAP[x.trim()] || x.trim()).join(' / ')
 }
 
+/**
+ * 节点的输入语义标签（该节点接收什么）。
+ * 取自 tools.js 的 inputLabel；无配置时按输入类型兜底。
+ */
+const inputLabelOf = (node) => {
+  const t = TOOLS[node.nodeRef]
+  if (t && t.inputLabel) return t.inputLabel
+  const it = toolByCode(node.nodeRef)?.inputType || ''
+  if (it.includes('audio')) return '录音'
+  if (it.includes('image')) return '图片'
+  if (it.includes('document') || it.includes('file')) return '文件'
+  return '内容'
+}
+
 const nodeIdOf = (idx) => 'n' + (idx + 1)
 
-/** 该工具是否需要用户填提示词（有系统提示词 = AI 工具） */
-const needsPrompt = (code) => !!defaultPrompts[code]
+/**
+ * 该工具是否需要用户配置提示词。
+ * 判断依据：该系统是否**确实配置了提示词**（format 或 generate 有内容）。
+ * 纯转换工具（文档转文本 / 录音转写）由系统内部提供提示词或不调 AI，不应显示提示词框。
+ */
+const needsPrompt = (code) => {
+  const d = defaultPrompts[code]
+  return !!(d && (d.format || d.generate))
+}
 
-/** 懒加载某工具的系统默认提示词（用于 placeholder 展示） */
+/** 懒加载某工具的系统默认提示词 */
 const ensureDefaultPrompts = async (code) => {
   if (!code || defaultPrompts[code] !== undefined) return
   try {
@@ -195,15 +219,29 @@ const openPromptPicker = async (nodeIdx, target) => {
   showPromptPicker.value = true
 }
 
-/** 抽屉确认：把选中的提示词写入节点 params */
+/**
+ * 抽屉确认：记录「选中的提示词 id」（C 方案：只存 id，跟随提示词更新）。
+ * 同时清掉可能残留的纯文本，避免文本优先把 id 覆盖掉。
+ * 提示词名称只存内存（pickedNames），不写入 params，避免污染落库数据。
+ */
 const onPromptConfirm = (item) => {
   if (!item) return
   const node = form.nodes[pickerNodeIdx.value]
   if (!node) return
   if (!node.params) node.params = {}
-  if (pickerTarget.value === 'format') node.params.promptFormat = item.promptText || ''
-  else node.params.promptGenerate = item.promptText || ''
+  if (pickerTarget.value === 'format') {
+    node.params.promptIdFormat = String(item.id)
+    delete node.params.promptFormat
+  } else {
+    node.params.promptIdGenerate = String(item.id)
+    delete node.params.promptGenerate
+  }
+  // 名称仅用于界面回显（按 nodeId + 用途 记在内存，不落库）
+  pickedNames.value[`${node.nodeId}_${pickerTarget.value}`] = item.promptName || ''
 }
+
+/** 节点某用途已选提示词的展示名（内存） */
+const pickedPromptName = (node, use) => pickedNames.value[`${node.nodeId}_${use}`] || ''
 
 /** 上游候选：除自己外的所有节点 */
 const depOptions = (idx) => form.nodes.map((n, i) => i === idx ? null : `${nodeIdOf(i)} · ${toolName(n.nodeRef) || '未选工具'}`).filter(Boolean)
@@ -322,6 +360,19 @@ onLoad(async (opt) => {
       }))
       // 预加载各节点工具的默认提示词，使「格式/生成提示词」输入框正常显示
       await Promise.all(form.nodes.map(n => ensureDefaultPrompts(n.nodeRef)))
+      // 回填已选提示词的展示名（按 promptId 反查）
+      await Promise.all(form.nodes.map(async (n) => {
+        const p = n.params || {}
+        const ids = [['format', p.promptIdFormat], ['generate', p.promptIdGenerate]]
+        for (const [use, id] of ids) {
+          if (!id) continue
+          try {
+            const res = await systemPromptListApi(n.nodeRef)
+            const found = ((res && res.data) || []).find(x => String(x.id) === String(id))
+            if (found) pickedNames.value[`${n.nodeId}_${use}`] = found.promptName || ''
+          } catch (e) { /* ignore */ }
+        }
+      }))
     } catch (e) { /* ignore */ }
   } else {
     addNode()

@@ -62,6 +62,7 @@ const PROMPT_REQUIRED = { type: 'any', min: 1, error: '请填写格式或生成�
 export const TOOLS = {
   'work-summary': {
     name: '工作总结', icon: 'summary', category: 'AI办公助手', realized: true,
+    inputLabel: '工作内容',
     desc: '输入零散的工作记录，AI 自动整理成结构化的工作内容总结。',
     inputTypes: ['text', 'file'], defaultInput: 'text',
     placeholder: '请输入今天的工作内容...',
@@ -74,6 +75,7 @@ export const TOOLS = {
   },
   'doc-keypoint-extract': {
     name: '文档重点提取', icon: 'summary', category: 'AI办公助手', realized: true,
+    inputLabel: '文档内容',
     desc: '上传多个文档（最多 10 个，总大小 200MB），AI 逐个提炼核心要点和待办事项。',
     inputTypes: ['text', 'file'], defaultInput: 'file', fileType: 'document',
     uploadTitle: '上传文档', uploadDesc: '支持 PDF、Word、TXT 格式',
@@ -99,6 +101,7 @@ export const TOOLS = {
   },
   'ai-file-reader': {
     name: 'AI 文件解读', icon: 'summary', category: 'AI办公助手', realized: true,
+    inputLabel: '文件内容',
     desc: '上传任意文件（图片/PDF/Word/TXT），AI 自动识别内容并解读。支持多种文件格式，可同时处理多个文件。',
     inputTypes: ['file'], defaultInput: 'file', fileType: 'document',
     uploadTitle: '上传文件', uploadDesc: '支持图片、PDF、Word、TXT 格式',
@@ -121,6 +124,7 @@ export const TOOLS = {
   },
   'weekly-report': {
     name: '周报生成', icon: 'weekly', category: 'AI办公助手', realized: true,
+    inputLabel: '本周工作内容',
     desc: '输入本周工作内容，一键生成结构化的工作周报。',
     inputTypes: ['text', 'file'], defaultInput: 'text',
     placeholder: '请输入本周完成的工作内容...',
@@ -134,6 +138,7 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
   },
   'meeting-minutes': {
     name: '会议纪要', icon: 'meeting', category: 'AI办公助手', realized: true,
+    inputLabel: '会议内容',
     desc: '输入会议内容，AI 帮你整理会议核心结论和行动项。',
     // 已移除录音上传：转写能力解耦为独立节点/工具（audio-transcribe / doc-to-text）
     inputTypes: ['text'], defaultInput: 'text',
@@ -148,6 +153,7 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
   },
   'ocr-recognize': {
     name: '智能识别', icon: 'ocr', category: 'AI办公助手', realized: true,
+    inputLabel: '图片文字',
     desc: '上传多张图片（最多 10 个，总大小 200MB），AI 自动识别图片中的文字内容并整理成结构化结果。',
     inputTypes: ['image'], defaultInput: 'image', fileType: 'image',
     uploadTitle: '上传图片', uploadDesc: '支持 JPG、PNG 格式（PDF 请用【文档重点提取】）',
@@ -171,6 +177,7 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
   },
   'doc-to-text': {
     name: '文档转文本', icon: 'summary', category: 'AI办公助手', realized: true,
+    inputLabel: '文档内容',
     pureConvert: true,                        // 纯解析工具：不渲染提示词卡片、无提示词校验
     desc: '上传文档（PDF / Word / TXT）提取纯文本，供会议纪要等工具使用。',
     inputTypes: ['file'], defaultInput: 'file', fileType: 'document',
@@ -184,6 +191,7 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
   },
   'audio-transcribe': {
     name: '录音转写', icon: 'meeting', category: 'AI办公助手', realized: true,
+    inputLabel: '录音内容',
     pureConvert: true,                        // 纯转换工具：提示词后端内置，不渲染提示词卡片
     desc: '上传录音（MP3 / WAV / M4A），AI 自动转写为文字，供会议纪要等工具使用。',
     inputTypes: ['file'], defaultInput: 'file', fileType: 'audio',
