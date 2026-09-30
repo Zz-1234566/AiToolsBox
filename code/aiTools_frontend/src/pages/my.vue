@@ -12,50 +12,24 @@
       </view>
     </section>
 
-    <!-- 数据统计（4 项：收藏 / 最近使用 / 工作流 / 使用记录） -->
+    <!-- 功能入口（提示词管理 / 使用记录） -->
     <section class="stats">
-      <view class="stat-item" @click="goToFavorites">
-        <text class="stat-item__icon">⭐</text>
-        <text class="stat-item__label">我的收藏</text>
-        <text class="stat-item__num">12</text>
+      <view class="stat-item" @click="goToPromptList">
+        <text class="stat-item__icon">✍️</text>
+        <text class="stat-item__label">提示词管理</text>
       </view>
       <view class="stat-item" @click="goToHistory">
-        <text class="stat-item__icon">🕘</text>
-        <text class="stat-item__label">最近使用</text>
-        <text class="stat-item__num">23</text>
-      </view>
-      <view class="stat-item" @click="goToWorkflow">
-        <text class="stat-item__icon">📋</text>
-        <text class="stat-item__label">我的工作流</text>
-        <text class="stat-item__num">5</text>
-      </view>
-      <view class="stat-item stat-item--link" @click="goToHistory">
         <text class="stat-item__icon">📜</text>
         <text class="stat-item__label">使用记录</text>
-        <text class="stat-item__chev">›</text>
       </view>
     </section>
 
-    <!-- 设置列表（账号设置 / 通知 / 深色模式 / 关于） -->
+    <!-- 设置列表（账号设置 / 关于） -->
     <section class="me-list">
-      <view class="me-item" @click="goToProfile">
+      <view class="me-item" @click="goToSettings">
         <text class="me-item__icon">⚙️</text>
         <text class="me-item__label">账号设置</text>
         <text class="me-item__chev">›</text>
-      </view>
-      <view class="me-item" @click="goToNotifications">
-        <text class="me-item__icon">🔔</text>
-        <text class="me-item__label">通知</text>
-        <text class="me-item__chev">›</text>
-      </view>
-      <view class="me-item">
-        <text class="me-item__icon">🌙</text>
-        <text class="me-item__label">深色模式</text>
-        <label class="switch-toggle" @click="toggleDark">
-          <view class="switch-track" :class="{ 'is-on': darkMode }">
-            <view class="switch-thumb"></view>
-          </view>
-        </label>
       </view>
       <view class="me-item" style="border-bottom: none;" @click="goToAbout">
         <text class="me-item__icon">ℹ️</text>
@@ -69,9 +43,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { getIsDarkTheme, toggleTheme } from '@/utils/theme'
 
-const darkMode = ref(false)
 const userInfo = ref(null)
 
 const initials = computed(() => {
@@ -93,19 +65,16 @@ const goToProfile = () => {
   go('/pages/profile')
 }
 
-const goToFavorites = () => go('/pages/favorites')
-const goToHistory = () => go('/pages/history')
-const goToWorkflow = () => go('/pages/workflow')
-const goToNotifications = () => go('/pages/settings')
-const goToAbout = () => go('/pages/settings')
-const toggleDark = () => {
-  darkMode.value = !darkMode.value
-  toggleTheme(darkMode.value)
+const goToPromptList = () => {
+  if (!isLoggedIn()) return go('/pages/login')
+  go('/pages/prompt-list')
 }
-
-onLoad(() => {
-  darkMode.value = getIsDarkTheme()
-})
+const goToHistory = () => {
+  if (!isLoggedIn()) return go('/pages/login')
+  go('/pages/history')
+}
+const goToSettings = () => go('/pages/settings')
+const goToAbout = () => go('/pages/about')
 
 onShow(() => {
   loadUserInfo()
@@ -188,7 +157,7 @@ onShow(() => {
   border-radius: 24rpx;
   padding: 12rpx 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 .stat-item {
@@ -206,22 +175,6 @@ onShow(() => {
 .stat-item__label {
   font-size: 24rpx;
   color: var(--text-secondary, #4B5563);
-}
-.stat-item__num {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: var(--text-primary, #111827);
-}
-.stat-item--link {
-  position: relative;
-}
-.stat-item__chev {
-  position: absolute;
-  right: 8rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-tertiary, #9CA3AF);
-  font-size: 36rpx;
 }
 
 /* ===== 设置列表 ===== */
@@ -253,39 +206,5 @@ onShow(() => {
 .me-item__chev {
   color: var(--text-tertiary, #9CA3AF);
   font-size: 36rpx;
-}
-
-/* ===== Switch ===== */
-.switch-toggle {
-  position: relative;
-  display: inline-block;
-}
-.switch-track {
-  width: 88rpx;
-  height: 48rpx;
-  background: #E5E7EB;
-  border-radius: 24rpx;
-  position: relative;
-  cursor: pointer;
-  transition: background 200ms ease;
-  display: block;
-
-  &.is-on {
-    background: var(--brand-primary, #3B82F6);
-    .switch-thumb {
-      transform: translateX(40rpx);
-    }
-  }
-}
-.switch-thumb {
-  position: absolute;
-  top: 4rpx;
-  left: 4rpx;
-  width: 40rpx;
-  height: 40rpx;
-  background: white;
-  border-radius: 50%;
-  transition: transform 200ms ease;
-  box-shadow: 0 1rpx 3rpx rgba(0, 0, 0, 0.2);
 }
 </style>

@@ -198,7 +198,7 @@ const clearCache = () => {
 }
 
 const goToAbout = () => {
-  uni.showToast({ title: t('toast.featureDev', { name: 'About' }), icon: 'none' })
+  uni.navigateTo({ url: '/pages/about' })
 }
 </script>
 
