@@ -63,7 +63,7 @@
         <text class="sheet__desc">请为以下起始节点提供输入</text>
         <scroll-view scroll-y class="sheet__body">
           <view v-for="n in sourceNodes" :key="n.nodeId" class="run-node">
-            <text class="run-node__name">{{ n.name || n.toolName }}<text class="run-node__tool">（{{ n.toolName }}）</text></text>
+            <text class="run-node__name">{{ n.toolName || n.name }}</text>
             <textarea v-if="isTextInput(n)" class="run-node__text" v-model="runInputs[n.nodeId].text"
                       placeholder="请输入文本内容" placeholder-class="wfe-ph" :maxlength="5000" />
             <view v-else class="run-node__file">

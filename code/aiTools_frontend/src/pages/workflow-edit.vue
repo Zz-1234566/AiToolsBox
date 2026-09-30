@@ -281,8 +281,12 @@ const onToolChange = (nodeIdx, e) => {
   const node = form.nodes[nodeIdx]
   const changed = node.nodeRef !== t.toolCode
   node.nodeRef = t.toolCode
-  // 换工具时清掉旧的提示词参数，避免张冠李戴
-  if (changed) node.params = {}
+  if (changed) {
+    // 换工具时清掉旧的提示词参数，避免张冠李戴
+    node.params = {}
+    // 节点显示名跟随工具，避免存下陈旧名称（如工具已改但仍显示旧名）
+    node.name = t.toolName
+  }
   ensureDefaultPrompts(t.toolCode)
 }
 const onDepChange = (nodeIdx, e) => {
