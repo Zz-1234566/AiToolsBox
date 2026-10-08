@@ -285,13 +285,14 @@ const goToAbout = () => {
   }
 }
 
-/* 退出登录：红色醒目，独立分组 */
+/* 退出登录：红色醒目，独立分组，整体居中 */
 .setting-item--logout {
   justify-content: center;
 }
 .setting-item--logout .item-left {
   justify-content: center;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 .item-icon.logout-icon {
   background-color: rgba(192, 57, 43, 0.08);
