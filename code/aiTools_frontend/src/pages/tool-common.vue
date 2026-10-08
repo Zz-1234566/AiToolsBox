@@ -1815,14 +1815,12 @@ const handleGenerate = async () => {
         // 注意：runTextStream 已经通过打字机把内容推到 meetingMarkdownText，不要再用 resultContent 覆盖
         await runTextStream('/api/ai-office/meeting-minutes/stream')
       }
-    } else if (id === 'qr-code-gen' || id === 'password-gen' || id === 'todo-list') {
-      // 二维码 + 密码生成 + 待办清单：后端暂未实现
-      uni.showToast({title: '该工具开发中', icon: 'none'})
-      return
-
-    } else {
-      // 暂未接入后端的工具，使用模拟数据
-      resultContent.value = `【${toolInfo.value.name}】\n\n这是模拟生成的结果。\n\n后续接入后端接口后会返回真实结果。`
+    } else if (id === 'work-summary') {
+      // 工作总结：纯文字输入 → SSE 流式
+      await runTextStream('/api/ai-office/work-summary/stream')
+    } else if (id === 'weekly-report') {
+      // 周报生成：纯文字输入 → SSE 流式
+      await runTextStream('/api/ai-office/weekly-report/stream')
     }
   } catch (err) {
     console.error('Generate error:', err)
