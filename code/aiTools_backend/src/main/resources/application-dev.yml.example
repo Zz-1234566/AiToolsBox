@@ -90,6 +90,8 @@ ai:
 # Windows 推荐：D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
 # Linux/Mac 一般可直接用系统 PATH 的 ffmpeg
 asr:
+  # 默认转写引擎：minimax | tencent。前端可选覆盖，不传则用此值。
+  engine: ${ASR_ENGINE:minimax}
   ffmpeg-binary-path: ${ASR_FFMPEG_PATH:D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe}
   sample-rate: 16000
   channels: 1
@@ -98,3 +100,18 @@ asr:
   api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
   model: asr-1.0
   language: zh
+  # ── 腾讯云语音识别通道（CreateRecTask 录音文件识别）──
+  # secret-id / secret-key / region 留空时自动复用 cos.* 同一套凭证
+  tencent:
+    enabled: ${ASR_TENCENT_ENABLED:false}
+    # AppId 为 ASR 专用，控制台「语音识别 → 账户信息」获取，形如 100047898545
+    app-id: ${ASR_APP_ID:}
+    secret-id: ${ASR_SECRET_ID:}
+    secret-key: ${ASR_SECRET_KEY:}
+    region: ${ASR_REGION:}
+    engine-model-type: ${ASR_ENGINE_MODEL:16k_zh}
+    channel-num: 1
+    # 原始音频大小上限（字节）。腾讯云内联 base64 上限 5MB，反推约 3.7MB 留余量。
+    max-audio-bytes: 3900000
+    poll-interval-ms: 3000
+    max-poll-times: 100

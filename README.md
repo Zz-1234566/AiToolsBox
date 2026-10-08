@@ -141,7 +141,7 @@ npm run dev:h5
 | 5 | `ocr-recognize` | 智能识别 | 图片 | 文本 | `POST /api/ai-office/ocr-recognize/stream`（单图 SSE）<br>`POST /api/ai-office/ocr-recognize/batch-upload`（多图批量） |
 | 6-12 | `id-photo-bg-change` / `portrait-bg-replace` / `image-compress` / `qr-code-gen` / `todo-list` / `pomodoro` / `password-gen` | 图片创意 & 效率小工具 | — | — | **已入库但后端接口未实现**，前端 `realized: false`，点击提示"开发中" |
 | 13 | `ai-file-reader` | AI 文件解读 | 图片/文档/文本 | 文本 | `POST /api/ai-office/ai-file-reader/batch-upload`（多模态解读任意文件） |
-| 14 | `audio-transcribe` | 录音转写 | 音频 | 文本 | `POST /api/ai-office/meeting-minutes/transcribe`（ffmpeg 转码 + MiniMax chatAudio） |
+| 14 | `audio-transcribe` | 录音转写 | 音频 | 文本 | `POST /api/ai-office/meeting-minutes/transcribe`（ffmpeg 转码 + **双引擎**）<br>`POST /api/ai-office/meeting-minutes/batch-transcribe`（多文件批量） |
 | 15 | `doc-to-text` | 文档转文本 | 文档 | 文本 | `POST /api/ai-office/doc-to-text`（纯解析，不调 AI） |
 
 > **说明**：`bank-receipt-recognize` / `invoice-recognize` **不是工具**，它们仅作为**系统提示词**存在于 `sys_ai_prompt` 表（供 OCR 场景复用），不在 `sys_aitools_tool` 登记。
@@ -225,6 +225,49 @@ SELECT id, account, username, role FROM sys_user WHERE dr = 0;
 3. **提交后**仍建议轮换一次——GitHub 即使删除 commit，历史中仍可恢复。
 4. 腾讯云子账号请使用 **最小权限策略**（仅授权所需存储桶的读写）。
 
+## 录音转写双引擎（MiniMax / 腾讯云）
+
+`audio-transcribe` 支持两个转写通道，前端在录音转写页可手动选择，整批文件共用同一引擎。
+
+| 引擎 | 标识 | 实现 | 特点 |
+|---|---|---|---|
+| MiniMax | `minimax` | `MinimaxClient.chatAudio`（M3 多模态） | 默认通道，通用转写 |
+| 腾讯云 | `tencent` | 云 API `CreateRecTask`（录音文件识别）+ `DescribeTaskStatus` 轮询 | 支持**热词表**，术语识别更准 |
+
+**调用方式**（两个接口都支持，不传则用 `asr.engine` 配置值，默认 `minimax`）：
+
+```bash
+curl -X POST "http://localhost:8080/api/ai-office/meeting-minutes/transcribe?engine=tencent" \
+     -H "Authorization: Bearer $TOKEN" -F "file=@audio.mp3"
+```
+
+**配置**（`.env`，`application-dev.yml` 的 `asr.tencent` 段读取）：
+
+```
+ASR_TENCENT_ENABLED=true        # 是否启用腾讯云通道
+ASR_APP_ID=                     # 腾讯云语音识别控制台 →「账户信息」（ASR 专用）
+ASR_SECRET_ID=                  # 可选，留空自动复用 COS_SECRET_ID
+ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
+```
+
+**降级规则**（`TranscribeService#resolveEngine`）：
+
+- 前端传 `engine=tencent` 但 `enabled=false` 或 `ASR_APP_ID` 为空 → **自动回落 minimax**，不报错
+- 传入无法识别的引擎值 → 兜底 minimax
+- 工作流引擎（`NodeExecutor`）暂不支持指定引擎，统一走默认引擎
+
+**实测数据**（30 秒中文音频，2026-10-08）：
+
+| 引擎 | 耗时 | 返回格式 |
+|---|---|---|
+| 腾讯云 | 5.3s | 带 `[起始时间,结束时间]` 时间戳前缀 |
+| MiniMax | 1.6s | 纯文本，无时间戳 |
+
+> **腾讯云通道的 3.7MB 限制**：`CreateRecTask` 走 `SourceType=1` 内联 base64 时 `Data` 字段上限 5MB，
+> 反推原始音频上限约 3.7MB（`asr.tencent.max-audio-bytes`）。超限返回中文提示
+> 「音频文件过大…」，不会把腾讯云的英文错误码透给用户。
+> **待处理**：接入 `FileCompressService` 后改为自动压缩重试。
+
 ## ⚠️ 已知问题 / 待处理
 
 ### 1. COS 签名 URL 有效期偏短（工作流运行时可能失效）
@@ -239,6 +282,24 @@ SELECT id, account, username, role FROM sys_user WHERE dr = 0;
 1. 调大 `cos.signed-url-ttl-seconds`（如 3600）—— 改配置即可，但链接长期有效有安全考量
 2. **根治**：工作流节点参数改为存 COS **对象 key**（如 `file/1/xxx.txt`），运行时由后端用 SecretId/SecretKey 直连 COS 读取，不依赖签名 URL
 3. 上传后立即运行（产品层面规避）
+
+### 2. 历史记录未保存文件（`sys_aitools_history_file` 始终为空）
+
+**现象**：查看历史记录详情时，**看不到当次使用的文件**（文件名/下载）。数据库 `sys_aitools_history_file` 表**始终没有数据**。
+
+**原因**：文件类工具（文档重点提取、智能识别、AI 文件解读、文档转文本、录音转写）当前是**把文件直传后端**（multipart），后端解析完即丢弃，**既不上传 COS、也不写 `history_file` 表**。表结构完整，但写入方法 `HistoryService#recordWithFiles` **无任何调用点（死代码）**。
+
+**当前状态**：暂不处理。历史详情页只展示文本（输入/结果/错误/提示词/耗时），文件类记录提示"文件请重新上传"。
+
+**若要做，方案如下**：
+1. 工具执行处调 `fileStorageService.store(file, "file/{userId}")` 上传 COS，拿到 **object key**
+2. `history_file` 表**存 key**（不是签名 URL——签名 URL 仅 5 分钟有效，存了也没用）
+3. 查询历史时由后端**实时重新签发**（`generatePresignedUrl` 是纯本地 HMAC 计算，无网络开销，无需判断是否过期）
+4. 前端详情页显示文件名，点击用该次签发的 URL 下载
+
+**注意**：`history_file.role` 语义为 **1输入 / 2输出**（原建表注释 0/1 与 Java 代码 1/2 冲突，已统一为后者）。
+
+**降低优先级的原因**：文件类工具是少数，且规划中工具将逐步改为**前端解析后只传文本**，届时该表可能废弃。
 
 ---
 

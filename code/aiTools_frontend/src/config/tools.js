@@ -208,6 +208,12 @@ image:  { unsupported: true, error: '该工具请使用文字输入' },
     },
     actionText: '开始转写', resultTitle: '转写结果', resultPlaceholder: '转写文字将在这里显示...',
     uploadTitle: '上传录音', uploadDesc: '支持 MP3、WAV、M4A 等格式 · 可多选',
+    // 转写引擎选择（可选；后端 asr.tencent.enabled=false 时只有 minimax 可用）
+    engineOptions: [
+      { value: 'minimax', label: 'MiniMax', desc: '通用转写，稳定' },
+      { value: 'tencent', label: '腾讯云', desc: '支持热词，术语更准' }
+    ],
+    defaultEngine: 'minimax',
     validateRules: {
       file:   { token: true, file: { type: 'batch', min: 1, error: '请先上传录音' } },
       text:   { unsupported: true, error: '该工具请上传录音' },

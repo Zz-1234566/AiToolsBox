@@ -1,6 +1,7 @@
 package com.example.aitools.service;
 
 import com.example.aitools.ai.MinimaxClient;
+import com.example.aitools.ai.TencentAsrClient;
 import com.example.aitools.config.AsrConfig;
 import com.example.aitools.dto.TranscribeResponse;
 import com.example.aitools.common.ResultCode;
@@ -19,12 +20,18 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 录音转文本服务（MiniMax M3 多模态 audio input）
+ * 录音转文本服务（双引擎）
  * <p>
- * 流程：保存上传的音频到临时文件 -> ffmpeg 转码为 16k mono mp3 -> 调 MinimaxClient.chatAudio -> 删除临时文件
+ * 支持两个转写通道，由 {@link #transcribe(MultipartFile, String)} 的 engine 参数选择：
+ * <ul>
+ *   <li>{@link #ENGINE_MINIMAX}（默认）：ffmpeg 转码 16k mono mp3 -> {@code MinimaxClient.chatAudio}</li>
+ *   <li>{@link #ENGINE_TENCENT}：ffmpeg 转码 16k mono mp3 -> 腾讯云 {@code CreateRecTask} 录音文件识别</li>
+ * </ul>
+ * 两个通道共用同一套 ffmpeg 转码；任意格式音频（mp3/wav/m4a/flac/aac/ogg/opus 等）都会先转码，
+ * 统一为 16kHz 单声道 mp3。
  * <p>
- * 任意格式音频（mp3/wav/m4a/flac/aac/ogg/opus 等）都会先转码，
- * 统一为 MiniMax chatAudio 支持的 wav/mp3 格式。
+ * <b>兼容性</b>：{@code transcribe(MultipartFile)} 单参重载保留，engine 为空时回落到
+ * {@code asr.engine} 配置值（默认 minimax），旧调用方（工作流 NodeExecutor）行为不变。
  */
 @Slf4j
 @Service
@@ -35,9 +42,99 @@ public class TranscribeService {
             "请将这段录音准确转写为中文文字输出。不要修改用词、句序或标点；遇到说话人切换可用换行分隔。";
 
     private final MinimaxClient minimaxClient;
+    private final TencentAsrClient tencentAsrClient;
     private final AsrConfig asrConfig;
 
+    /** 引擎标识：MiniMax 多模态音频通道（默认，向后兼容） */
+    public static final String ENGINE_MINIMAX = "minimax";
+
+    /** 引擎标识：腾讯云录音文件识别通道 */
+    public static final String ENGINE_TENCENT = "tencent";
+
+    /**
+     * 录音转写（默认引擎）。
+     * <p>
+     * 保留此重载供工作流引擎 {@code NodeExecutor} 调用 —— 工作流节点暂不支持指定引擎，
+     * 统一走配置里的默认引擎，行为与接入腾讯云前完全一致。
+     */
     public TranscribeResponse transcribe(MultipartFile file) {
+        return transcribe(file, null);
+    }
+
+    /**
+     * 录音转写（可指定引擎）。
+     *
+     * @param file   音频文件
+     * @param engine 引擎标识（minimax / tencent）；为 null、空或无法识别时回落到默认引擎
+     */
+    public TranscribeResponse transcribe(MultipartFile file, String engine) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频文件为空");
+        }
+        String engineKey = resolveEngine(engine);
+        return ENGINE_TENCENT.equals(engineKey)
+                ? transcribeByTencent(file)
+                : transcribeByMinimax(file);
+    }
+
+    /**
+     * 解析引擎标识：入参优先，其次配置默认值，最后兜底 minimax。
+     * <p>
+     * 腾讯云通道未启用（enabled=false 或 appId 缺失）时也回落到 minimax，
+     * 避免前端传了 engine=tencent 但服务端未配置导致 500。
+     */
+    private String resolveEngine(String engine) {
+        String candidate = (engine == null || engine.isBlank())
+                ? asrConfig.getEngine() : engine.trim();
+        if (ENGINE_TENCENT.equalsIgnoreCase(candidate)) {
+            return tencentAsrClient.isEnabled() ? ENGINE_TENCENT : ENGINE_MINIMAX;
+        }
+        return ENGINE_MINIMAX;
+    }
+
+    /**
+     * 腾讯云通道：ffmpeg 转码为 16k mono mp3 -> CreateRecTask -> 轮询结果。
+     * <p>
+     * 与 MiniMax 通道共用同一套 ffmpeg 转码（16kHz 单声道 mp3），
+     * 腾讯云对该格式识别稳定，且体积远小于 wav（wav 更容易撞 5MB base64 上限）。
+     */
+    private TranscribeResponse transcribeByTencent(MultipartFile file) {
+        Path inputTemp = null;
+        Path outputTemp = null;
+        try {
+            String safeName = file.getOriginalFilename() == null ? "audio.bin" : file.getOriginalFilename();
+            inputTemp = Files.createTempFile("asr_in_", "_" + sanitizeName(safeName));
+            try (java.io.InputStream in = file.getInputStream()) {
+                Files.copy(in, inputTemp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            outputTemp = Files.createTempFile("asr_out_", ".mp3");
+            boolean transcodeOk = transcodeToMp3(inputTemp.toFile(), outputTemp.toFile());
+            Path audioPath = transcodeOk ? outputTemp : inputTemp;
+
+            byte[] audioBytes = Files.readAllBytes(audioPath);
+            String text = tencentAsrClient.transcribe(audioBytes, safeName);
+            if (text == null || text.isBlank()) {
+                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "未识别到语音内容，请检查录音后重试");
+            }
+            String formatted = text.trim();
+            log.info("[ASR-tencent] 转写成功 text-len={} transcode={}", formatted.length(), transcodeOk);
+            return new TranscribeResponse(formatted, null);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[ASR-tencent] 转写失败", e);
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
+        } finally {
+            if (inputTemp != null) try { Files.deleteIfExists(inputTemp); } catch (IOException ignored) {}
+            if (outputTemp != null) try { Files.deleteIfExists(outputTemp); } catch (IOException ignored) {}
+        }
+    }
+
+    /**
+     * MiniMax 通道（原有逻辑）：ffmpeg 转码为 16k mono mp3 -> MinimaxClient.chatAudio。
+     */
+    private TranscribeResponse transcribeByMinimax(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频文件为空");
         }

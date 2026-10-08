@@ -39,4 +39,14 @@ public class AsrConfig {
 
     /** 音频时长上限（秒），官方约束 500s，超出返回 400 */
     private int maxDurationSeconds = 500;
+
+    /**
+     * 默认转写引擎：minimax | tencent。
+     * <p>
+     * 取值缺省或无法识别时一律回落到 minimax，保证向后兼容
+     * （旧版前端不传 engine 参数时行为不变）。
+     * <p>
+     * 腾讯云通道的详细配置见 {@link TencentAsrConfig}。
+     */
+    private String engine = "minimax";
 }

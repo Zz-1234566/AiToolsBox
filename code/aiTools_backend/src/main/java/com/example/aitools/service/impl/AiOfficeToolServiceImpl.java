@@ -522,6 +522,12 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId,
             List<BatchFilePayload> files, String batchId) {
+        return audioTranscribeBatchStream(userId, files, batchId, null);
+    }
+
+    @Override
+    public com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId,
+            List<BatchFilePayload> files, String batchId, String engine) {
         if (files == null || files.isEmpty()) {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个录音文件");
         }
@@ -549,7 +555,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                 long start = System.currentTimeMillis();
                 try {
                     // 内存版 MultipartFile（BatchFilePayload 已支持，TranscribeService 用 getInputStream 读取）
-                    TranscribeResponse resp = transcribeService.transcribe(payload.toMultipartFile());
+                    // engine 透传：整批共用同一引擎（前端在批量上传时统一指定）
+                    TranscribeResponse resp = transcribeService.transcribe(payload.toMultipartFile(), engine);
                     String output = resp == null ? "" : resp.getText();
                     if (output == null || output.isBlank()) {
                         throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "未识别到语音内容");

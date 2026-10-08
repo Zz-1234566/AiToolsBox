@@ -42,14 +42,20 @@ public class TranscribeController {
     private final java.util.concurrent.ExecutorService batchExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor();
 
+    /**
+     * 单文件录音转写。
+     *
+     * @param engine 转写引擎：minimax | tencent。不传则用 {@code asr.engine} 配置值（默认 minimax）
+     */
     @PostMapping(value = "/transcribe", consumes = "multipart/form-data")
     public Result<TranscribeResponse> transcribe(@RequestParam("file") MultipartFile file,
+                                                @RequestParam(value = "engine", required = false) String engine,
                                                 HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
-        log.info("[meeting-minutes/transcribe] userId={} file={} size={}",
-                userId, file.getOriginalFilename(), file.getSize());
+        log.info("[meeting-minutes/transcribe] userId={} file={} size={} engine={}",
+                userId, file.getOriginalFilename(), file.getSize(), engine);
         try {
-            TranscribeResponse resp = transcribeService.transcribe(file);
+            TranscribeResponse resp = transcribeService.transcribe(file, engine);
             return Result.success("转写成功", resp);
         } catch (BusinessException e) {
             throw e;
@@ -65,6 +71,7 @@ public class TranscribeController {
      */
     @PostMapping(value = "/batch-transcribe", produces = "application/json;charset=UTF-8")
     public Result<BatchUploadResponse> batchTranscribe(@RequestParam("files") List<MultipartFile> files,
+                                                       @RequestParam(value = "engine", required = false) String engine,
                                                        HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         if (files == null || files.isEmpty()) {
@@ -80,7 +87,8 @@ public class TranscribeController {
         }
 
         String batchId = batchTaskService.createTask(userId, "audio-transcribe", files.size());
-        log.info("[B2-ASR] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
+        log.info("[B2-ASR] 创建批量任务 batchId={} userId={} fileCount={} engine={}",
+                batchId, userId, files.size(), engine);
 
         // 同步读到内存（避开 Tomcat 异步线程跑批时临时文件已被清理）
         List<BatchFilePayload> payloads;
@@ -105,7 +113,7 @@ public class TranscribeController {
         batchExecutor.execute(() -> {
             try {
                 batchTaskService.markRunning(batchId);
-                var result = aiOfficeToolService.audioTranscribeBatchStream(userId, payloads, batchId);
+                var result = aiOfficeToolService.audioTranscribeBatchStream(userId, payloads, batchId, engine);
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
                 log.info("[B2-ASR] 完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
             } catch (Exception e) {

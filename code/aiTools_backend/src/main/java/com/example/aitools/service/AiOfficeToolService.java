@@ -103,11 +103,20 @@ public interface AiOfficeToolService {
     com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files, String prompt, String batchId);
 
     /**
-     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + MiniMax ASR。
+     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + ASR（默认引擎）。
      * <p>串行处理，单文件失败不影响整体；单文件完成后立即 appendItem 入库（前端轮询可见），
      * 最后由 Controller 调 completeBatch 写终态。
      *
      * @param batchId 批量任务 ID（必传）
      */
     com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId, List<BatchFilePayload> files, String batchId);
+
+    /**
+     * 批量录音转写（B2）：可指定转写引擎。
+     *
+     * @param batchId 批量任务 ID（必传）
+     * @param engine  引擎标识（minimax / tencent）；空则走 asr.engine 默认值
+     */
+    com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId, List<BatchFilePayload> files,
+                                                                        String batchId, String engine);
 }

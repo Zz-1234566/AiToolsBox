@@ -91,6 +91,26 @@
           </view>
         </view>
       </view>
+
+      <!-- 录音转写：转写引擎选择（仅 audio-transcribe 且服务端已开启腾讯云通道时显示） -->
+      <view v-if="engineOptions.length > 0" class="section-title">
+        <text>转写引擎</text>
+      </view>
+      <view v-if="engineOptions.length > 0" class="engine-group">
+        <view
+          v-for="opt in engineOptions"
+          :key="opt.value"
+          class="engine-item"
+          :class="{ 'engine-item--active': asrEngine === opt.value }"
+          @click="asrEngine = opt.value"
+        >
+          <view class="engine-item__radio" :class="{ 'engine-item__radio--on': asrEngine === opt.value }" />
+          <view class="engine-item__body">
+            <text class="engine-item__label">{{ opt.label }}</text>
+            <text v-if="opt.desc" class="engine-item__desc">{{ opt.desc }}</text>
+          </view>
+        </view>
+      </view>
     </block>
 
     <!-- 文档重点提取 / AI 文件解读：上传 + 文件列表（共用） -->
@@ -562,7 +582,7 @@
 
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { BASE_URL } from '@/config/env'
 import { onLoad } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
@@ -1056,6 +1076,28 @@ const isPureConvert = computed(() => !!toolInfo.value.pureConvert)
 const pureConvertFile = ref(null)
 /** 多选文件列表（录音转写等多文件场景；单文件工具时长度为 1） */
 const pureConvertFiles = ref([])
+
+/**
+ * 录音转写引擎（minimax / tencent）。
+ * 仅 audio-transcribe 有意义；其他纯转换工具（doc-to-text）不发该参数。
+ */
+const asrEngine = ref('minimax')
+
+/**
+ * 引擎选项列表。
+ * 只有当 tools.js 配了 engineOptions，且当前确实是录音转写工具时才展示；
+ * 服务端 asr.tencent.enabled=false 时即使前端选了 tencent 也会自动回落到 minimax，
+ * 因此这里不做额外过滤，保持前端与后端职责分离。
+ */
+const engineOptions = computed(() => {
+  if (toolId.value !== 'audio-transcribe') return []
+  return toolInfo.value.engineOptions || []
+})
+
+// 切换工具时把引擎重置为该工具的默认值，避免上一个工具的选择残留
+watch(toolId, () => {
+  asrEngine.value = toolInfo.value.defaultEngine || 'minimax'
+}, { immediate: true })
 
 /** 选择文件（纯转换工具）：H5 用原生 input，App 用 chooseMessageFile */
 const onPureConvertPick = () => {
@@ -1731,8 +1773,11 @@ const handleGenerate = async () => {
       ? pureConvertFiles.value
       : uploadedFiles.value.slice()
     if (id === 'audio-transcribe' && audioBatchFiles.length > 0) {
-      // 录音转写：B2 多文件批量（轮询方案）
-      const { batchId, fileCount } = await audioBatchUpload({ files: audioBatchFiles })
+      // 录音转写：B2 多文件批量（轮询方案）；整批共用同一引擎
+      const { batchId, fileCount } = await audioBatchUpload({
+        files: audioBatchFiles,
+        fields: { engine: asrEngine.value }
+      })
       batchTotal.value = fileCount
       await pollBatchCompleted(batchId, 'audio-transcribe')
       return
@@ -1753,6 +1798,8 @@ const handleGenerate = async () => {
           url: BASE_URL + url,
           filePath: picked.path || picked.file,
           name: 'file',
+          // 录音转写透传引擎；文档转文本不带该字段
+          formData: id === 'audio-transcribe' ? { engine: asrEngine.value } : {},
           header: { Authorization: 'Bearer ' + (uni.getStorageSync('token') || '') },
           success: resolve,
           fail: reject
@@ -2892,6 +2939,53 @@ svg {
   flex-shrink: 0;
 }
 .file-item__close svg { width: 28rpx; height: 28rpx; fill: currentColor; }
+
+/* 转写引擎选择（录音转写） */
+.engine-group {
+  margin: 0 32rpx 24rpx;
+}
+.engine-item {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx;
+  background: var(--bg-card, #FFFFFF);
+  border: 2rpx solid transparent;
+  border-radius: 16rpx;
+  margin-bottom: 16rpx;
+  transition: border-color 0.2s, background 0.2s;
+}
+.engine-item--active {
+  border-color: var(--brand-primary, #3B82F6);
+  background: var(--brand-primary-light, #EFF6FF);
+}
+.engine-item__radio {
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  border: 3rpx solid var(--text-tertiary, #9CA3AF);
+  flex-shrink: 0;
+}
+.engine-item__radio--on {
+  border-color: var(--brand-primary, #3B82F6);
+  background: var(--brand-primary, #3B82F6);
+  box-shadow: inset 0 0 0 6rpx var(--bg-card, #FFFFFF);
+}
+.engine-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  flex: 1;
+}
+.engine-item__label {
+  font-size: 28rpx;
+  color: var(--text-primary, #1F2937);
+  font-weight: 500;
+}
+.engine-item__desc {
+  font-size: 22rpx;
+  color: var(--text-tertiary, #9CA3AF);
+}
 
 /* 提问卡（AI 文件解读） */
 .ask-card {
