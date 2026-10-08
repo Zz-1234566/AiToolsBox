@@ -51,13 +51,33 @@ public class HistoryServiceImpl implements HistoryService {
         if (inputContent != null || outputContent != null) {
             HistoryDetail detail = new HistoryDetail();
             detail.setHistoryId(history.getId());
-            detail.setInputContent(inputContent);
-            detail.setOutputContent(outputContent);
+            detail.setInputContent(truncate(inputContent, Constants.AI_INPUT_MAX_LENGTH));
+            detail.setOutputContent(truncate(outputContent, Constants.AI_OUTPUT_MAX_LENGTH));
             detail.setDr(Constants.DR_NORMAL);
             historyDetailMapper.insert(detail);
         }
 
         return history.getId();
+    }
+
+    /**
+     * 落库前截断，防止超长内容写满 MySQL {@code text} 的 65535 字节。
+     * <p>
+     * 阈值按 <b>UTF-16 长度</b>（{@code String.length()}）判定 ——
+     * emoji / 生僻字占 2 个 char，这样能保证实际 UTF-8 字节数不超过
+     * {@code 阈值 × 4}（{@code AI_OUTPUT_MAX_LENGTH=16000} → 最坏 64000 字节，安全）。
+     * <p>
+     * 切分点用 {@code offsetByCodePoints} 求出，保证不从代理对中间切开产生乱码。
+     */
+    private String truncate(String text, int max) {
+        if (text == null) {
+            return null;
+        }
+        if (text.length() <= max) {
+            return text;
+        }
+        int end = text.offsetByCodePoints(0, Math.min(max, text.codePointCount(0, text.length())));
+        return text.substring(0, end) + Constants.TRUNCATE_SUFFIX;
     }
 
     @Override
@@ -95,7 +115,7 @@ public class HistoryServiceImpl implements HistoryService {
 
         HistoryDetail detail = new HistoryDetail();
         detail.setHistoryId(history.getId());
-        detail.setInputContent(inputContent);
+        detail.setInputContent(truncate(inputContent, Constants.AI_INPUT_MAX_LENGTH));
         detail.setPromptFormat(promptFormat);
         detail.setPromptGenerate(promptGenerate);
         detail.setDr(Constants.DR_NORMAL);
@@ -113,11 +133,11 @@ public class HistoryServiceImpl implements HistoryService {
         history.setDuration(duration);
         historyMapper.updateById(history);
 
-        // 更新明细 outputContent
+        // 更新明细 outputContent（截断防 text 字段溢出）
         LambdaUpdateWrapper<HistoryDetail> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(HistoryDetail::getHistoryId, historyId)
                 .eq(HistoryDetail::getDr, Constants.DR_NORMAL)
-                .set(HistoryDetail::getOutputContent, outputContent);
+                .set(HistoryDetail::getOutputContent, truncate(outputContent, Constants.AI_OUTPUT_MAX_LENGTH));
         historyDetailMapper.update(null, wrapper);
     }
 

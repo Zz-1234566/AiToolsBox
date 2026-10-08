@@ -115,3 +115,21 @@ asr:
     max-audio-bytes: 3900000
     poll-interval-ms: 3000
     max-poll-times: 100
+
+# ── 文件压缩（超限时压到第三方接口限额内：图片降质缩放 / 音频降码率）──
+# 迭代写法参考 Stirling-PDF / Tiny / EasyImageCompressor：单调递减 + 明确下界，不递归
+compress:
+  enabled: ${COMPRESS_ENABLED:true}
+  max-iterations: 5
+  # 图片：质量 0.75(IJG 无损下限) 起，每轮 -0.05，下限 0.1
+  image-initial-quality: 0.75
+  image-quality-step: 0.05
+  image-min-quality: 0.1
+  # 图片：宽度 1600 起，每轮 ×0.8，下限 600
+  image-initial-max-width: 1600
+  image-width-decay: 0.8
+  image-min-width: 600
+  # 音频：逐档降码率（语音识别 16k~64k 足够）
+  audio-bitrates: 64k,48k,32k,24k,16k
+  audio-sample-rate: 16000
+  audio-channels: 1

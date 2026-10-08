@@ -91,6 +91,31 @@ public class Constants {
     /** 本地存储静态资源访问前缀 */
     public static final String LOCAL_STATIC_PATH_PREFIX = "/uploads/";
 
+    // ==================== AI 内容长度（喂模型 / 落库） ====================
+
+    /**
+     * 喂给大模型的输入文本上限（字符）。
+     * <p>
+     * 与 {@code DocumentParser.MAX_TEXT_LENGTH} 同值，此处作为全局常量，
+     * 供其他需要限制 prompt 长度的场景复用。
+     */
+    public static final int AI_INPUT_MAX_LENGTH = 20000;
+
+    /**
+     * AI 输出落库上限（<b>UTF-16 字符数</b>，非 codepoint 数）。
+     * <p>
+     * MySQL {@code text} 上限 65535 <b>字节</b>；UTF-8 中文 1 字符 = 3 字节、
+     * emoji = 4 字节，故按最坏情况（4 字节/字符）取 16000 留足余量，
+     * 避免超长输出写库时被截断或报错。
+     * <p>
+     * 截断实现见 {@code HistoryServiceImpl#truncate}，用
+     * {@code offsetByCodePoints} 保证不从代理对中间切开。
+     */
+    public static final int AI_OUTPUT_MAX_LENGTH = 16000;
+
+    /** 截断后追加的省略标记 */
+    public static final String TRUNCATE_SUFFIX = "\n\n【内容过长，已截断】";
+
     // ==================== 邮箱验证码（/api/mail/send-code） ====================
 
     /** 验证码场景：注册 */

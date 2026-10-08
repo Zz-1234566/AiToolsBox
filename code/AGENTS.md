@@ -161,7 +161,33 @@ C:\Users\34170\Desktop\智汇工具箱-工作文档\
 
 ---
 
-## 9. 改动流程
+## 9. 字符串截断规范
+
+任何「截断过长文本」的实现必须遵守（**已踩过坑**）：
+
+```java
+// ✅ 正确：先按 UTF-16 长度判定超限，再用 offsetByCodePoints 求安全的 char 下标
+if (text.length() > max) {
+    int end = text.offsetByCodePoints(0, Math.min(max, text.codePointCount(0, text.length())));
+    text = text.substring(0, end);
+}
+```
+
+| 坑 | 说明 |
+|---|---|
+| `length()` vs `codePointCount()` 口径不同 | emoji / 生僻字占 2 个 char。`length()=30000` 的 emoji 文本，第 20000 个 codepoint 的下标是 40000 → **越界抛 IndexOutOfBoundsException** |
+| 阈值语义要写清 | `AI_OUTPUT_MAX_LENGTH` 是 **UTF-16 长度**（防 MySQL `text` 65535 **字节**溢出），不是 codepoint 数 |
+
+**统一常量**（勿用魔法数字）：
+- `Constants.AI_INPUT_MAX_LENGTH` = 20000（喂模型）
+- `Constants.AI_OUTPUT_MAX_LENGTH` = 16000（落库）
+- `Constants.TRUNCATE_SUFFIX`（截断标记，必须追加，否则用户不知道内容不完整）
+
+**落库前必须截断**：`sys_aitools_history_detail` 的 `input_content` / `output_content` 是 MySQL `text`。
+
+---
+
+## 10. 改动流程
 
 1. 改前先说：本模块改动 / 影响范围 / 验证方式
 2. 用户确认后再动
@@ -171,7 +197,7 @@ C:\Users\34170\Desktop\智汇工具箱-工作文档\
 
 ---
 
-## 10. 沟通 / 反馈
+## 11. 沟通 / 反馈
 
 - 中文回复，技术术语保留英文
 - 简明扼要，不堆方案、不绕弯

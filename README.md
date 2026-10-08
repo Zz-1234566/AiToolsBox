@@ -264,9 +264,61 @@ ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
 | MiniMax | 1.6s | 纯文本，无时间戳 |
 
 > **腾讯云通道的 3.7MB 限制**：`CreateRecTask` 走 `SourceType=1` 内联 base64 时 `Data` 字段上限 5MB，
-> 反推原始音频上限约 3.7MB（`asr.tencent.max-audio-bytes`）。超限返回中文提示
-> 「音频文件过大…」，不会把腾讯云的英文错误码透给用户。
-> **待处理**：接入 `FileCompressService` 后改为自动压缩重试。
+> 反推原始音频上限约 3.7MB（`asr.tencent.max-audio-bytes`）。
+> 超限时由 `FileCompressService` 自动降码率压缩后重试（最多 5 轮），压不动才返回中文错误提示
+> 「音频文件过大…」，不会把腾讯云的英文错误码透给用户。详见下节。
+
+## 文件压缩组件（图片 / 音频）
+
+`FileCompressService` 把超过第三方接口字节限制的文件压到限额以内，供 AI 调用前使用。
+
+| 类别 | 扩展名 | 手段 | 迭代参数 |
+|---|---|---|---|
+| **图片** | jpg/jpeg/png/bmp/gif/webp | ImageIO 降质 + 等比缩放 | 质量 0.75 起每轮 −0.05（下限 0.1）；宽度 1600 起每轮 ×0.8（下限 600）|
+| **音频** | mp3/wav/m4a/aac/flac/ogg/amr/opus/wma | ffmpeg 降码率 | 逐档 `64k → 48k → 32k → 24k → 16k` |
+| **文档** | pdf/doc/docx/txt | **不压缩** | 走 `DocumentParser` 本地抽文字层，与第三方字节限制无关 |
+
+**失败语义**：迭代用尽仍超限 → 抛 `BusinessException`（`FILE_TOO_LARGE`），**不回退原文件**。
+理由：回退后调用方必然在第三方接口处再次失败，用户只会看到「未知错误」。
+
+**设计依据**（参考 GitHub 成熟实现）：
+- 迭代采用 `while` + 单调递减 + 明确下界，**不做递归**，结构上不可能死循环
+  （Stirling-PDF 93k★ / Tiny / EasyImageCompressor 均为此模式）
+- 图片质量下限 0.1 有依据：IJG 官方 FAQ 指出 Q10 以下接近「op art」，再降无意义
+- 音频**不引入** `ffmpeg-cli-wrapper`（其 `setTargetSize` 的音视频混合码率拆分源码中仍为 TODO，
+  且项目规范为「未经允许不引入新依赖」）
+
+**与 `transcodeToMp3` 的边界**（勿混淆）：
+
+| 组件 | 职责 | 触发 |
+|---|---|---|
+| `TranscribeService#transcodeToMp3` | **格式归一化** | 无条件执行，保证 AI 能识别 |
+| `FileCompressService` | **大小控制** | 仅超限时执行 |
+
+**实测数据**（2026-10-08）：
+
+| 场景 | 结果 |
+|---|---|
+| 9.67MB WAV → 限额 3.7MB | 转码归一化后 1.84MB 提交，识别成功（489 字）|
+| 10.9MB MP3 → 限额 3.7MB | 压缩组件 5 轮 `16k` 收敛到 2.73MB，识别成功 |
+| 7.33MB 噪声 PNG → 200KB | 4 轮收敛到 138KB（宽度 655px、质量 0.55）|
+| 30 分钟音频降码率对照 | 64k→13.7MB、32k→6.9MB、16k→3.4MB（末档刚好达标）|
+
+> ⚠️ Spring 上传限制 20MB 是第一道防线，组件只处理 20MB 以内但超出第三方限额的部分。
+> 38MB 音频会在上传阶段被拒（`文件大小不能超过20MB`），不会走到压缩环节。
+
+## AI 内容落库截断
+
+`HistoryServiceImpl` 在写库前对 `input_content` / `output_content` 截断，
+防止超长 AI 输出写满 MySQL `text` 的 65535 **字节**上限。
+
+| 常量 | 值 | 依据 |
+|---|---|---|
+| `Constants.AI_INPUT_MAX_LENGTH` | 20000 | 喂模型的 prompt 上限（`DocumentParser` 共用）|
+| `Constants.AI_OUTPUT_MAX_LENGTH` | 16000 | 落库上限。UTF-8 最坏 4 字节/字符（emoji），16000×4=64000 < 65535 |
+
+**实现要点**：阈值按 `String.length()`（UTF-16）判定，切分点用 `offsetByCodePoints` 求出，
+保证不从代理对中间切开产生乱码；超限追加「【内容过长，已截断】」标记。
 
 ## ⚠️ 已知问题 / 待处理
 

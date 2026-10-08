@@ -23,8 +23,8 @@ import java.util.Locale;
 @Component
 public class DocumentParser {
 
-    /** 提取文本上限（字符数），防止超长文档撑爆 prompt */
-    private static final int MAX_TEXT_LENGTH = 20000;
+    /** 提取文本上限（字符数），防止超长文档撑爆 prompt。取值统一由 Constants.AI_INPUT_MAX_LENGTH 管理 */
+    private static final int MAX_TEXT_LENGTH = com.example.aitools.common.Constants.AI_INPUT_MAX_LENGTH;
 
     /**
      * 解析上传文档为纯文本
@@ -56,10 +56,12 @@ public class DocumentParser {
             log.error("Document parse failed: {}", originalFilename, e);
             throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), ResultCode.DOC_PARSE_FAILED.getMessage());
         }
-        // 截断：按 codepoint 切，避免辅助平面字符（emoji / 罕用汉字）被切到一半
-        if (text.length() > MAX_TEXT_LENGTH) {
+        // 截断：按 codepoint 切，避免辅助平面字符（emoji / 罕用汉字）被切到一半。
+        // 注意 String.length() 是 UTF-16 长度（emoji 占 2 个 char），与 codepoint 计数口径不同，
+        // 必须先用 codePointCount 判断是否超限，再用 offsetByCodePoints 求 char 下标，
+        // 否则含 emoji 的文本会越界抛 IndexOutOfBoundsException。
+        if (text.codePointCount(0, text.length()) > MAX_TEXT_LENGTH) {
             int end = text.offsetByCodePoints(0, MAX_TEXT_LENGTH);
-            // offsetByCodePoints 在 end > length() 时抛 IndexOutOfBoundsException，这里安全（end ≤ length()）
             text = text.substring(0, end);
         }
         // 未提取到任何文字（如无文字层 PDF）：直接拒绝，避免把空内容喂给 AI 产生误导性输出

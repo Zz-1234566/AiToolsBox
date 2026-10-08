@@ -3,7 +3,9 @@ package com.example.aitools.ai;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.CosConfig;
 import com.example.aitools.config.TencentAsrConfig;
+import com.example.aitools.dto.CompressResult;
 import com.example.aitools.exception.BusinessException;
+import com.example.aitools.service.FileCompressService;
 import com.tencentcloudapi.asr.v20190614.AsrClient;
 import com.tencentcloudapi.asr.v20190614.models.CreateRecTaskRequest;
 import com.tencentcloudapi.asr.v20190614.models.CreateRecTaskResponse;
@@ -47,14 +49,15 @@ public class TencentAsrClient {
 
     private final TencentAsrConfig tencentAsrConfig;
     private final CosConfig cosConfig;
+    private final FileCompressService fileCompressService;
 
     /**
      * 提交录音文件识别任务并同步等待结果。
      *
-     * @param audioBytes 音频字节（调用方需保证 ≤ tencent.maxAudioBytes）
+     * @param audioBytes 音频字节
      * @param filename   原始文件名（仅用于日志排查）
      * @return 识别文本
-     * @throws BusinessException 未启用 / 缺 AppId / 超限 / 识别失败 / 超时
+     * @throws BusinessException 未启用 / 缺 AppId / 压缩后仍超限 / 识别失败 / 超时
      */
     public String transcribe(byte[] audioBytes, String filename) {
         if (!isEnabled()) {
@@ -63,13 +66,22 @@ public class TencentAsrClient {
         if (audioBytes == null || audioBytes.length == 0) {
             throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频内容为空");
         }
+        // 超限时先尝试自动压缩（5 轮降码率），压到限额内再提交；压不动才报错
         long max = tencentAsrConfig.getMaxAudioBytes() == null
                 ? 3900000L : tencentAsrConfig.getMaxAudioBytes();
         if (audioBytes.length > max) {
-            // 明确拦截：避免把腾讯云「Data length should in range」英文错误码透给用户
-            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
-                    "音频文件过大（当前 " + (audioBytes.length / 1024 / 1024) + "MB，上限 "
-                            + (max / 1024 / 1024) + "MB），请压缩或分段后再试");
+            log.info("[ASR-tencent] 音频超限，尝试自动压缩 before={}KB max={}KB",
+                    audioBytes.length / 1024, max / 1024);
+            CompressResult compressed = fileCompressService.compressBytes(audioBytes, filename, max);
+            if (compressed == null || compressed.getContent() == null
+                    || compressed.getContent().length > max) {
+                throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                        "音频文件过大且压缩失败，请分段后再试");
+            }
+            audioBytes = compressed.getContent();
+            filename = compressed.getFilename() == null ? filename : compressed.getFilename();
+            log.info("[ASR-tencent] 压缩后提交 size={}KB iterations={}",
+                    audioBytes.length / 1024, compressed.getIterations());
         }
 
         try {
@@ -154,11 +166,19 @@ public class TencentAsrClient {
                             taskId, filename, text.length());
                     return text;
                 }
-                String errMsg = data.getErrorMsg() == null ? "" : data.getErrorMsg();
+                // Status=2 + StatusStr=success + Result 为空 = 任务正常完成但未识别到语音
+                // （纯音乐/静音/无人声），这不是接口故障，需与「真失败」区分，
+                // 否则错误提示会把「没听清」误导成「服务异常」。
+                String errMsg = data.getErrorMsg() == null ? "" : data.getErrorMsg().trim();
+                if (errMsg.isEmpty() && "success".equalsIgnoreCase(data.getStatusStr())) {
+                    log.info("[ASR-tencent] 未识别到语音内容 taskId={} fileName={}（任务正常完成）",
+                            taskId, filename);
+                    throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(),
+                            "未识别到语音内容，请检查录音后重试");
+                }
                 log.warn("[ASR-tencent] 识别失败 taskId={} fileName={} err={} statusStr={}",
                         taskId, filename, errMsg, data.getStatusStr());
-                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(),
-                        errMsg.isEmpty() ? "语音识别失败，请稍后重试" : "语音识别失败，请稍后重试");
+                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
             }
         }
         log.error("[ASR-tencent] 轮询超时 taskId={} fileName={} maxTimes={}", taskId, filename, maxTimes);
