@@ -113,44 +113,6 @@
       </view>
     </block>
 
-    <!-- 文档重点提取 / AI 文件解读：上传 + 文件列表（共用） -->
-    <block v-if="toolId === 'doc-keypoint-extract' || toolId === 'ai-file-reader'">
-      <view class="upload-card" @click="onFilePickerClick">
-        <view class="upload-card__icon">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        </view>
-        <text class="upload-card__title">点击上传文件</text>
-        <text class="upload-card__desc">{{ toolId === 'ai-file-reader' ? '支持 PDF、Word、TXT、Excel 等格式' : '支持 PDF、Word、TXT 格式' }}</text>
-      </view>
-      <view v-if="uploadedFiles.length > 0" class="section-title">已上传文件（{{ uploadedFiles.length }}）</view>
-      <view v-if="uploadedFiles.length > 0" class="file-list">
-        <view v-for="(f, idx) in uploadedFiles" :key="idx" class="file-item" @click="onFileItemClick(f)">
-          <view class="file-item__icon">{{ (f.fileName || 'F').charAt(0).toUpperCase() }}</view>
-          <view class="file-item__body">
-            <text class="file-item__name">{{ f.fileName }}</text>
-            <text class="file-item__meta">{{ formatFileSize(f.size) }}<text v-if="f.url" class="file-item__dl"> · 点击下载</text></text>
-          </view>
-          <view class="file-item__close" @click.stop="removeFile(idx)">
-            <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
-          </view>
-        </view>
-      </view>
-      <!-- AI 文件解读：提问卡 + 推荐问题 -->
-      <block v-if="toolId === 'ai-file-reader'">
-        <view class="ask-card">
-          <label class="ask-card__label">向 AI 提问</label>
-          <textarea class="ask-card__textarea" v-model="askText" placeholder="例如：这份文件的主要内容是什么？" :maxlength="500"></textarea>
-          <text class="ask-card__counter">{{ askText.length }}/500</text>
-          <view class="suggest-row">
-            <text class="suggest-label">推荐问题</text>
-            <view class="pill-btn" @click="applySuggest('主要内容总结')">主要内容总结</view>
-            <view class="pill-btn" @click="applySuggest('核心观点是什么')">核心观点是什么</view>
-            <view class="pill-btn" @click="applySuggest('有哪些关键条款')">有哪些关键条款</view>
-            <view class="pill-btn" @click="applySuggest('请用简单语言解释')">请用简单语言解释</view>
-          </view>
-        </view>
-      </block>
-    </block>
 
     <!-- 周报生成：textarea + 3 列表 -->
     <block v-if="toolId === 'weekly-report'">
@@ -597,7 +559,7 @@ import ResultArea from '@/components/ResultArea.vue'
 import BatchFilePicker from '@/components/BatchFilePicker.vue'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
-import { uploadFileApi, batchUpload, ocrBatchUpload, aiFileReaderBatchUpload, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting } from '@/api/ai.js'
+import { uploadFileApi, batchUpload, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting } from '@/api/ai.js'
 import { historyListByToolApi } from '@/api/history.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
@@ -1817,40 +1779,8 @@ const handleGenerate = async () => {
       if (!text) uni.showToast({ title: '未提取到内容', icon: 'none' })
 
     } else if (id === 'doc-keypoint-extract') {
-      // 文档重点提取：B2 多文件批量（轮询方案）
-      // 流程：batchUpload 拿 batchId → 轮询 batchCompleted 拉增量 items → 渲染到 BatchResultCards
-      const docBatchFiles = uploadedFiles.value.slice()
-      const {batchId, fileCount} = await batchUpload({
-        files: docBatchFiles,
-        fields: {
-          promptFormat: promptFormatText.value,
-          promptGenerate: promptGenerateText.value,
-          promptId: selectedPromptId.value
-        }
-      })
-      batchTotal.value = fileCount
-      await pollBatchCompleted(batchId, 'doc-keypoint-extract')
-
-    } else if (id === 'ai-file-reader') {
-      // AI 文件解读：B2 多文件批量（轮询方案），后端只接单个 prompt 字符串
-      // 格式提示词 + 生成内容提示词拼接后传入；两者皆空时后端用默认解读提示词
-      const readerFiles = uploadedFiles.value.slice()
-      const promptParts = []
-      if (promptFormatText.value.trim()) promptParts.push(promptFormatText.value.trim())
-      if (promptGenerateText.value.trim()) promptParts.push(promptGenerateText.value.trim())
-      const {batchId, fileCount} = await aiFileReaderBatchUpload({
-        files: readerFiles,
-        fields: {
-          prompt: promptParts.join('\n\n')
-        }
-      })
-      batchTotal.value = fileCount
-      await pollBatchCompleted(batchId, 'ai-file-reader')
-    } else if (id === 'weekly-report') {
-      // 周报生成：SSE 流式输出（前置校验已统一处理）
-      const fullText = await runTextStream('/api/ai-office/weekly-report/stream')
-      resultContent.value = formatAiResult(fullText)
-
+      // 重点提取：纯文字输入 → SSE 流式（与会议纪要一致）
+      await runTextStream('/api/ai-office/document-summary/text-stream')
     } else if (id === 'meeting-minutes') {
       // 会议纪要：先调 decide-route 决定 SSE 流式还是 JSON 同步，再分支处理
       const route = await meetingMinutesDecideRoute({
@@ -1885,90 +1815,6 @@ const handleGenerate = async () => {
         // 注意：runTextStream 已经通过打字机把内容推到 meetingMarkdownText，不要再用 resultContent 覆盖
         await runTextStream('/api/ai-office/meeting-minutes/stream')
       }
-
-    } else if (id === 'ocr-recognize') {
-      // OCR 智能识别：上传图片/PDF → 腾讯云 OCR → 调 AI 整理（前置校验已统一处理）
-      // 兼容两种模式：老用户用单文件 filePath，新用户用组件多文件
-      const ocrFiles = uploadedFiles.value.slice()
-      const useBatch = ocrFiles.length > 0
-
-      if (useBatch) {
-        // 多文件模式：轮询方案
-        const {batchId, fileCount} = await ocrBatchUpload({
-          files: ocrFiles,
-          fields: {
-            promptFormat: promptFormatText.value,
-            promptGenerate: promptGenerateText.value
-          }
-        })
-        batchTotal.value = fileCount
-        await pollBatchCompleted(batchId, 'ocr-recognize')
-      } else {
-        // 单文件模式：保留原打字机效果
-        let fullText = ''
-        resultContent.value = ''
-        const charQueue = []
-        let streamDone = false
-        let typeTimer = null
-        await new Promise((resolve, reject) => {
-          const flushChar = () => {
-            if (charQueue.length > 0) resultContent.value += charQueue.shift()
-            if (streamDone && charQueue.length === 0) {
-              if (typeTimer) {
-                clearInterval(typeTimer);
-                typeTimer = null
-              }
-              resolve()
-            }
-          }
-          streamUpload({
-            url: '/api/ai-office/ocr-recognize/stream',
-            file: filePath.value,
-            fields: {
-              promptFormat: promptFormatText.value,
-              promptGenerate: promptGenerateText.value
-            },
-            onChunk: (chunk) => {
-              fullText += chunk
-              for (const ch of chunk) charQueue.push(ch)
-              if (!typeTimer) typeTimer = setInterval(flushChar, 20)
-            },
-            onDone: () => {
-              streamDone = true
-              if (charQueue.length === 0) {
-                if (typeTimer) {
-                  clearInterval(typeTimer);
-                  typeTimer = null
-                }
-                resolve()
-              }
-            },
-            onError: (err) => {
-              if (typeTimer) {
-                clearInterval(typeTimer);
-                typeTimer = null
-              }
-              uni.showModal({
-                title: '请求失败',
-                content: err && err.message ? err.message : '未知错误',
-                showCancel: false
-              })
-              reject(err)
-            }
-          })
-        })
-        resultContent.value = formatAiResult(fullText)
-      }
-    } else if (id === 'work-summary') {
-      // 工作总结：SSE 流式输出（前置校验已统一处理）
-      const fullText = await runTextStream('/api/ai-office/work-summary/stream')
-      // 流式完成后格式化（兜底分段，即使 AI 没换行也能分行展示）
-      resultContent.value = formatAiResult(fullText)
-    } else if (id === 'id-photo-bg-change' || id === 'portrait-bg-replace' || id === 'image-compress') {
-      // 去背景 + 图片压缩：后端暂未实现
-      uni.showToast({title: '该工具开发中', icon: 'none'})
-      return
-
     } else if (id === 'qr-code-gen' || id === 'password-gen' || id === 'todo-list') {
       // 二维码 + 密码生成 + 待办清单：后端暂未实现
       uni.showToast({title: '该工具开发中', icon: 'none'})

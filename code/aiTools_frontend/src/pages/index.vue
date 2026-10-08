@@ -109,7 +109,7 @@ const ICON_TYPE_MAP = {
   todo: 'dev', tomato: 'audio', password: 'dev'
 }
 const TAG_MAP = {
-  'AI办公助手': '办公', '图片创意工具': '图片', '效率小工具': '工具'
+  'AI办公助手': '办公'
 }
 
 const hotTools = ref(Object.keys(TOOLS).slice(0, 4).map(id => {

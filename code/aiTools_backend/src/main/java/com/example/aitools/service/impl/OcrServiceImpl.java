@@ -20,9 +20,12 @@ import java.util.Base64;
 import java.util.Locale;
 
 /**
- * 腾讯云 OCR 服务实现：图片 → 调 GeneralAccurateOCR → 返回原始文字
- * 注意：当前 SDK 版本（tencentcloud-sdk-java 3.1.270）只支持图片，不支持 PDF。
- * PDF 用户应改用 doc-keypoint-extract 工具（DocumentParser 用 PDFBox 解析数字 PDF 文本层）。
+ * 腾讯云 OCR 服务实现：图片 → 调 GeneralAccurateOCR → 返回原始文字。
+ * <p>
+ * <b>关于 PDF</b>：当前 SDK 版本（tencentcloud-sdk-java 3.1.270）的
+ * {@code GeneralAccurateOCR} 只吃图片，官方注释明确「支持 PNG、JPG、JPEG、BMP」，
+ * OCR 模块下也不存在任何 Pdf Request 类。因此扫描型 PDF 需由本类
+ * {@link #recognizePdfPages} 先用 PDFBox 渲染成图片，再逐页送 OCR。
  */
 @Slf4j
 @Service
@@ -31,6 +34,77 @@ public class OcrServiceImpl implements OcrService {
 
     private final OcrConfig ocrConfig;
     private final CosConfig cosConfig;
+
+    /**
+     * 扫描型 PDF → 逐页渲染成 PNG → 逐页 OCR → 按页拼接。
+     * <p>
+     * 部分页渲染或识别失败时只记日志跳过（参考 AiFileReaderServiceImpl 的既有约定），
+     * 但若<b>所有页都失败</b>则抛业务异常，避免把空结果当成「文档无内容」误导下游。
+     */
+    @Override
+    public String recognizePdfPages(MultipartFile pdfFile, int maxPages, float dpi) {
+        if (pdfFile == null || pdfFile.isEmpty()) {
+            throw new BusinessException(ResultCode.OCR_UNSUPPORTED.getCode(), "请上传 PDF 文件");
+        }
+        if (!Boolean.TRUE.equals(ocrConfig.getEnabled())) {
+            throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(), "识别能力未启用，请联系管理员");
+        }
+        org.apache.pdfbox.pdmodel.PDDocument document = null;
+        try {
+            document = org.apache.pdfbox.pdmodel.PDDocument.load(pdfFile.getInputStream());
+            int total = document.getNumberOfPages();
+            int limit = Math.min(total, Math.max(maxPages, 1));
+            org.apache.pdfbox.rendering.PDFRenderer renderer =
+                    new org.apache.pdfbox.rendering.PDFRenderer(document);
+
+            StringBuilder sb = new StringBuilder();
+            int okPages = 0;
+            for (int i = 0; i < limit; i++) {
+                try {
+                    java.awt.image.BufferedImage image = renderer.renderImageWithDPI(i, dpi);
+                    java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                    javax.imageio.ImageIO.write(image, "png", baos);
+                    String pageText = doOcr(baos.toByteArray(), "page-" + (i + 1) + ".png");
+                    if (pageText != null && !pageText.isBlank()) {
+                        if (sb.length() > 0) {
+                            sb.append("\n\n");
+                        }
+                        sb.append(pageText);
+                        okPages++;
+                    }
+                } catch (Exception e) {
+                    log.warn("[ocr-pdf] 第 {} 页识别失败，跳过", i + 1, e);
+                }
+            }
+            if (total > limit) {
+                log.info("[ocr-pdf] 仅处理前 {} / {} 页（受 maxPages 限制）", limit, total);
+            }
+            if (okPages == 0) {
+                log.warn("[ocr-pdf] 全部 {} 页均未识别出文字", limit);
+                return "";
+            }
+            log.info("[ocr-pdf] 完成 成功页={}/{} 字符数={}", okPages, limit, sb.length());
+            return sb.toString().trim();
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[ocr-pdf] PDF 解析失败", e);
+            throw new BusinessException(ResultCode.OCR_FAILED.getCode(), "PDF 解析失败，请确认文件未加密且未损坏");
+        } finally {
+            closeQuietly(document);
+        }
+    }
+
+    private static void closeQuietly(org.apache.pdfbox.pdmodel.PDDocument doc) {
+        if (doc == null) {
+            return;
+        }
+        try {
+            doc.close();
+        } catch (Exception ignored) {
+            // 关闭失败不影响主流程
+        }
+    }
 
     @Override
     public String recognizeText(MultipartFile file) {
@@ -62,9 +136,8 @@ public class OcrServiceImpl implements OcrService {
         if (!ocrConfig.getEnabled()) {
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(), "识别能力未启用，请联系管理员");
         }
-        if (originalFilename != null && originalFilename.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-            throw new BusinessException(ResultCode.OCR_UNSUPPORTED.getCode(), "仅支持图片（PNG/JPG/JPEG/BMP），PDF 请改用【文档重点提取】");
-        }
+        // 注意：这里不再拒绝 pdf —— 扫描件 PDF 由 recognizePdfPages 先渲染成图片再进本方法，
+        // 传进来的始终是图片字节。若外部直接传 PDF 字节，腾讯云会返回格式错误。
         try {
             // 密钥优先级：OcrConfig 自己的 > CosConfig 复用
             String secretId = ocrConfig.getSecretId() != null && !ocrConfig.getSecretId().isBlank()

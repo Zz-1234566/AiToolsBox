@@ -130,19 +130,54 @@ npm run dev:h5
 
 ## 已实现的 AI 工具
 
-工具以 `sys_aitools_tool` 为唯一数据源（`sort_no` 1-15 连续），前端 `src/config/tools.js` 与之 1:1 对应。
+工具以 `sys_aitools_tool` 为唯一数据源（`sort_no` 1-6 连续），前端 `src/config/tools.js` 与之 1:1 对应。
 
-| sort_no | 工具编码 | 名称 | 输入类型 | 输出类型 | 接口 |
-|---|---|---|---|---|---|
-| 1 | `work-summary` | 工作总结 | 文本/文件 | 文本 | `POST /api/ai-office/work-summary`（同步）<br>`POST /api/ai-office/work-summary/stream`（SSE） |
-| 2 | `doc-keypoint-extract` | 文档重点提取 | 文件 | 文本 | `POST /api/ai-office/document-summary/stream`（单文件 SSE）<br>`POST /api/ai-office/document-summary/batch-upload` + `GET /api/ai-office/batch/{batchId}/completed`（多文件批量轮询） |
-| 3 | `weekly-report` | 周报生成 | 文本/文件 | 文本 | `POST /api/ai-office/weekly-report/stream`（SSE） |
-| 4 | `meeting-minutes` | 会议纪要 | 文本 | 文本 | `POST /api/ai-office/meeting-minutes/decide-route`（路由决策）<br>`POST /api/ai-office/meeting-minutes/stream`（SSE）<br>`POST /api/ai-office/meeting-minutes/json`（结构化） |
-| 5 | `ocr-recognize` | 智能识别 | 图片 | 文本 | `POST /api/ai-office/ocr-recognize/stream`（单图 SSE）<br>`POST /api/ai-office/ocr-recognize/batch-upload`（多图批量） |
-| 6-12 | `id-photo-bg-change` / `portrait-bg-replace` / `image-compress` / `qr-code-gen` / `todo-list` / `pomodoro` / `password-gen` | 图片创意 & 效率小工具 | — | — | **已入库但后端接口未实现**，前端 `realized: false`，点击提示"开发中" |
-| 13 | `ai-file-reader` | AI 文件解读 | 图片/文档/文本 | 文本 | `POST /api/ai-office/ai-file-reader/batch-upload`（多模态解读任意文件） |
-| 14 | `audio-transcribe` | 录音转写 | 音频 | 文本 | `POST /api/ai-office/meeting-minutes/transcribe`（ffmpeg 转码 + **双引擎**）<br>`POST /api/ai-office/meeting-minutes/batch-transcribe`（多文件批量） |
-| 15 | `doc-to-text` | 文档转文本 | 文档 | 文本 | `POST /api/ai-office/doc-to-text`（纯解析，不调 AI） |
+工具划分为两层，**目的是让每个工具都能作为工作流的原子节点自由编排**：
+
+| 层 | 职责 | 工具 |
+|---|---|---|
+| **解析层** | 纯转换，**不调用 AI** | 文档提取、录音转写 |
+| **加工层** | 调文本大模型，**只吃文字** | 会议纪要、重点提取、工作总结、周报生成 |
+
+| sort_no | 工具编码 | 名称 | 层 | 输入 | 输出 | 接口 |
+|---|---|---|---|---|---|---|
+| 1 | `doc-to-text` | 文档提取 | 解析 | 文件 | 文本 | `POST /api/ai-office/doc-to-text`（纯解析） |
+| 2 | `audio-transcribe` | 录音转写 | 解析 | 音频 | 文本 | `POST /api/ai-office/meeting-minutes/transcribe`（ffmpeg + **双引擎**）<br>`POST /api/ai-office/meeting-minutes/batch-transcribe`（多文件批量） |
+| 3 | `meeting-minutes` | 会议纪要 | 加工 | 文本 | 文本 | `POST /api/ai-office/meeting-minutes/decide-route`（路由决策）<br>`POST /api/ai-office/meeting-minutes/stream`（SSE）<br>`POST /api/ai-office/meeting-minutes/json`（结构化） |
+| 4 | `doc-keypoint-extract` | 重点提取 | 加工 | 文本 | 文本 | `POST /api/ai-office/document-summary/text-stream`（SSE，纯文字） |
+| 5 | `work-summary` | 工作总结 | 加工 | 文本 | 文本 | `POST /api/ai-office/work-summary/stream`（SSE） |
+| 6 | `weekly-report` | 周报生成 | 加工 | 文本 | 文本 | `POST /api/ai-office/weekly-report/stream`（SSE） |
+
+### 文档提取的三条通道
+
+`doc-to-text` 按文件类型分流，**实际使用的通道**写入响应字段 `method`（`text-layer` / `ocr`）：
+
+| 输入 | 通道 | 实现 |
+|---|---|---|
+| `txt` | `text-layer` | 编码自适应（UTF-8 失败回退 GBK） |
+| `docx` | `text-layer` | POI 抽段落 + 表格 |
+| `pdf`（文本型） | `text-layer` | PDFBox 抽文字层 |
+| `pdf`（扫描件，**抽不到文字层**） | `ocr` | 逐页渲染成 PNG（150 DPI，最多 20 页）后送腾讯云 OCR |
+| `png` / `jpg` / `jpeg` / `bmp` / `gif` / `webp` | `ocr` | 直接送腾讯云 OCR |
+
+> **为什么扫描件要自己渲染**：腾讯云 `GeneralAccurateOCR` 官方注释明确「支持 PNG、JPG、JPEG、BMP」，
+> 其 OCR 模块下不存在任何 Pdf Request 类（已核实 SDK 3.1.270 全量 class），故扫描件 PDF 必须先转图片。
+> 20 页上限用于控制 OCR 按量计费成本。
+
+### 提示词设计
+
+加工层 4 个工具各 2 条系统提示词（`sys_ai_prompt` 的 `prompt_use` 区分），共 8 条：
+
+| `prompt_use` | 作用 | 特点 |
+|---|---|---|
+| `format` | 约束**输出结构** | 规定章节、编号、表格、字数上限 |
+| `generate` | 规定**角色与处理步骤** | 怎么读、提炼什么、什么不能编造 |
+
+两者分离，用户可只改其中一项。`getDefaultByUse` 按 `id` 升序取第一条作为该工具的系统默认，
+故迁移脚本统一「先逻辑删除旧的 → 再插入新的」（见 `sql/migrate_prompt_*.sql`）。
+
+**已删除的工具**（`dr=1`，保留可回滚）：`ocr-recognize`（能力并入 `doc-to-text`）、
+`ai-file-reader`（多模态与「加工层只吃文本」冲突）、图片创意 4 个与效率小工具 3 个（一直未实现）。
 
 > **说明**：`bank-receipt-recognize` / `invoice-recognize` **不是工具**，它们仅作为**系统提示词**存在于 `sys_ai_prompt` 表（供 OCR 场景复用），不在 `sys_aitools_tool` 登记。
 

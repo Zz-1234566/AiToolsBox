@@ -149,24 +149,6 @@ export const batchUpload = (options) => {
 }
 
 /**
- * 批量上传多图片/PDF（多文件 OCR 智能识别）— 第 1 步：创建任务拿 batchId
- * @param {Object} options { files, fields } - 见 batchCreate
- * @returns {Promise<{ batchId, fileCount }>}
- */
-export const ocrBatchUpload = (options) => {
-  return batchCreate('/api/ai-office/ocr-recognize/batch-upload', options.files, options.fields)
-}
-
-/**
- * 批量上传多文件（AI 文件解读）— 第 1 步：创建任务拿 batchId
- * @param {Object} options { files, fields } - fields 传 { prompt }
- * @returns {Promise<{ batchId, fileCount }>}
- */
-export const aiFileReaderBatchUpload = (options) => {
-  return batchCreate('/api/ai-office/ai-file-reader/batch-upload', options.files, options.fields)
-}
-
-/**
  * 批量上传多录音（多文件录音转写）— 第 1 步：创建任务拿 batchId
  * @param {Object} options { files, fields } — 录音文件数组；fields 可传 { engine }
  * @returns {Promise<{ batchId, fileCount }>}

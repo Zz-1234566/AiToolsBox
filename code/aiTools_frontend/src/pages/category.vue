@@ -128,7 +128,7 @@ const filteredTools = computed(() => {
     case 'dev':
       return []
     case 'office':
-      return allTools.value.filter(t => t.category === 'AI办公助手' || t.category === '效率小工具')
+      return allTools.value.filter(t => t.category === 'AI办公助手')
     case 'all':
     default:
       return allTools.value

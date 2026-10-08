@@ -87,9 +87,7 @@ const PAGE_SIZE = 10
 
 const tabs = [
   { label: '全部', value: 'all' },
-  { label: 'AI办公', value: 'AI办公助手' },
-  { label: '图片', value: '图片创意工具' },
-  { label: '效率', value: '效率小工具' }
+  { label: 'AI办公', value: 'AI办公助手' }
 ]
 
 const getToolName = (item) => item.toolName || item.aiCode || '未知工具'
@@ -121,22 +119,8 @@ const emoji = (item) => {
 
 /** 按天分组：今天 / 昨天 / 更早 */
 const groupedList = computed(() => {
-  const list = activeTab.value === 'all'
-    ? historyList.value
-    : historyList.value.filter(h => {
-        const c = h.aiCode || ''
-        if (activeTab.value === 'AI办公助手') {
-          return !c.includes('image') && !c.includes('photo') && !c.includes('portrait') && !c.includes('bg')
-            && !['todo-list', 'pomodoro', 'password-gen', 'qr-code-gen'].includes(c)
-        }
-        if (activeTab.value === '图片创意工具') {
-          return c.includes('image') || c.includes('photo') || c.includes('portrait') || c.includes('bg') || c === 'qr-code-gen'
-        }
-        if (activeTab.value === '效率小工具') {
-          return ['todo-list', 'pomodoro', 'password-gen'].includes(c)
-        }
-        return true
-      })
+  // 工具已收敛为单一分类（AI办公助手），tab 只剩「全部」，无需按类过滤
+  const list = historyList.value
 
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()

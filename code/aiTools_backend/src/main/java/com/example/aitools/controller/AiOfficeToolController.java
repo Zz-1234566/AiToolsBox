@@ -150,6 +150,23 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
     }
 
     /**
+     * 重点提取 · 纯文字输入（SSE 流式）。
+     * <p>
+     * 与 {@code /document-summary/stream}（文件输入）的区别：后者接收 MultipartFile 并在
+     * 服务端解析；本端点面向「加工层只吃文本」的定位，文字由前端直接传入。
+     * 文件请先用【文档提取】转为文字。
+     */
+    @PostMapping(value = "/document-summary/text-stream", produces = "text/event-stream;charset=UTF-8")
+    public SseEmitter documentSummaryTextStream(@RequestBody AiWorkSummaryDTO dto,
+                                                HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        return StreamHelper.stream(streamExecutor, emitter ->
+                aiOfficeToolService.aiDocKeypointTextStream(userId,
+                        dto.getContent(), dto.getPromptFormat(), dto.getPromptGenerate(), dto.getPromptId(),
+                        StreamHelper.asChunkConsumer(emitter)));
+    }
+
+    /**
      * OCR 智能识别（SSE 流式，multipart 上传图片）：腾讯云 OCR 提取文字 → 调 AI 整理成结构化结果
      */
     @PostMapping(value = "/ocr-recognize/stream", produces = "text/event-stream;charset=UTF-8")

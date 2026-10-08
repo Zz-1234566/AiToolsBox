@@ -94,6 +94,20 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     }
 
     /**
+     * 流式重点提取（SSE，纯文字输入）。
+     * <p>
+     * 与 {@link #aiDocumentSummaryStream}（文件输入）的区别：本方法不解析文件，
+     * 文字由前端传入 —— 对应「加工层只吃文本」的工具分层定位。
+     * 文件请先用【文档提取】工具转为文字。
+     */
+    @Override
+    public String aiDocKeypointTextStream(Long userId, String content, String promptFormat,
+                                          String promptGenerate, Long promptId, Consumer<String> onChunk) {
+        return aiTextProcessStream(userId, TOOL_CODE_DOC_SUMMARY, content,
+                promptFormat, promptGenerate, promptId, onChunk);
+    }
+
+    /**
      * 流式周报生成（SSE），内部统一管理历史记录
      */
     @Override
