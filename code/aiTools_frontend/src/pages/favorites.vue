@@ -1,241 +1,312 @@
 <template>
-  <view class="page-container">
-    <page-header title="我的收藏" showBack></page-header>
+  <view class="fav-page">
+    <!-- 头部 -->
+    <view class="fav-head">
+      <text class="fav-head__title">我的收藏</text>
+    </view>
 
-    <scroll-view scroll-y class="page-content">
-      <!-- 收藏列表 -->
-      <view v-if="favoriteList.length > 0" class="favorites-list">
-        <view
-          v-for="(item, index) in favoriteList"
-          :key="item.toolId"
-          class="favorite-card"
-          @click="goToTool(item)"
-          @longpress="handleLongPress(item, index)"
-        >
-          <view class="favorite-main">
-            <view class="favorite-icon">
-              <tool-icon :name="item.icon" size="48rpx"></tool-icon>
+    <!-- 工具 / 提示词 -->
+    <view class="fav-tabs">
+      <text class="fav-tab" :class="{ 'fav-tab--active': activeTab === 'tool' }" @click="switchTab('tool')">工具</text>
+      <text class="fav-tab" :class="{ 'fav-tab--active': activeTab === 'prompt' }" @click="switchTab('prompt')">提示词</text>
+    </view>
+
+    <!-- 搜索 -->
+    <view class="fav-search">
+      <text class="fav-search__icon">🔍</text>
+      <input class="fav-search__input" v-model="keyword" placeholder="搜索收藏的工具或提示词..." placeholder-class="fav-ph" />
+    </view>
+
+    <!-- 空态 -->
+    <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
+    <view v-else-if="filtered.length === 0" class="redesign-empty">
+      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">⭐</text></view>
+      <text class="redesign-empty__text">还没有收藏{{ activeTab === 'tool' ? '工具' : '提示词' }}</text>
+    </view>
+
+    <!-- 工具：2 列网格 -->
+    <block v-else-if="activeTab === 'tool'">
+      <view class="fav-section">收藏的工具 ({{ filtered.length }})</view>
+      <view class="fav-grid">
+        <view v-for="item in filtered" :key="item.id" class="fav-tool">
+          <view class="fav-tool__top">
+            <view class="tool-avatar" :class="'tool-avatar--' + iconType(item.toolCode)">
+              <text class="ta-emoji">{{ emoji(item.toolCode) }}</text>
             </view>
-            <view class="favorite-info">
-              <text class="favorite-name">{{ item.name }}</text>
-              <text class="favorite-desc">{{ item.desc }}</text>
-              <text class="favorite-time">{{ item.favoriteTime }}</text>
-            </view>
+            <text class="fav-tool__name">{{ item.toolName }}</text>
           </view>
-          <view class="favorite-action" @click.stop="removeFavorite(item, index)">
-            <svg class="delete-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M18 6L6 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M6 6L18 18" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+          <text class="fav-tool__desc">{{ item.toolDesc || '暂无描述' }}</text>
+          <view class="fav-tool__acts">
+            <view class="fav-tool__btn" @click="openTool(item)">
+              <text>去使用</text>
+            </view>
+            <view class="fav-tool__cancel" @click="onCancelTool(item)">
+              <text>取消收藏</text>
+            </view>
           </view>
         </view>
       </view>
+    </block>
 
-      <!-- 空状态 -->
-      <view v-else class="empty-state">
-        <view class="empty-icon">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M5 5C5 3.34315 6.34315 2 8 2H16C17.6569 2 19 3.34315 19 5V21L12 17.5L5 21V5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+    <!-- 提示词：横向卡片 -->
+    <block v-else>
+      <view class="fav-section">收藏的提示词 ({{ filtered.length }})</view>
+      <view v-for="item in filtered" :key="item.id" class="fav-prompt">
+        <view class="tool-avatar" :class="'tool-avatar--' + iconType(item.belongToolCode)">
+          <text class="ta-emoji">{{ emoji(item.belongToolCode) }}</text>
         </view>
-        <text class="empty-text">还没有收藏的工具</text>
-        <text class="empty-tip">去发现更多实用工具吧</text>
+        <view class="fav-prompt__body">
+          <text class="fav-prompt__name">{{ item.promptName || '未命名' }}</text>
+          <view class="fav-prompt__tags">
+            <text class="redesign-tag">{{ toolNameOf(item.belongToolCode) }}</text>
+            <text class="redesign-tag">{{ item.promptUse === 'format' ? '格式' : '生成内容' }}</text>
+          </view>
+        </view>
+        <view class="fav-prompt__cancel" @click="onCancel(item)">取消收藏</view>
       </view>
+    </block>
 
-      <view class="safe-area-bottom"></view>
-    </scroll-view>
+    <view class="safe-bottom"></view>
   </view>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import PageHeader from '@/components/PageHeader.vue'
-import ToolIcon from '@/components/ToolIcon.vue'
+import { favoriteListApi, favoriteRemoveApi } from '@/api/favorite'
 import { requireLogin } from '@/utils/auth'
 import { TOOLS } from '@/config/tools'
 
-// 收藏列表：toolId 与顶层配置一致，name/desc/icon 由配置派生
-const favIds = ['weekly-report', 'doc-keypoint-extract', 'id-photo-bg-change']
-const favoriteList = ref(favIds.map((id, i) => ({
-  toolId: id,
-  icon: TOOLS[id].icon,
-  name: TOOLS[id].name,
-  desc: TOOLS[id].desc || '',
-  favoriteTime: `2026-08-0${i + 1} 收藏`,
-  isCustom: false
-})))
+const loading = ref(false)
+const list = ref([])
+const activeTab = ref('tool')
+const keyword = ref('')
 
-const goToTool = (item) => {
-  if (item.isCustom) {
-    uni.navigateTo({ url: `/pages/tool-custom?id=${item.toolId}` })
-  } else {
-    uni.navigateTo({ url: `/pages/tool-common?id=${item.toolId}` })
+const filtered = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  if (!kw) return list.value
+  return list.value.filter(i =>
+    (i.toolName || '').toLowerCase().includes(kw) ||
+    (i.promptName || '').toLowerCase().includes(kw) ||
+    (i.promptText || '').toLowerCase().includes(kw)
+  )
+})
+
+const toolNameOf = (code) => {
+  const t = TOOLS[code]
+  return t ? t.name : (code || '')
+}
+
+const iconType = (code) => {
+  const c = code || ''
+  if (c.includes('ocr') || c.includes('recognize')) return 'ocr'
+  if (c.includes('image') || c.includes('photo') || c.includes('qr')) return 'image'
+  if (c.includes('doc') || c.includes('file-reader')) return 'doc'
+  return 'text'
+}
+const emoji = (code) => {
+  const m = { ocr: '🖨', image: '🖼️', doc: '📄', text: '📝' }
+  return m[iconType(code)] || '📝'
+}
+
+const fetchList = async () => {
+  loading.value = true
+  try {
+    const res = await favoriteListApi(activeTab.value)
+    list.value = res.data || []
+  } catch (e) {
+    list.value = []
+  } finally {
+    loading.value = false
   }
 }
 
-const removeFavorite = (item, index) => {
-  uni.showModal({
-    title: '取消收藏',
-    content: `确定不再收藏「${item.name}」吗？`,
-    confirmColor: '#211E1E',
-    success: (res) => {
-      if (res.confirm) {
-        favoriteList.value.splice(index, 1)
-        uni.showToast({ title: '已取消收藏', icon: 'none' })
-      }
-    }
-  })
-}
-
-const handleLongPress = (item, index) => {
-  removeFavorite(item, index)
+const switchTab = (t) => {
+  activeTab.value = t
+  fetchList()
 }
 
 onShow(() => {
   if (!requireLogin()) return
+  fetchList()
 })
+
+/** 去使用：跳转到该工具详情页 */
+const openTool = (item) => {
+  uni.navigateTo({ url: `/pages/tool-common?id=${item.toolCode}` })
+}
+
+/** 取消收藏工具 */
+const onCancelTool = (item) => {
+  uni.showModal({
+    title: '取消收藏',
+    content: `确定取消收藏「${item.toolName || '该工具'}」吗？`,
+    success: async (res) => {
+      if (!res.confirm) return
+      try {
+        await favoriteRemoveApi('tool', item.targetId)
+        list.value = list.value.filter(i => i.id !== item.id)
+        uni.showToast({ title: '已取消收藏', icon: 'none' })
+      } catch (e) { /* request.js 已统一提示 */ }
+    }
+  })
+}
+
+/** 取消收藏提示词 */
+const onCancel = (item) => {
+  uni.showModal({
+    title: '取消收藏',
+    content: `确定取消收藏「${item.promptName || '该提示词'}」吗？`,
+    success: async (res) => {
+      if (!res.confirm) return
+      try {
+        await favoriteRemoveApi('prompt', item.targetId)
+        list.value = list.value.filter(i => i.id !== item.id)
+        uni.showToast({ title: '已取消收藏', icon: 'none' })
+      } catch (e) {
+        // request.js 已统一提示
+      }
+    }
+  })
+}
 </script>
 
 <style lang="scss" scoped>
-.page-container {
+@import '@/styles/redesign.scss';
+
+.fav-page {
   min-height: 100vh;
-  background-color: $bg-color;
+  background: #F9FAFB;
+  padding-bottom: 40rpx;
+}
+
+.fav-head { padding: 32rpx 32rpx 16rpx; }
+.fav-head__title { font-size: 48rpx; font-weight: 700; color: #111827; }
+
+.fav-tabs {
   display: flex;
-  flex-direction: column;
+  gap: 40rpx;
+  padding: 0 32rpx;
+  border-bottom: 2rpx solid #F3F4F6;
+}
+.fav-tab { padding: 24rpx 0; font-size: 28rpx; color: #9CA3AF; position: relative; }
+.fav-tab--active { color: #111827; font-weight: 600; }
+.fav-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -2rpx;
+  height: 4rpx;
+  background: #3B82F6;
 }
 
-.page-content {
-  flex: 1;
-  padding: 0 $spacing-md;
-}
-
-.favorites-list {
-  padding-top: $spacing-md;
-}
-
-.favorite-card {
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  padding: $spacing-md;
-  margin-bottom: $spacing-md;
-  box-shadow: $shadow-card;
+.fav-search {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  transition: transform 0.15s ease;
+  gap: 16rpx;
+  margin: 24rpx 32rpx;
+  height: 80rpx;
+  padding: 0 24rpx;
+  background: #F3F4F6;
+  border-radius: 9999rpx;
+}
+.fav-search__icon { font-size: 30rpx; }
+.fav-search__input { flex: 1; font-size: 26rpx; background: transparent; }
+.fav-ph { color: #9CA3AF; }
 
-  &:active {
-    transform: scale(0.98);
-    background-color: $bg-gray;
-  }
-
-  .favorite-main {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    min-width: 0;
-  }
-
-  .favorite-icon {
-    width: 88rpx;
-    height: 88rpx;
-    border-radius: $radius-md;
-    background-color: $bg-gray;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: $spacing-md;
-    flex-shrink: 0;
-  }
-
-  .favorite-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .favorite-name {
-    font-size: $font-size-md;
-    font-weight: 600;
-    color: $text-primary;
-    margin-bottom: 6rpx;
-  }
-
-  .favorite-desc {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-    margin-bottom: 6rpx;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .favorite-time {
-    font-size: $font-size-xs;
-    color: $text-tertiary;
-  }
-
-  .favorite-action {
-    width: 64rpx;
-    height: 64rpx;
-    border-radius: $radius-pill;
-    background-color: $bg-gray;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-left: $spacing-md;
-    flex-shrink: 0;
-
-    &:active {
-      background-color: $divider-color;
-    }
-
-    .delete-icon {
-      width: 40rpx;
-      height: 40rpx;
-      color: $text-secondary;
-    }
-  }
+.fav-section {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #111827;
+  padding: 8rpx 32rpx 16rpx;
 }
 
-.empty-state {
-  flex: 1;
+.fav-grid {
   display: flex;
   flex-direction: column;
+  gap: 24rpx;
+  padding: 0 32rpx;
+}
+.fav-tool {
+  width: 100%;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
+  border: 2rpx solid #F3F4F6;
+  box-sizing: border-box;
+}
+.fav-tool__top { display: flex; gap: 20rpx; align-items: center; }
+.fav-tool__name {
+  flex: 1;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #111827;
+}
+.fav-tool__desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 24rpx;
+  color: #9CA3AF;
+  margin-top: 14rpx;
+  line-height: 1.5;
+}
+.fav-tool__acts {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+.fav-tool__btn,
+.fav-tool__cancel {
+  flex: 1;
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: $spacing-xl * 2 0;
-
-  .empty-icon {
-    width: 128rpx;
-    height: 128rpx;
-    border-radius: $radius-pill;
-    background-color: $bg-white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: $spacing-lg;
-    box-shadow: $shadow-card;
-
-    .icon {
-      width: 64rpx;
-      height: 64rpx;
-      color: $text-tertiary;
-    }
-  }
-
-  .empty-text {
-    font-size: $font-size-lg;
-    font-weight: 600;
-    color: $text-primary;
-    margin-bottom: $spacing-sm;
-  }
-
-  .empty-tip {
-    font-size: $font-size-sm;
-    color: $text-tertiary;
-  }
+  height: 64rpx;
+  border-radius: 9999rpx;
+  font-size: 24rpx;
+  white-space: nowrap;
 }
+.fav-tool__btn {
+  background: #EFF6FF;
+  color: #3B82F6;
+}
+.fav-tool__cancel {
+  background: #FEF2F2;
+  color: #EF4444;
+}
+
+.fav-prompt {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin: 0 32rpx 24rpx;
+  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
+}
+.fav-prompt__body { flex: 1; min-width: 0; }
+.fav-prompt__name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #111827;
+}
+.fav-prompt__tags { display: flex; gap: 12rpx; margin-top: 12rpx; }
+.fav-prompt__cancel {
+  height: 56rpx;
+  padding: 0 24rpx;
+  border-radius: 9999rpx;
+  background: #F3F4F6;
+  color: #4B5563;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.safe-bottom { height: 40rpx; }
 </style>

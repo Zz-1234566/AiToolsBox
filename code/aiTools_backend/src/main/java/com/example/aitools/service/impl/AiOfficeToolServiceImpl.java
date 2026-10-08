@@ -3,15 +3,19 @@ package com.example.aitools.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.ai.AiClient;
 import com.example.aitools.common.Constants;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.entity.AiPrompt;
 import com.example.aitools.entity.AiTool;
 import com.example.aitools.exception.BusinessException;
+import com.example.aitools.exception.ErrorFactory;
 import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.service.AiFileReaderService;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.service.BatchTaskService;
+import com.example.aitools.service.TranscribeService;
+import com.example.aitools.dto.TranscribeResponse;
 import com.example.aitools.service.HistoryService;
 import com.example.aitools.service.OcrService;
 import com.example.aitools.service.document.DocumentParser;
@@ -60,6 +64,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private final OcrService ocrService;
     private final BatchTaskService batchTaskService;
     private final AiFileReaderService aiFileReaderService;
+    private final TranscribeService transcribeService;
 
     /**
      * 工作总结
@@ -89,6 +94,20 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     }
 
     /**
+     * 流式重点提取（SSE，纯文字输入）。
+     * <p>
+     * 与 {@link #aiDocumentSummaryStream}（文件输入）的区别：本方法不解析文件，
+     * 文字由前端传入 —— 对应「加工层只吃文本」的工具分层定位。
+     * 文件请先用【文档提取】工具转为文字。
+     */
+    @Override
+    public String aiDocKeypointTextStream(Long userId, String content, String promptFormat,
+                                          String promptGenerate, Long promptId, Consumer<String> onChunk) {
+        return aiTextProcessStream(userId, TOOL_CODE_DOC_SUMMARY, content,
+                promptFormat, promptGenerate, promptId, onChunk);
+    }
+
+    /**
      * 流式周报生成（SSE），内部统一管理历史记录
      */
     @Override
@@ -111,8 +130,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiDocumentSummaryStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         // 文档拦截：空文件直接抛业务异常，不写历史
-        if (file == null || file.getSize() < 0 || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
-            throw new BusinessException("请上传文档文件");
+        if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+            throw ErrorFactory.of(ResultCode.DOC_EMPTY, "请上传文档文件");
         }
 
         long start = System.currentTimeMillis();
@@ -137,7 +156,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             historyService.completeHistory(historyId, sb.toString(), (int) duration);
             return sb.toString();
         } catch (Exception e) {
-            historyService.failHistory(historyId, e.getMessage());
+            historyService.failHistory(historyId, safeErrorMessage(e, "[doc-summary/text-stream] historyId=" + historyId));
             throw e;
         }
     }
@@ -149,8 +168,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         // 图片拦截
-        if (file == null || file.getSize() < 0 || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
-            throw new BusinessException("请上传图片文件");
+        if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+            throw ErrorFactory.of(ResultCode.OCR_UNSUPPORTED, "请上传图片文件");
         }
 
         long start = System.currentTimeMillis();
@@ -159,7 +178,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
         // 走通用方法：先 OCR 出文字作为 content，再走 aiTextProcessStream 流式输出
         String ocrText = ocrService.recognizeText(file);
         if (ocrText == null || ocrText.isBlank()) {
-            throw new BusinessException("OCR 未识别出文字，请换一张更清晰的图片");
+            throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
         }
         // 输入用 OCR 结果 + 文件名作为占位，便于历史回溯
         String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
@@ -176,10 +195,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     public com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files,
                                                 String promptFormat, String promptGenerate, Long promptId, String batchId) {
         if (files == null || files.isEmpty()) {
-            throw new BusinessException("请至少上传 1 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw new BusinessException("单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
         Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
@@ -208,7 +227,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                 try {
                     String ocrText = ocrService.recognizeBytes(payload.getContent(), fileName);
                     if (ocrText == null || ocrText.isBlank()) {
-                        throw new BusinessException("OCR 未识别出文字");
+                        throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
                     }
                     String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
                     aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId,
@@ -220,11 +239,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                     fileOk = true;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(fileOutput) + "\"}";
                 } catch (Exception e) {
-                    historyService.failHistory(historyId, e.getMessage());
-                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String errMsg = safeErrorMessage(e, "[B2-OCR] fileName=" + fileName);
+                    historyService.failHistory(historyId, errMsg);
                     failCount++;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
-                    log.warn("[B2-OCR] 单文件失败 userId={} fileName={} err={}", userId, fileName, errMsg);
                 }
             }
 
@@ -256,10 +274,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                                               String promptFormat, String promptGenerate, Long promptId,
                                               String batchId) {
         if (files == null || files.isEmpty()) {
-            throw new BusinessException("请至少上传 1 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw new BusinessException("单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
         Long toolId = findToolIdByCode(TOOL_CODE_DOC_SUMMARY);
@@ -300,11 +318,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                     fileOk = true;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(fileOutput) + "\"}";
                 } catch (Exception e) {
-                    historyService.failHistory(historyId, e.getMessage());
-                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String errMsg = safeErrorMessage(e, "[B2-DOC] fileName=" + fileName);
+                    historyService.failHistory(historyId, errMsg);
                     failCount++;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
-                    log.warn("[B2-DOC] 单文件失败 userId={} fileName={} err={}", userId, fileName, errMsg);
                 }
             }
 
@@ -332,6 +349,23 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     }
 
     /**
+     * 生成给用户看的失败原因：业务异常用其可读文案，其他异常统一通用文案。
+     * <p>原始异常（含路径/AI 接口细节）只写日志，不透给前端。
+     *
+     * @param e       捕获到的异常
+     * @param context 日志上下文（如 "[B2-OCR] fileName=xxx"）
+     */
+    private String safeErrorMessage(Exception e, String context) {
+        if (e instanceof BusinessException) {
+            // 业务异常本身就是面向用户的文案（如"暂不支持该文件类型…"）
+            log.warn("{} 业务失败: {}", context, e.getMessage());
+            return e.getMessage();
+        }
+        log.error("{} 处理异常", context, e);
+        return ResultCode.AI_TOOL_FAILED.getMessage();
+    }
+
+    /**
      * 通用文本处理（非流式）：凑齐 1 个 format + 1 个 generate 后调用 AI（不校验，由带 userId 的入口方法负责）
      */
     private String aiTextProcess(String toolCode, String content, String promptFormat, String promptGenerate, Long promptId) {
@@ -351,7 +385,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
         long start = System.currentTimeMillis();
         Long toolId = findToolIdByCode(toolCode);
-        Long historyId = historyService.createPendingHistory(userId, toolId, null, toolCode, content);
+        // 写历史时把用户当时 textarea 的原值也带过去（用于历史面板回填"原参数重发"）
+        Long historyId = historyService.createPendingHistory(userId, toolId, null, toolCode, content, promptFormat, promptGenerate);
         StringBuilder sb = new StringBuilder();
         try {
             String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, toolCode);
@@ -367,7 +402,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             historyService.completeHistory(historyId, sb.toString(), (int) duration);
             return sb.toString();
         } catch (Exception e) {
-            historyService.failHistory(historyId, e.getMessage());
+            historyService.failHistory(historyId, safeErrorMessage(e, "[doc-summary/text-stream] historyId=" + historyId));
             throw e;
         }
     }
@@ -397,7 +432,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private void validatePrompts(String formatPrompt, String generatePrompt) {
         if ((formatPrompt == null || formatPrompt.isBlank())
                 || (generatePrompt == null || generatePrompt.isBlank())) {
-            throw new BusinessException("缺少格式提示词或生成内容提示词");
+            throw ErrorFactory.of(ResultCode.PROMPT_INVALID, "缺少格式提示词或生成内容提示词");
         }
     }
 
@@ -443,10 +478,10 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     public com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files,
                                                                             String prompt, String batchId) {
         if (files == null || files.isEmpty()) {
-            throw new BusinessException("请至少上传 1 个文件");
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个文件");
         }
         if (files.size() > 10) {
-            throw new BusinessException("单次最多上传 10 个文件");
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
         int successCount = 0;
@@ -473,10 +508,9 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                     fileOk = true;
                     fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"ok\",\"costMs\":" + duration + ",\"output\":\"" + escapeJson(output) + "\"}";
                 } catch (Exception e) {
-                    String errMsg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                    String errMsg = safeErrorMessage(e, "[B2-FILE] fileName=" + fileName);
                     failCount++;
-                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
-                    log.warn("[B2-FILE] 单文件失败 userId={} fileName={} err={}", userId, fileName, errMsg);
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName) + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start) + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
                 }
             }
 
@@ -492,6 +526,81 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
         resultJson.append("]");
         log.info("[B2-FILE] 完成 userId={} batchId={} success={} fail={}", userId, batchId, successCount, failCount);
+        return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, files.size(), resultJson.toString(), "");
+    }
+
+    /**
+     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + MiniMax ASR。
+     * <p>串行执行（避免触发上游限流）；单文件失败不影响整体；每完成一个立即 appendItem。
+     */
+    @Override
+    public com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId,
+            List<BatchFilePayload> files, String batchId) {
+        return audioTranscribeBatchStream(userId, files, batchId, null);
+    }
+
+    @Override
+    public com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId,
+            List<BatchFilePayload> files, String batchId, String engine) {
+        if (files == null || files.isEmpty()) {
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请至少上传 1 个录音文件");
+        }
+        if (files.size() > Constants.BATCH_MAX_FILE_COUNT) {
+            throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 " + Constants.BATCH_MAX_FILE_COUNT + " 个文件");
+        }
+
+        int successCount = 0;
+        int failCount = 0;
+        StringBuilder resultJson = new StringBuilder("[");
+        log.info("[B2-ASR] 开始 userId={} fileCount={} batchId={}", userId, files.size(), batchId);
+
+        for (int i = 0; i < files.size(); i++) {
+            BatchFilePayload payload = files.get(i);
+            String fileName = (payload != null && payload.getOriginalFilename() != null)
+                    ? payload.getOriginalFilename() : "未命名-" + (i + 1);
+            String fileResultJson;
+            boolean fileOk = false;
+
+            if (payload == null || payload.getContent() == null || payload.getContent().length == 0) {
+                failCount++;
+                fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName)
+                        + "\",\"status\":\"failed\",\"errorMsg\":\"录音文件为空\",\"output\":\"\"}";
+            } else {
+                long start = System.currentTimeMillis();
+                try {
+                    // 内存版 MultipartFile（BatchFilePayload 已支持，TranscribeService 用 getInputStream 读取）
+                    // engine 透传：整批共用同一引擎（前端在批量上传时统一指定）
+                    TranscribeResponse resp = transcribeService.transcribe(payload.toMultipartFile(), engine);
+                    String output = resp == null ? "" : resp.getText();
+                    if (output == null || output.isBlank()) {
+                        throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "未识别到语音内容");
+                    }
+                    successCount++;
+                    fileOk = true;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName)
+                            + "\",\"status\":\"ok\",\"costMs\":" + (System.currentTimeMillis() - start)
+                            + ",\"output\":\"" + escapeJson(output) + "\"}";
+                } catch (Exception e) {
+                    String errMsg = safeErrorMessage(e, "[B2-ASR] fileName=" + fileName);
+                    failCount++;
+                    fileResultJson = "{\"index\":" + (i + 1) + ",\"fileName\":\"" + escapeJson(fileName)
+                            + "\",\"status\":\"failed\",\"costMs\":" + (System.currentTimeMillis() - start)
+                            + ",\"errorMsg\":\"" + escapeJson(errMsg) + "\",\"output\":\"\"}";
+                }
+            }
+
+            if (i > 0) resultJson.append(",");
+            resultJson.append(fileResultJson);
+
+            try {
+                batchTaskService.appendItem(batchId, fileResultJson, fileOk);
+            } catch (Exception e) {
+                log.error("[B2-ASR] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
+            }
+        }
+
+        resultJson.append("]");
+        log.info("[B2-ASR] 完成 userId={} batchId={} success={} fail={}", userId, batchId, successCount, failCount);
         return new com.example.aitools.dto.BatchProcessResult(successCount, failCount, files.size(), resultJson.toString(), "");
     }
 }

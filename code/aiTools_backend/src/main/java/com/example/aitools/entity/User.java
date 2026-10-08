@@ -23,6 +23,9 @@ public class User implements Serializable {
 
     private String avatar;
 
+    /** 用户角色：admin管理员 / user普通用户 */
+    private String role;
+
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

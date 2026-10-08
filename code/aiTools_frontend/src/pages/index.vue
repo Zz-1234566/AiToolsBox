@@ -1,284 +1,390 @@
 <template>
-  <view class="page-container animate-fade-in">
-    <page-header title="智汇工具箱" :showBack="false"></page-header>
-    
-    <scroll-view scroll-y class="page-content">
-      <!-- 顶部标语 -->
-      <view class="hero-section animate-fade-in-up">
-        <text class="hero-title">让 AI 帮你做小事</text>
-        <text class="hero-subtitle">文档提取、周报生成、图片处理，一个 App 全搞定</text>
-      </view>
-      
-      <!-- 搜索入口 -->
-      <view class="search-card" @click="goToSearch">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M21 21L16.65 16.65" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <view class="page">
+    <!-- Hero 区（设计稿：渐变 + 立方体 + 搜索框） -->
+    <section class="hero">
+      <view class="hero__decoration">
+        <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+          <defs>
+            <linearGradient id="cubeGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#A5B4FC" />
+              <stop offset="100%" stop-color="#6366F1" />
+            </linearGradient>
+          </defs>
+          <path d="M60 10 L100 30 L60 50 L20 30 Z" fill="url(#cubeGrad)" />
+          <path d="M20 30 L20 70 L60 90 L60 50 Z" fill="#818CF8" opacity="0.7" />
+          <path d="M100 30 L100 70 L60 90 L60 50 Z" fill="#C7D2FE" opacity="0.9" />
+          <g transform="translate(85, 15)">
+            <path d="M0 0 L8 4 L0 8 Z" fill="#FCD34D" />
+            <path d="M0 0 L-4 6 L4 10 L8 4" fill="#FDE68A" opacity="0.8" />
+          </g>
+          <g transform="translate(15, 80)">
+            <circle r="2" fill="#F472B6" />
+          </g>
+          <g transform="translate(100, 90)">
+            <circle r="2.5" fill="#60A5FA" />
+          </g>
         </svg>
-        <text class="search-text">搜索工具...</text>
       </view>
-      
-      <!-- 常用工具 -->
-      <view class="section">
-        <view class="section-header">
-          <text class="section-title">常用工具</text>
-        </view>
-        <view class="quick-tools">
-          <view 
-            v-for="tool in quickTools" 
-            :key="tool.toolId"
-            class="quick-tool-item press-scale"
-            @click="goToTool(tool)"
-          >
-            <view class="quick-icon">
-              <tool-icon :name="tool.icon" size="48rpx"></tool-icon>
+      <text class="hero__title">AI Tools Box</text>
+      <text class="hero__subtitle">你的 AI 工具箱</text>
+      <view class="hero__search" @click="goToSearch">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 001.48-5.34c-.47-2.78-2.79-5-5.59-5.34a6.505 6.505 0 00-7.27 7.27c.34 2.8 2.56 5.12 5.34 5.59a6.5 6.5 0 005.34-1.48l.27.28v.79l4.25 4.25c.41.41 1.08.41 1.49 0 .41-.41.41-1.08 0-1.49L15.5 14zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
+        </svg>
+        <text>搜索你需要的 AI 工具</text>
+      </view>
+    </section>
+
+    <!-- 热门工具（2 列卡） -->
+    <section class="section">
+      <view class="section__header">
+        <text class="section__title">热门工具</text>
+        <text class="section__more" @click="goToCategory">查看更多 ›</text>
+      </view>
+      <view class="tool-grid">
+        <view
+          v-for="tool in hotTools"
+          :key="tool.id"
+          class="tool-card"
+          @click="goToTool(tool.id)"
+        >
+          <view class="tool-icon" :class="['tool-icon--' + tool.iconType, 'tool-icon--lg']">
+            <svg v-if="tool.iconType === 'doc'" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13z" /></svg>
+            <svg v-else-if="tool.iconType === 'image'" viewBox="0 0 24 24"><path d="M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z" /></svg>
+            <svg v-else-if="tool.iconType === 'ocr'" viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4z" /></svg>
+            <svg v-else-if="tool.iconType === 'dev'" viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z" /></svg>
+          </view>
+          <text class="tool-card__name">{{ tool.name }}</text>
+          <text class="tool-card__desc">{{ tool.desc }}</text>
+          <view class="tool-card__meta">
+            <text class="tag">{{ tool.tag }}</text>
+            <view
+              class="icon-btn icon-btn--fav"
+              :class="{ 'is-active': tool.favored }"
+              @click.stop="toggleFav(tool.id)"
+            >
+              <svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.74l-7.19-.61L12 2 9.19 9.13 2 9.74l5.46 4.73L5.82 21z" /></svg>
             </view>
-            <text class="quick-name">{{ tool.name }}</text>
           </view>
         </view>
       </view>
-      
-      <!-- 分类工具 -->
-      <view class="section" v-for="category in categories" :key="category.code">
-        <view class="section-header">
-          <text class="section-title">{{ category.name }}</text>
-        </view>
-        <view class="tool-grid">
-          <tool-card
-            v-for="(tool, toolIndex) in category.tools"
-            :key="tool.toolId"
-            class="animate-stagger"
-            :style="{ animationDelay: toolIndex * 0.06 + 's' }"
-            :icon="tool.icon"
-            :name="tool.name"
-            :desc="tool.desc"
-            :toolId="tool.toolId"
-            :isCustom="tool.isCustom"
-            @click="goToTool"
-          ></tool-card>
-        </view>
+    </section>
+
+    <!-- 最近使用 -->
+    <section class="section" v-if="recentTools.length">
+      <view class="section__header">
+        <text class="section__title">最近使用</text>
+        <text class="section__more" @click="goToHistory">更多 ›</text>
       </view>
-      
-      <!-- 自定义工具入口 -->
-      <view class="custom-banner" @click="goToCustom">
-        <view class="custom-content">
-          <tool-icon name="custom" size="40rpx"></tool-icon>
-          <view class="custom-text">
-            <text class="custom-title">自定义工具</text>
-            <text class="custom-desc">设计你自己的 AI 提示词</text>
+      <view class="recent-list">
+        <view
+          v-for="tool in recentTools"
+          :key="tool.id"
+          class="recent-item"
+          @click="goToTool(tool.id)"
+        >
+          <view class="tool-icon" :class="['tool-icon--' + tool.iconType]">
+            <svg v-if="tool.iconType === 'image'" viewBox="0 0 24 24"><path d="M21 19V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2zM8.5 13.5l2.5 3 3.5-4.5 4.5 6H5l3.5-4.5z" /></svg>
+          </view>
+          <view class="recent-item__body">
+            <text class="recent-item__name">{{ tool.name }}</text>
+            <text class="recent-item__time">{{ tool.time }}</text>
           </view>
         </view>
-        <svg class="arrow-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M9 18L15 12L9 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
       </view>
-      
-      <view class="safe-area-bottom"></view>
-    </scroll-view>
+    </section>
   </view>
 </template>
 
 <script setup>
-import PageHeader from '@/components/PageHeader.vue'
-import ToolIcon from '@/components/ToolIcon.vue'
-import ToolCard from '@/components/ToolCard.vue'
-import { CATEGORIES, TOOLS, REALIZED_TOOLS } from '@/config/tools'
+import { ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
+import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 
-// 首页推荐：优先取已实现工具，不足时用分类首工具补齐
-const quickTools = (REALIZED_TOOLS.length >= 4
-  ? REALIZED_TOOLS.slice(0, 4)
-  : [...REALIZED_TOOLS, ...CATEGORIES.flatMap(c => c.tools)].slice(0, 4)
-).map(id => ({ toolId: id, icon: TOOLS[id].icon, name: TOOLS[id].name, desc: TOOLS[id].desc || '' }))
+// tools.js icon 字段 → 首页可渲染的 iconType（共用映射）
+const ICON_TYPE_MAP = {
+  summary: 'doc', weekly: 'text', meeting: 'text', ocr: 'ocr',
+  'bg-color': 'image', 'bg-image': 'image', compress: 'image', qr: 'dev',
+  todo: 'dev', tomato: 'audio', password: 'dev'
+}
+const TAG_MAP = {
+  'AI办公助手': '办公'
+}
 
-// 分类工具：由顶层配置派生
-const categories = CATEGORIES.map(cat => ({
-  code: cat.code,
-  name: cat.code,
-  tools: cat.tools.map(id => ({
-    toolId: id,
-    icon: TOOLS[id].icon,
-    name: TOOLS[id].name,
-    desc: TOOLS[id].desc || '',
-    isCustom: false
-  }))
+const hotTools = ref(Object.keys(TOOLS).slice(0, 4).map(id => {
+  const t = TOOLS[id] || {}
+  const iconType = ICON_TYPE_MAP[t.icon] || 'doc'
+  return {
+    id,
+    name: t.name || id,
+    desc: t.desc || '',
+    tag: TAG_MAP[t.category] || t.category || '工具',
+    iconType
+  }
+}))
+const recentTools = ref(Object.keys(TOOLS).slice(0, 1).map(id => {
+  const t = TOOLS[id] || {}
+  return {
+    id,
+    name: t.name || id,
+    time: '刚刚',
+    iconType: ICON_TYPE_MAP[t.icon] || 'doc'
+  }
 }))
 
-const goToSearch = () => {
+function goToSearch() {
   uni.navigateTo({ url: '/pages/search' })
 }
-
-const goToTool = (tool) => {
-  const data = typeof tool === 'object' && tool.toolId ? tool : {}
-  if (data.isCustom) {
-    uni.navigateTo({ url: `/pages/tool-custom?id=${data.toolId}` })
-  } else {
-    uni.navigateTo({ url: `/pages/tool-common?id=${data.toolId}` })
-  }
+function goToCategory() {
+  uni.navigateTo({ url: '/pages/category' })
+}
+function goToHistory() {
+  uni.navigateTo({ url: '/pages/history' })
+}
+function goToTool(id) {
+  uni.navigateTo({ url: `/pages/tool-common?id=${id}` })
+}
+function toggleFav(id) {
+  const t = hotTools.value.find(x => x.id === id)
+  if (!t) return
+  const next = !t.favored
+  // 乐观更新
+  t.favored = next
+  const call = next ? favoriteAddApi('tool', id) : favoriteRemoveApi('tool', id)
+  call.catch(() => {
+    t.favored = !next // 失败回滚
+  })
 }
 
-const goToCustom = () => {
-  uni.navigateTo({ url: '/pages/tool-custom' })
+/** 拉取当前用户已收藏的工具编码集合，回填 favored */
+async function loadFavorites() {
+  try {
+    const res = await favoriteListApi('tool')
+    const set = new Set((res.data || []).map(f => f.targetId))
+    hotTools.value.forEach(t => { t.favored = set.has(t.id) })
+  } catch (e) { /* 未登录 / 请求失败：保持默认未收藏 */ }
 }
+
+onShow(() => {
+  loadFavorites()
+})
 </script>
 
 <style lang="scss" scoped>
-.page-container {
+.page {
   min-height: 100vh;
-  background-color: $bg-color;
-  display: flex;
-  flex-direction: column;
+  background: var(--bg-page, #F9FAFB);
+  padding-bottom: 40rpx;
 }
 
-.page-content {
-  flex: 1;
-  padding: 0 $spacing-md;
+/* ===== Hero ===== */
+.hero {
+  position: relative;
+  background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
+  padding: 32rpx 32rpx 40rpx;
+  overflow: hidden;
 }
-
-.hero-section {
-  padding: $spacing-xl 0;
-  
-  .hero-title {
-    display: block;
-    font-size: $font-size-xxl;
-    font-weight: 700;
-    color: $text-primary;
-    margin-bottom: $spacing-sm;
-  }
-  
-  .hero-subtitle {
-    display: block;
-    font-size: $font-size-md;
-    color: $text-secondary;
-    line-height: 1.5;
-  }
+.hero__decoration {
+  position: absolute;
+  right: 16rpx;
+  top: 16rpx;
+  opacity: 0.95;
 }
-
-.search-card {
-  background-color: $bg-white;
-  border-radius: $radius-pill;
-  height: 96rpx;
+.hero__title {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: var(--text-primary, #111827);
+  margin-bottom: 4rpx;
+}
+.hero__subtitle {
+  display: block;
+  font-size: 28rpx;
+  color: var(--text-secondary, #4B5563);
+  margin-bottom: 20rpx;
+}
+.hero__search {
+  width: 100%;
+  height: 80rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: center;
-  padding: 0 $spacing-lg;
-  margin-bottom: $spacing-xl;
-  box-shadow: $shadow-card;
-  
+  padding: 0 24rpx;
+  gap: 16rpx;
+  color: var(--text-tertiary, #9CA3AF);
+  font-size: 28rpx;
+
   &:active {
-    background-color: $bg-gray;
+    opacity: 0.95;
   }
-  
-  .search-icon {
-    width: 40rpx;
-    height: 40rpx;
-    color: $text-tertiary;
-    margin-right: $spacing-sm;
-  }
-  
-  .search-text {
-    font-size: $font-size-md;
-    color: $text-tertiary;
+  svg {
+    width: 32rpx;
+    height: 32rpx;
+    fill: var(--text-tertiary, #9CA3AF);
   }
 }
 
+/* ===== 区块通用 ===== */
 .section {
-  margin-bottom: $spacing-xl;
-  
-  .section-header {
-    margin-bottom: $spacing-md;
-    
-    .section-title {
-      font-size: $font-size-lg;
-      font-weight: 600;
-      color: $text-primary;
-    }
-  }
+  padding: 20rpx 32rpx 0;
 }
-
-.quick-tools {
-  display: flex;
-  justify-content: space-between;
-  gap: $spacing-sm;
-  
-  .quick-tool-item {
-    flex: 1;
-    background-color: $bg-white;
-    border-radius: $radius-lg;
-    padding: $spacing-md $spacing-sm;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    box-shadow: $shadow-card;
-    
-    &:active {
-      background-color: $bg-gray;
-    }
-    
-    .quick-icon {
-      width: 88rpx;
-      height: 88rpx;
-      border-radius: $radius-pill;
-      background-color: $bg-gray;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: $spacing-sm;
-    }
-    
-    .quick-name {
-      font-size: $font-size-sm;
-      color: $text-primary;
-      text-align: center;
-    }
-  }
-}
-
-.tool-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: $spacing-md;
-}
-
-.custom-banner {
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  padding: $spacing-md;
+.section__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: $spacing-xl;
-  box-shadow: $shadow-card;
-  
+  margin-bottom: 16rpx;
+}
+.section__title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+.section__more {
+  font-size: 26rpx;
+  color: var(--brand-primary, #3B82F6);
+}
+
+/* ===== 工具卡 ===== */
+/* 用 flex 替代 grid：uni-app H5 下 grid-template-columns 的 fr 解析异常，
+   会把列撑到内容宽度导致横向溢出（实测 430px 视口下卡片宽 685px） */
+.tool-grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 -10rpx;
+}
+.tool-card {
+  width: calc(50% - 20rpx);
+  margin: 0 10rpx 20rpx;
+  box-sizing: border-box;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  padding: 24rpx;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+
   &:active {
-    background-color: $bg-gray;
+    opacity: 0.95;
   }
-  
-  .custom-content {
-    display: flex;
-    align-items: center;
-    gap: $spacing-md;
-    
-    .custom-text {
-      display: flex;
-      flex-direction: column;
-      
-      .custom-title {
-        font-size: $font-size-md;
-        font-weight: 600;
-        color: $text-primary;
-        margin-bottom: 4rpx;
-      }
-      
-      .custom-desc {
-        font-size: $font-size-sm;
-        color: $text-tertiary;
-      }
+}
+.tool-card__name {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  margin-top: 12rpx;
+  margin-bottom: 4rpx;
+}
+.tool-card__desc {
+  display: block;
+  font-size: 24rpx;
+  color: var(--text-secondary, #4B5563);
+  margin-bottom: 12rpx;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 32rpx;
+  padding: 0 12rpx;
+  background: var(--bg-page, #F9FAFB);
+  color: var(--text-secondary, #4B5563);
+  font-size: 20rpx;
+  border-radius: 8rpx;
+}
+.icon-btn {
+  width: 48rpx;
+  height: 48rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary, #9CA3AF);
+
+  &:active {
+    opacity: 0.7;
+  }
+  svg {
+    width: 32rpx;
+    height: 32rpx;
+    fill: currentColor;
+  }
+}
+.icon-btn--fav.is-active {
+  color: var(--brand-primary, #3B82F6);
+}
+
+/* ===== 工具图标方块 ===== */
+.tool-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+
+  svg {
+    width: 44rpx;
+    height: 44rpx;
+    fill: #FFFFFF;
+  }
+  &.tool-icon--doc { background: linear-gradient(135deg, #FCA5A5 0%, #EF4444 100%); }
+  &.tool-icon--image { background: linear-gradient(135deg, #C7D2FE 0%, #6366F1 100%); }
+  &.tool-icon--dev { background: linear-gradient(135deg, #6EE7B7 0%, #10B981 100%); }
+  &.tool-icon--audio { background: linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); }
+  &.tool-icon--video { background: linear-gradient(135deg, #F9A8D4 0%, #EC4899 100%); }
+  &.tool-icon--ocr { background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%); }
+  &.tool-icon--text { background: linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%); }
+  &.tool-icon--code { background: linear-gradient(135deg, #5EEAD4 0%, #14B8A6 100%); }
+
+  &.tool-icon--lg {
+    width: 96rpx;
+    height: 96rpx;
+    svg {
+      width: 52rpx;
+      height: 52rpx;
     }
   }
-  
-  .arrow-icon {
-    width: 40rpx;
-    height: 40rpx;
-    color: $text-tertiary;
+}
+
+/* ===== 最近使用 ===== */
+.recent-list {
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+  overflow: hidden;
+}
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 24rpx;
+
+  &:active {
+    opacity: 0.7;
   }
+}
+.recent-item__body {
+  flex: 1;
+}
+.recent-item__name {
+  display: block;
+  font-size: 30rpx;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+  margin-bottom: 4rpx;
+}
+.recent-item__time {
+  display: block;
+  font-size: 24rpx;
+  color: var(--text-tertiary, #9CA3AF);
 }
 </style>

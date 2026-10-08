@@ -47,7 +47,13 @@ public class LocalFileStorageService implements FileStorageService {
         String fileId = UUID.randomUUID().toString().replace("-", "");
         String storedName = fileId + ext;
         String prefixPath = FileStorageService.normalizePrefix(prefix);
-        Path dir = prefixPath.isEmpty() ? uploadDir : uploadDir.resolve(prefixPath);
+        Path dir = prefixPath.isEmpty() ? uploadDir : uploadDir.resolve(prefixPath).normalize();
+        // P2-S1（清单漏改，补回）: 深度防御 — 校验最终路径仍在 uploadDir 内，
+        // 阻止 prefix 含 "../" 跳出 uploads 目录（即便白名单被未来放宽也不会裸奔）
+        if (!dir.startsWith(uploadDir)) {
+            log.warn("Resolved path escapes uploadDir: prefix={}, dir={}", prefix, dir);
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "非法的存储路径");
+        }
         try {
             Files.createDirectories(dir);
             file.transferTo(dir.resolve(storedName));

@@ -1,51 +1,97 @@
 import { BASE_URL } from '../config/env'
+import { handleAuthError } from '../utils/auth-error-handler'
 /**
  * SSE 流式请求（XHR 实现，H5 + App vue 页面通用）
  * @param {Object} options
  *   url - 接口路径
  *   data - POST body 对象
- *   onChunk - 每收到一段内容回调 (text)
+ *   onChunk - 每收到一段普通文本内容回调 (text)
+ *   onMarker - 收到 B2 多文件批量 SSE 标记 `--- [任务已创建 batchId=xxx] ---` 时回调 (text)；
+ *              文本中括号[]里的内容是规约约定的语义标记（如任务开始/完成/失败）。
+ *              不传 onMarker 时，标记仍会通过 onChunk 透传，调用方按需识别。
  *   onDone - 流结束回调
  *   onError - 错误回调 (err)
  */
+// 规约：B2 多文件批量 SSE 标记格式 `--- [xxx] ---`（见 AGENTS.md 第 7 节）
+const SSE_MARKER_PATTERN = /^---\s*\[(.+?)\]\s*---$/
+
+/**
+ * SSE 事件解析器工厂（streamRequest / streamUpload 共用，消除重复解析逻辑）
+ *
+ * 为什么需要按「事件」而不是按「行」解析：
+ *   后端 Spring 的 SseEmitter 会把 chunk 里的换行转义成跨行 data: 帧
+ *   （SseEventBuilderImpl.data(Object,MediaType) 内执行 StringUtils.replace("\n", "\ndata:")）。
+ *   即 sendChunk("## 会议概要\n") 实际发出的字节是：
+ *       data:## 会议概要\n  data:\n  \n
+ *   旧实现逐行独立取值并丢弃空 data: 行，导致所有换行丢失 → markdown 无法渲染
+ *   （整篇被吞进一个 <h1>），而读历史因绕过 SSE 解析器所以正常。
+ *
+ * 现按 SSE 规范解析：事件以空行分隔，事件内多个 data: 行用 \n 拼回。
+ *
+ * @param {Object} options
+ *   onChunk  - 普通内容回调 (text)
+ *   onMarker - 批量任务标记 `--- [xxx] ---` 回调 (text)
+ *   onError  - 收到后端错误帧 `--- [ERROR] 文案 ---` 时回调 (err)
+ * @returns {{ feed: (fullText: String, done?: Boolean) => void }}
+ *   feed 增量喂入 xhr.responseText（内部按 lastIndex 只解析新增部分，不重复消费）
+ */
+const createSseEventParser = ({ onChunk, onMarker, onError } = {}) => {
+  let buffer = ''      // 已接收但尚未凑齐一个完整事件（未遇到空行）的文本
+  let lastIndex = 0    // xhr.responseText 已消费位置
+
+  // 解析单个完整事件块：事件内多行 data: 用 \n 拼回（SSE 规范）
+  const emitEvent = (eventText) => {
+    const dataLines = []
+    for (const rawLine of eventText.split(/\r?\n/)) {
+      if (rawLine.startsWith('data:')) {
+        // 只去掉 "data:" 后的一个前导空格；其余空格属内容，不可 trim
+        dataLines.push(rawLine.slice(5).replace(/^ /, ''))
+      }
+    }
+    if (dataLines.length === 0) return
+    const data = dataLines.join('\n')
+    if (!data || data === '[DONE]') return
+    // 优先识别 B2 多文件批量标记
+    const match = data.match(SSE_MARKER_PATTERN)
+    if (match) {
+      // 后端约定的错误帧：--- [ERROR:文案] ---
+      // 用于 SSE 中途失败时把「可读原因」带给前端（否则只表现为连接中断）
+      if (match[1].startsWith('ERROR:')) {
+        const msg = match[1].slice('ERROR:'.length).trim() || '处理失败，请稍后重试'
+        if (onError) onError(new Error(msg))
+        return
+      }
+      if (onMarker) onMarker(match[1])
+      // 不再透传到 onChunk，避免重复渲染
+    } else if (onChunk) {
+      onChunk(data)
+    }
+  }
+
+  return {
+    feed(fullText, done) {
+      buffer += fullText.slice(lastIndex)
+      lastIndex = fullText.length
+
+      // SSE 事件以空行（\n\n，兼容 \r\n\r\n）分隔
+      const events = buffer.split(/\r?\n\r?\n/)
+      buffer = events.pop() // 最后一段可能不完整，留待下次
+      for (const ev of events) emitEvent(ev)
+
+      // 流结束：残留 buffer 直接解析（最后一段可能没有空行结尾）
+      if (done) {
+        if (buffer) emitEvent(buffer)
+        buffer = ''
+      }
+    }
+  }
+}
+
 export const streamRequest = (options) => {
   const token = uni.getStorageSync('token')
 
-  // 增量解析状态：buffer 缓存未完整行，lastIndex 记录已消费位置
-  let buffer = ''
-  let lastIndex = 0
-
-  // 从 lastIndex 起解析新增内容，按 \n 逐行处理，最后一行可能不完整需缓存
-  const parseNewChunks = (fullText, done) => {
-    buffer += fullText.slice(lastIndex)
-    lastIndex = fullText.length
-
-    const lines = buffer.split('\n')
-    buffer = lines.pop() // 最后一行可能不完整，缓存
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('data:')) {
-        const data = trimmed.substring(5).trim()
-        if (data === '[DONE]') continue
-        if (data) {
-          if (options.onChunk) options.onChunk(data)
-        }
-      }
-    }
-
-    // 流结束时处理缓存中最后一段没有换行的 data:
-    if (done && buffer.trim()) {
-      const trimmed = buffer.trim()
-      if (trimmed.startsWith('data:')) {
-        const data = trimmed.substring(5).trim()
-        if (data && data !== '[DONE]') {
-          if (options.onChunk) options.onChunk(data)
-        }
-      }
-      buffer = ''
-    }
-  }
+  // 共用 SSE 事件解析器（增量解析 xhr.responseText，按事件拼回换行）
+  const parser = createSseEventParser({ onChunk: options.onChunk, onMarker: options.onMarker, onError: options.onError })
 
   const xhr = new XMLHttpRequest()
   xhr.open('POST', BASE_URL + options.url, true)
@@ -55,8 +101,8 @@ export const streamRequest = (options) => {
   }
 
   xhr.onprogress = () => {
-    // 每收到一段数据，解析 data: 行（增量，不重复处理）
-    parseNewChunks(xhr.responseText)
+    // 每收到一段数据，增量解析 SSE 事件（不重复处理）
+    parser.feed(xhr.responseText)
   }
 
   xhr.onload = () => {
@@ -64,20 +110,16 @@ export const streamRequest = (options) => {
     if (xhr.status >= 400) {
       // 401：token 过期，清除登录态并跳登录
       if (xhr.status === 401) {
-        uni.removeStorageSync('token')
-        uni.removeStorageSync('userInfo')
-        uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+        // P2-B11: 统一到 utils/auth-error-handler.js
+        handleAuthError('登录已过期，请重新登录')
         if (options.onError) options.onError(new Error('未登录'))
-        setTimeout(() => {
-          uni.reLaunch({ url: '/pages/login' })
-        }, 600)
         return
       }
       if (options.onError) options.onError(new Error('请求失败（' + xhr.status + '）'))
       return
     }
-    // 流结束，处理最后一段未换行的数据
-    parseNewChunks(xhr.responseText, true)
+    // 流结束，处理最后一段未以空行结尾的数据
+    parser.feed(xhr.responseText, true)
     if (options.onDone) options.onDone()
   }
 
@@ -104,38 +146,8 @@ export const streamRequest = (options) => {
 export const streamUpload = (options) => {
   const token = uni.getStorageSync('token')
 
-  // 与 streamRequest 相同的增量解析逻辑
-  let buffer = ''
-  let lastIndex = 0
-  const parseNewChunks = (fullText, done) => {
-    buffer += fullText.slice(lastIndex)
-    lastIndex = fullText.length
-
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (trimmed.startsWith('data:')) {
-        const data = trimmed.substring(5).trim()
-        if (data === '[DONE]') continue
-        if (data) {
-          if (options.onChunk) options.onChunk(data)
-        }
-      }
-    }
-
-    if (done && buffer.trim()) {
-      const trimmed = buffer.trim()
-      if (trimmed.startsWith('data:')) {
-        const data = trimmed.substring(5).trim()
-        if (data && data !== '[DONE]') {
-          if (options.onChunk) options.onChunk(data)
-        }
-      }
-      buffer = ''
-    }
-  }
+  // 共用 SSE 事件解析器（与 streamRequest 同一套，避免解析逻辑重复漂移）
+  const parser = createSseEventParser({ onChunk: options.onChunk, onMarker: options.onMarker, onError: options.onError })
 
   // 把文件统一转成可 append 进 FormData 的 Blob（H5 端）
   // - File/Blob 对象：直接使用，保留真实文件名
@@ -181,20 +193,16 @@ export const streamUpload = (options) => {
       }
 
       xhr.onprogress = () => {
-        // 上传完成后的响应流：每收到一段数据，增量解析 data: 行
-        parseNewChunks(xhr.responseText)
+        // 上传完成后的响应流：每收到一段数据，增量解析 SSE 事件
+        parser.feed(xhr.responseText)
       }
 
       xhr.onload = () => {
         if (xhr.status >= 400) {
           if (xhr.status === 401) {
-            uni.removeStorageSync('token')
-            uni.removeStorageSync('userInfo')
-            uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+            // P2-B11: 统一到 utils/auth-error-handler.js
+            handleAuthError('登录已过期，请重新登录')
             if (options.onError) options.onError(new Error('未登录'))
-            setTimeout(() => {
-              uni.reLaunch({ url: '/pages/login' })
-            }, 600)
             return
           }
           // 解析后端 message，弹窗给用户看
@@ -207,7 +215,7 @@ export const streamUpload = (options) => {
           if (options.onError) options.onError(new Error(msg))
           return
         }
-        parseNewChunks(xhr.responseText, true)
+        parser.feed(xhr.responseText, true)
         if (options.onDone) options.onDone()
       }
 

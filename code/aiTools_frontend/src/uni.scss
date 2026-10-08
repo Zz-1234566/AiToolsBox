@@ -1,45 +1,105 @@
-// 主题色 - 参考 OpenCode 黑白灰极简风格
-// 使用 CSS 自定义属性实现运行时主题切换，SCSS 编译后输出 var() 由浏览器解析
-$bg-color: var(--bg-color, #F8F8F8);
+// ============================================================
+// 设计 Token (来自 docs/ui-spec/01-设计系统.md)
+// ============================================================
+
+// 主题色 - 蓝紫
+$bg-color: var(--bg-color, #F9FAFB);
 $bg-white: var(--bg-white, #FFFFFF);
-$bg-gray: var(--bg-gray, #F5F5F5);
+$bg-gray: var(--bg-gray, #F3F4F6);
 
-$text-primary: var(--text-primary, #211E1E);
-$text-secondary: var(--text-secondary, #656363);
-$text-tertiary: var(--text-tertiary, #8E8B8B);
+// 品牌色（主蓝紫渐变）
+$brand-primary: var(--brand-primary, #3B82F6);
+$brand-primary-hover: var(--brand-primary-hover, #2563EB);
+$brand-primary-pressed: var(--brand-primary-pressed, #1D4ED8);
+$brand-primary-light: var(--brand-primary-light, #EFF6FF);
+$brand-secondary: var(--brand-secondary, #6366F1);
 
-$border-color: var(--border-color, #E8E8E8);
-$divider-color: var(--divider-color, #F0F0F0);
+// 工具图标渐变方块（7 种工具类型配色）
+$gradient-brand: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+$gradient-doc: var(--gradient-doc, linear-gradient(135deg, #FCA5A5 0%, #EF4444 100%));
+$gradient-image: var(--gradient-image, linear-gradient(135deg, #C7D2FE 0%, #6366F1 100%));
+$gradient-dev: var(--gradient-dev, linear-gradient(135deg, #6EE7B7 0%, #10B981 100%));
+$gradient-audio: var(--gradient-audio, linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%));
+$gradient-video: var(--gradient-video, linear-gradient(135deg, #F9A8D4 0%, #EC4899 100%));
+$gradient-ocr: var(--gradient-ocr, linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%));
+$gradient-text: var(--gradient-text, linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%));
+$gradient-code: var(--gradient-code, linear-gradient(135deg, #5EEAD4 0%, #14B8A6 100%));
+
+// 分类底色（首页快捷分类用）
+$cat-all: #EFF6FF;
+$cat-doc: #FEE2E2;
+$cat-image: #E0E7FF;
+$cat-audio: #FEF3C7;
+$cat-video: #FCE7F3;
+$cat-dev: #D1FAE5;
+$cat-office: #F3E8FF;
+
+$text-primary: var(--text-primary, #111827);
+$text-secondary: var(--text-secondary, #4B5563);
+$text-tertiary: var(--text-tertiary, #9CA3AF);
+$text-on-brand: #FFFFFF;
+
+$border-color: var(--border-color, #E5E7EB);
+$divider-color: var(--divider-color, #F3F4F6);
+$border-strong: #D1D5DB;
 
 // 语义色：成功 / 危险 / 警告（深浅色各一套，由 theme.js 切换）
-// 命名：<role>（主色，文字/边框）+ <role>_bg（浅色背景，状态徽标/容器底）
-// 注意：SCSS 变量名不要用连字符，dart-sass 会当数学运算
-$color_success: var(--color-success, #19be6b);
-$color_success_bg: var(--color-success-bg, #e8f7ed);
-$color_danger: var(--color-danger, #e54d42);
-$color_danger_bg: var(--color-danger-bg, #fff5f5);
-$color_danger_soft: var(--color-danger-soft, #fde9e9);
-$color_warning: var(--color-warning, #ff9900);
-$color_warning_bg: var(--color-warning-bg, #fff8e6);
-$color_warning_text: var(--color-warning-text, #8a6300);
+$color_success: var(--color-success, #10B981);
+$color_success_bg: var(--color-success-bg, #D1FAE5);
+$color_danger: var(--color-danger, #EF4444);
+$color_danger_bg: var(--color-danger-bg, #FEE2E2);
+$color_danger_soft: var(--color-danger-soft, #FEF2F2);
+$color_warning: var(--color-warning, #F59E0B);
+$color_warning_bg: var(--color-warning-bg, #FEF3C7);
+$color_warning_text: var(--color-warning-text, #92400E);
 
-$radius-sm: 12rpx;
-$radius-md: 16rpx;
-$radius-lg: 24rpx;
+// 圆角（按设计稿：8/12/16/9999 px = 16/24/32/9999 rpx）
+$radius-sm: 16rpx;     // 8px
+$radius-md: 24rpx;     // 12px
+$radius-lg: 32rpx;     // 16px
+$radius-xl: 24rpx;     // 12px (tool card)
 $radius-pill: 9999rpx;
 
-$shadow-card: 0 4rpx 24rpx rgba(0, 0, 0, 0.04);
+// 阴影（按设计稿分层）
+$shadow-card: 0 4rpx 24rpx rgba(0, 0, 0, 0.06);
 $shadow-float: 0 8rpx 32rpx rgba(0, 0, 0, 0.08);
+$shadow-sm: 0 2rpx 6rpx rgba(0, 0, 0, 0.06);
+$shadow-md: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
 
-$spacing-xs: 8rpx;
-$spacing-sm: 16rpx;
-$spacing-md: 24rpx;
-$spacing-lg: 32rpx;
-$spacing-xl: 48rpx;
+// 间距（按 8 倍数:4/8/12/16/20/24/32/40 px = 8/16/24/32/40/48/64/80 rpx）
+$spacing-1: 8rpx;    // 4px
+$spacing-2: 16rpx;   // 8px
+$spacing-3: 24rpx;   // 12px
+$spacing-4: 32rpx;   // 16px
+$spacing-5: 40rpx;   // 20px
+$spacing-6: 48rpx;   // 24px
+$spacing-8: 64rpx;   // 32px
+$spacing-10: 80rpx;  // 40px
 
+// 兼容旧名（避免大批量改页内样式）
+$spacing-xs: $spacing-2;
+$spacing-sm: $spacing-3;
+$spacing-md: $spacing-4;
+$spacing-lg: $spacing-5;
+$spacing-xl: $spacing-6;
+
+// 字号（保留原 rpx 命名）
 $font-size-xs: 22rpx;
-$font-size-sm: 24rpx;
-$font-size-md: 28rpx;
-$font-size-lg: 32rpx;
-$font-size-xl: 40rpx;
-$font-size-xxl: 48rpx;
+$font-size-sm: 26rpx;   // 13
+$font-size-md: 28rpx;   // 14
+$font-size-lg: 32rpx;   // 16
+$font-size-xl: 40rpx;   // 20
+$font-size-xxl: 48rpx;  // 24
+
+// 动效（按设计稿：100/200/250 ms）
+$motion-instant: 100ms;
+$motion-fast: 200ms;
+$motion-default: 250ms;
+$ease-out: cubic-bezier(0, 0, 0.2, 1);
+$ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+// ============================================================
+// 全局按下反馈:改为透明度（与 refactor 分支原则一致）
+// 禁止使用 transform: scale(0.97) + cubic-bezier 弹性曲线
+// ============================================================
+$press-opacity: 0.85;

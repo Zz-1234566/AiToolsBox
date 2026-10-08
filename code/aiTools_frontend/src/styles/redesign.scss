@@ -1,0 +1,78 @@
+/**
+ * 新设计稿共享样式（对应 design/mockup/css/redesign.css，1:1 复刻）
+ * 换算：设计稿基于 375px 宽，uni-app 用 rpx（750rpx = 屏宽）→ 1px = 2rpx
+ */
+
+/* ---------- 工具渐变头像 ---------- */
+.tool-avatar {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.tool-avatar--text  { background: linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%); }
+.tool-avatar--doc   { background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%); }
+.tool-avatar--audio { background: linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); }
+.tool-avatar--image { background: linear-gradient(135deg, #C7D2FE 0%, #6366F1 100%); }
+.tool-avatar--ocr   { background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%); }
+.tool-avatar--code  { background: linear-gradient(135deg, #5EEAD4 0%, #14B8A6 100%); }
+
+.ta-emoji { font-size: 40rpx; line-height: 1; }
+
+/* ---------- 主色按钮 ---------- */
+.btn-solid {
+  height: 96rpx;
+  border-radius: 9999rpx;
+  background: #3B82F6;
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+.btn-solid:active { background: #1D4ED8; }
+.btn-solid--disabled { opacity: 0.5; }
+
+/* ---------- 空态 ---------- */
+.redesign-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 64rpx 32rpx;
+}
+.redesign-empty__icon {
+  width: 192rpx; height: 192rpx;
+  border-radius: 24rpx;
+  background: #EFF6FF;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 32rpx;
+}
+.redesign-empty__emoji { font-size: 88rpx; }
+.redesign-empty__text {
+  font-size: 28rpx; color: #9CA3AF; margin-bottom: 32rpx;
+}
+
+/* ---------- 通用卡片 ---------- */
+.redesign-card {
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 32rpx;
+  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
+}
+
+/* ---------- 标签 ---------- */
+.redesign-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 44rpx;
+  padding: 0 16rpx;
+  border-radius: 8rpx;
+  background: #F9FAFB;
+  color: #4B5563;
+  font-size: 24rpx;
+}

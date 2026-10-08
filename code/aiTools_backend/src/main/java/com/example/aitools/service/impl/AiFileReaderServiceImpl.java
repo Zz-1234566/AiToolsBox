@@ -55,7 +55,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
     private String readPdfAsImages(BatchFilePayload payload, String prompt) {
         List<byte[]> pageImages = renderPdfToImages(payload.getContent());
         if (pageImages.isEmpty()) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "PDF 解析失败，未能提取到有效页面");
+            throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), "PDF 解析失败，未能提取到有效页面");
         }
         return minimaxClient.chatImages(prompt, pageImages);
     }
@@ -63,7 +63,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
     private String readDocument(BatchFilePayload payload, String prompt) {
         String text = documentParser.parse(payload.toMultipartFile());
         if (text == null || text.isBlank()) {
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "文档内容为空或解析失败");
+            throw new BusinessException(ResultCode.DOC_EMPTY.getCode(), "文档内容为空或解析失败");
         }
         String systemPrompt = "你是一个专业的文档解读助手。请根据提供的文档内容，用结构化的方式解读和总结。";
         return minimaxClient.chatText(systemPrompt, prompt + "\n\n文档内容：\n" + text);
@@ -74,6 +74,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
      */
     private List<byte[]> renderPdfToImages(byte[] pdfBytes) {
         List<byte[]> pages = new ArrayList<>();
+        int failedPages = 0;
         try (PDDocument document = PDDocument.load(pdfBytes)) {
             PDFRenderer renderer = new PDFRenderer(document);
             int pageCount = document.getNumberOfPages();
@@ -84,13 +85,21 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
                     ImageIO.write(image, "PNG", baos);
                     pages.add(baos.toByteArray());
                 } catch (Exception e) {
-                    log.warn("PDF 第 {} 页渲染失败，跳过", i + 1);
-                    // 单页失败不影响其他页
+                    failedPages++;
+                    // 传异常对象保留堆栈（原实现仅打页码，异常根因丢失）
+                    log.warn("PDF 第 {} 页渲染失败，跳过", i + 1, e);
+                }
+            }
+            // 部分页失败会导致 AI 基于残缺内容作答，必须让用户知晓，不能静默忽略
+            if (failedPages > 0) {
+                log.warn("PDF 渲染存在失败页 failed={} total={}", failedPages, pageCount);
+                if (pages.isEmpty()) {
+                    throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), ResultCode.DOC_PARSE_FAILED.getMessage());
                 }
             }
         } catch (IOException e) {
             log.error("PDF 加载失败", e);
-            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "PDF 加载失败：" + e.getMessage());
+            throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), ResultCode.DOC_PARSE_FAILED.getMessage());
         }
         return pages;
     }

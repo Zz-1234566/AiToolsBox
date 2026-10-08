@@ -1,54 +1,46 @@
 <template>
-  <view class="page-container">
-    <view class="login-card animate-fade-in-up">
-      <!-- 标题 -->
-      <view class="title-section">
-        <text class="title">智汇工具箱</text>
-        <text class="subtitle">登录你的账号</text>
-      </view>
+  <view class="auth-wrap">
+    <!-- 顶部 LOGO -->
+    <view class="auth-logo">AIT</view>
+    <text class="auth-brand">AI Tools Box</text>
 
-      <!-- 表单 -->
-      <view class="form-section">
-        <view class="input-group" :class="{ shake: shakeField === 'account' }">
-          <text class="input-label">账号</text>
-          <input
-            class="input-field"
-            type="text"
-            v-model="form.account"
-            placeholder="请输入账号（如 AIT12345678）"
-            placeholder-class="placeholder"
-          />
-        </view>
+    <text class="auth-title">欢迎回来</text>
+    <text class="auth-sub">一个入口，使用各种 AI 工具</text>
 
-        <view class="input-group" :class="{ shake: shakeField === 'password' }">
-          <text class="input-label">密码</text>
-          <input
-            class="input-field"
-            :type="showPassword ? 'text' : 'password'"
-            v-model="form.password"
-            placeholder="请输入密码"
-            placeholder-class="placeholder"
-          />
-        </view>
+    <!-- 账号 -->
+    <view class="auth-field" :class="{ shake: shakeField === 'account' }">
+      <text class="af-icon">👤</text>
+      <input
+        class="af-input"
+        type="text"
+        v-model="form.account"
+        placeholder="请输入手机号或账号"
+        placeholder-class="af-placeholder"
+      />
+    </view>
 
-        <button class="btn-primary press-scale" @click="handleLogin" :disabled="loading">
-          {{ loading ? '登录中...' : '登 录' }}
-        </button>
-      </view>
+    <!-- 密码 -->
+    <view class="auth-field" :class="{ shake: shakeField === 'password' }">
+      <text class="af-icon">🔒</text>
+      <input
+        class="af-input"
+        :type="showPassword ? 'text' : 'password'"
+        v-model="form.password"
+        placeholder="请输入密码"
+        placeholder-class="af-placeholder"
+      />
+      <text class="af-eye" @click="showPassword = !showPassword">{{ showPassword ? '🙈' : '👁' }}</text>
+    </view>
 
-      <!-- 底部链接 -->
-      <view class="footer-link">
-        <text class="link-text">还没有账号？</text>
-        <text class="link-action" @click="goToRegister">去注册</text>
-      </view>
-      <view class="footer-link">
-        <text class="link-text">忘记账号？</text>
-        <text class="link-action" @click="goToForget">找回账号</text>
-      </view>
-      <view class="footer-link">
-        <text class="link-text">忘记密码？</text>
-        <text class="link-action" @click="goToResetPassword">重置密码</text>
-      </view>
+    <view class="auth-forgot" @click="goToResetPassword">忘记密码？</view>
+
+    <view class="btn-solid" :class="{ 'btn-solid--disabled': loading }" @click="loading ? null : handleLogin()">
+      {{ loading ? '登录中...' : '登录' }}
+    </view>
+
+    <view class="auth-foot">
+      <text>还没有账号？</text>
+      <text class="auth-foot__link" @click="goToRegister">立即注册</text>
     </view>
   </view>
 </template>
@@ -144,131 +136,106 @@ const goToRegister = () => {
   uni.navigateTo({ url: '/pages/register' })
 }
 
-const goToForget = () => {
-  uni.navigateTo({ url: '/pages/forget' })
-}
-
 const goToResetPassword = () => {
   uni.navigateTo({ url: '/pages/reset-password' })
 }
 </script>
 
 <style lang="scss" scoped>
-.page-container {
+@import '@/styles/redesign.scss';
+
+.auth-wrap {
   min-height: 100vh;
-  background-color: $bg-color;
+  background: #fff;
+  padding: 0 40rpx 48rpx;
+  box-sizing: border-box;
+}
+
+.auth-logo {
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 40rpx;
+  background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
+  color: #fff;
+  font-size: 52rpx;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: $spacing-lg;
+  margin: 64rpx auto 24rpx;
 }
-
-.login-card {
-  width: 100%;
-  max-width: 680rpx;
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  padding: $spacing-xl $spacing-lg;
-  box-shadow: $shadow-float;
-}
-
-.title-section {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: $spacing-xl;
-
-  .title {
-    font-size: $font-size-xxl;
-    font-weight: 700;
-    color: $text-primary;
-    margin-bottom: $spacing-sm;
-  }
-
-  .subtitle {
-    font-size: $font-size-md;
-    color: $text-tertiary;
-  }
-}
-
-.form-section {
-  margin-bottom: $spacing-lg;
-}
-
-.input-group {
-  margin-bottom: $spacing-md;
-
-  .input-label {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-    margin-bottom: $spacing-xs;
-    display: block;
-  }
-
-  .input-field {
-    width: 100%;
-    height: 96rpx;
-    padding: 0 $spacing-md;
-    font-size: $font-size-md;
-    color: $text-primary;
-    background-color: $bg-gray;
-    border-radius: $radius-md;
-    border: 2rpx solid transparent;
-    transition: border-color 0.2s;
-
-    &:focus {
-      border-color: $text-primary;
-    }
-  }
-}
-
-.placeholder {
-  color: $text-tertiary;
-  font-size: $font-size-md;
-}
-
-.btn-primary {
-  width: 100%;
-  height: 96rpx;
-  line-height: 96rpx;
+.auth-brand {
+  display: block;
   text-align: center;
-  font-size: $font-size-lg;
+  font-size: 32rpx;
   font-weight: 600;
-  color: #FFFFFF;
-  background-color: $text-primary;
-  border-radius: $radius-md;
-  border: none;
-  margin-top: $spacing-md;
-  transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  &:active {
-    opacity: 0.8;
-  }
-
-  &[disabled] {
-    opacity: 0.5;
-  }
+  color: #111827;
+  margin-bottom: 72rpx;
 }
 
-.footer-link {
+.auth-title {
+  display: block;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8rpx;
+}
+.auth-sub {
+  display: block;
+  font-size: 28rpx;
+  color: #9CA3AF;
+  margin-bottom: 48rpx;
+}
+
+.auth-field {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  height: 112rpx;
+  padding: 0 32rpx;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 24rpx;
+  margin-bottom: 24rpx;
+  background: #fff;
+}
+.af-icon { font-size: 36rpx; flex-shrink: 0; }
+.af-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #111827;
+  background: transparent;
+}
+.af-placeholder { color: #D1D5DB; }
+.af-eye { font-size: 34rpx; flex-shrink: 0; }
+
+.auth-forgot {
+  text-align: right;
+  font-size: 26rpx;
+  color: #3B82F6;
+  margin-bottom: 40rpx;
+}
+
+.auth-foot {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 40rpx;
+  font-size: 26rpx;
+  color: #9CA3AF;
+}
+.auth-foot__link {
+  color: #3B82F6;
+  font-weight: 600;
+  margin-left: 6rpx;
+}
 
-  .link-text {
-    font-size: $font-size-sm;
-    color: $text-tertiary;
-  }
-
-  .link-action {
-    font-size: $font-size-sm;
-    color: $text-primary;
-    font-weight: 600;
-    margin-left: 8rpx;
-
-    &:active {
-      opacity: 0.7;
-    }
-  }
+/* 校验失败抖动 */
+.shake {
+  animation: shake-x 0.4s;
+}
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-12rpx); }
+  75% { transform: translateX(12rpx); }
 }
 </style>

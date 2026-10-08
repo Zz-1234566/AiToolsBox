@@ -68,6 +68,22 @@ public interface AiOfficeToolService {
     String aiDocumentSummaryStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
 
     /**
+     * 流式重点提取（SSE，纯文字输入），成功/失败均记录历史
+     * <p>
+     * 与 {@link #aiDocumentSummaryStream} 的区别：本方法不解析文件，文字由前端传入，
+     * 对应「加工层只吃文本」的工具分层定位。文件请先用【文档提取】转为文字。
+     *
+     * @param userId 用户ID
+     * @param content 待提炼的文本
+     * @param promptFormat 用户自定义格式提示词（可空）
+     * @param promptGenerate 用户自定义生成内容提示词（可空）
+     * @param promptId 系统提示词ID（可空）
+     * @param onChunk 每收到一段内容回调
+     * @return 完整结果
+     */
+    String aiDocKeypointTextStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
+
+    /**
      * 流式 OCR 智能识别（SSE）：上传图片 → 腾讯云 OCR 提取文字 → 调 AI 整理成结构化结果
      * @param userId 用户ID
      * @param file 上传的图片（jpg/png/pdf）
@@ -101,4 +117,22 @@ public interface AiOfficeToolService {
      * 单文件失败不影响整体。
      */
     com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files, String prompt, String batchId);
+
+    /**
+     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + ASR（默认引擎）。
+     * <p>串行处理，单文件失败不影响整体；单文件完成后立即 appendItem 入库（前端轮询可见），
+     * 最后由 Controller 调 completeBatch 写终态。
+     *
+     * @param batchId 批量任务 ID（必传）
+     */
+    com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId, List<BatchFilePayload> files, String batchId);
+
+    /**
+     * 批量录音转写（B2）：可指定转写引擎。
+     *
+     * @param batchId 批量任务 ID（必传）
+     * @param engine  引擎标识（minimax / tencent）；空则走 asr.engine 默认值
+     */
+    com.example.aitools.dto.BatchProcessResult audioTranscribeBatchStream(Long userId, List<BatchFilePayload> files,
+                                                                        String batchId, String engine);
 }

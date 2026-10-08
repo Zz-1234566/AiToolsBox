@@ -35,8 +35,10 @@ spring:
           min-idle: 0
 
 # JWT
+# jwt.secret 必须通过环境变量 JWT_SECRET 设置（≥32 字节随机字符串）。
+# 未设置时启动直接失败。
 jwt:
-  secret: ${JWT_SECRET:your-jwt-secret-key-please-change-in-production}
+  secret: ${JWT_SECRET}
   expiration: 604800000  # 7 days in milliseconds
 
 # 腾讯云 COS：cos.enabled=true 启用 COS 存储（文件上传到 avatar/ 等前缀目录，公开读），
@@ -48,7 +50,10 @@ cos:
   region: ap-guangzhou
   bucket: ${COS_BUCKET:your-cos-bucket-name}
   # 默认头像在桶内的 key 路径；URL 由 bucket + region 拼出
-  default-avatar-key: ${DEFAULT_AVATAR_KEY:avatar/defaultAvator.png}
+  default-avatar-key: ${DEFAULT_AVATAR_KEY:avatar/defaultAvatar.png}
+  # 私有文件（file/{userId}/）签名 URL 有效期（秒）。到期后链接 403，前端需重新调接口。
+  signed-url-ttl-seconds: ${COS_SIGNED_URL_TTL:300}
+
 
 # 腾讯云 OCR（ai-ocr 工具用）。密钥默认复用 cos.*，留空即用 COS 密钥
 # 不需要 OCR 时设 ocr.enabled=false
@@ -65,15 +70,66 @@ verify-code:
   resend-seconds: 60         # 重发间隔（秒）
   length: 6                  # 验证码位数
 
-# DeepSeek AI 配置
+# MiniMax 文本模型配置（办公类工具使用，OpenAI 兼容协议）
 ai:
-  deepseek:
-    api-url: https://opencode.ai/zen/go/v1/chat/completions
-    api-key: ${AI_DEEPSEEK_API_KEY:your-deepseek-api-key}
-    model: deepseek-v4-flash
+  minimax-text:
+    # 官方 V2 文本接口（V2 明确标注为文本入口）
+    api-url: https://api.minimaxi.com/v1/text/chatcompletion_v2
+    api-key: ${AI_MINIMAX_TEXT_API_KEY:your-minimax-api-key}
+    model: MiniMax-M2.7
     timeout-seconds: 60
   # MiniMax M3 多模态配置（AI 文件解读工具用）
   minimax:
-    api-url: https://api.minimax.io/v1/chat/completions
+    api-url: https://api.minimaxi.com/v1/chat/completions
     api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
     model: MiniMax-M3
+
+
+# 录音转文本服务（MiniMax chatAudio + ffmpeg 转码）
+# ffmpeg 可执行文件路径：空时走 PATH 自动查找
+# Windows 推荐：D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
+# Linux/Mac 一般可直接用系统 PATH 的 ffmpeg
+asr:
+  # 默认转写引擎：minimax | tencent。前端可选覆盖，不传则用此值。
+  engine: ${ASR_ENGINE:minimax}
+  ffmpeg-binary-path: ${ASR_FFMPEG_PATH:D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe}
+  sample-rate: 16000
+  channels: 1
+  # MiniMax 官方语音识别接口（/v1/chat/completions 不支持音频输入）
+  api-url: ${ASR_API_URL:https://api.minimaxi.com/v1/speech_to_text}
+  api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
+  model: asr-1.0
+  language: zh
+  # ── 腾讯云语音识别通道（CreateRecTask 录音文件识别）──
+  # secret-id / secret-key / region 留空时自动复用 cos.* 同一套凭证
+  tencent:
+    enabled: ${ASR_TENCENT_ENABLED:false}
+    # AppId 为 ASR 专用，控制台「语音识别 → 账户信息」获取，形如 100047898545
+    app-id: ${ASR_APP_ID:}
+    secret-id: ${ASR_SECRET_ID:}
+    secret-key: ${ASR_SECRET_KEY:}
+    region: ${ASR_REGION:}
+    engine-model-type: ${ASR_ENGINE_MODEL:16k_zh}
+    channel-num: 1
+    # 原始音频大小上限（字节）。腾讯云内联 base64 上限 5MB，反推约 3.7MB 留余量。
+    max-audio-bytes: 3900000
+    poll-interval-ms: 3000
+    max-poll-times: 100
+
+# ── 文件压缩（超限时压到第三方接口限额内：图片降质缩放 / 音频降码率）──
+# 迭代写法参考 Stirling-PDF / Tiny / EasyImageCompressor：单调递减 + 明确下界，不递归
+compress:
+  enabled: ${COMPRESS_ENABLED:true}
+  max-iterations: 5
+  # 图片：质量 0.75(IJG 无损下限) 起，每轮 -0.05，下限 0.1
+  image-initial-quality: 0.75
+  image-quality-step: 0.05
+  image-min-quality: 0.1
+  # 图片：宽度 1600 起，每轮 ×0.8，下限 600
+  image-initial-max-width: 1600
+  image-width-decay: 0.8
+  image-min-width: 600
+  # 音频：逐档降码率（语音识别 16k~64k 足够）
+  audio-bitrates: 64k,48k,32k,24k,16k
+  audio-sample-rate: 16000
+  audio-channels: 1

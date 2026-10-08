@@ -66,12 +66,14 @@ public class UserController {
 
     @PostMapping("/reset-password")
     public Result<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        // 无论账号是否存在 / 验证码是否正确，service 内部都不抛异常，
+        // Controller 永远返回同一文案，避免账号枚举
         userService.resetPassword(request);
         return Result.success("密码重置成功", null);
     }
 
     @PostMapping("/update-profile")
-    public Result<LoginResponse.UserInfo> updateProfile(@RequestBody UpdateProfileRequest updateRequest,
+    public Result<LoginResponse.UserInfo> updateProfile(@Valid @RequestBody UpdateProfileRequest updateRequest,
                                                         HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         LoginResponse.UserInfo userInfo = userService.updateProfile(userId, updateRequest);

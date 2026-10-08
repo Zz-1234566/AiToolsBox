@@ -19,11 +19,30 @@ export const systemPromptListApi = (toolCode) => request({
   data: { toolCode }
 })
 
+// ===== 系统提示词管理（仅管理员，后端二次校验角色）=====
+
+// 新增系统提示词
+export const systemPromptAddApi = (promptText, promptUse, toolCode, promptName) => request({
+  url: '/api/prompt/system/add',
+  method: 'POST',
+  data: { promptText, promptUse, toolCode, promptName }
+})
+
+// 修改系统提示词
+export const systemPromptUpdateApi = (id, promptText, promptUse, toolCode, promptName) => request({
+  url: `/api/prompt/system/${id}`,
+  method: 'PUT',
+  data: { promptText, promptUse, toolCode, promptName }
+})
+
+// 删除系统提示词
+export const systemPromptDeleteApi = (id) => request({ url: `/api/prompt/system/${id}`, method: 'DELETE' })
+
 // 工具列表（按 tool_type 分组，用于提示词管理页工具下拉）
 export const toolListApi = () => request({ url: '/api/prompt/tools', method: 'GET' })
 
 /**
- * AI 生成提示词：调后端 DeepSeek 按用户需求生成一段提示词
+ * AI 生成提示词：调后端文本模型按用户需求生成一段提示词
  * @param {Object} params { toolCode, toolName, toolDesc, promptUse, requirement }
  *   - toolCode: 工具编码（如 work-summary）
  *   - toolName: 工具名称（如 工作总结），从 tools.js 传入，避免后端再查表

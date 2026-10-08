@@ -26,7 +26,7 @@ public interface AiPromptService {
     List<ToolOptionVO> listTools();
 
     /**
-     * AI 生成提示词：调 DeepSeek 按用户需求生成一段提示词
+     * AI 生成提示词：调后端文本模型按用户需求生成一段提示词
      * 失败（AI 服务异常、JSON 解析失败）抛 BusinessException，由全局异常统一封装
      */
     PromptGenerateVO generatePrompt(PromptGenerateRequest request);

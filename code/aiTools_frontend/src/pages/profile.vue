@@ -47,6 +47,7 @@
 <script setup>
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
+import { safeBack } from '@/utils/pageTransition'
 import PageHeader from '@/components/PageHeader.vue'
 import { updateProfileApi } from '@/api/user'
 import { uploadFileApi } from '@/api/ai'
@@ -115,7 +116,7 @@ const handleSave = async () => {
     uni.$emit('loginStatusChanged')
     uni.showToast({ title: '保存成功', icon: 'success' })
     setTimeout(() => {
-      uni.navigateBack()
+      safeBack('/pages/my')
     }, 800)
   } catch (e) {
     // request.js 已经统一弹出错误提示

@@ -1,171 +1,165 @@
 <template>
-  <view class="page-container">
-    <page-header title="我的提示词" showBack></page-header>
-
-    <view class="page-content">
-      <!-- 工具筛选下拉（按 tool_type 分组） -->
-      <view class="tool-filter">
-        <view class="tool-filter-label">所属工具</view>
-        <view class="tool-filter-select press-scale" @click="showToolPicker = true">
-          <text class="tool-filter-name">{{ selectedToolName || '请选择工具' }}</text>
-          <svg class="tool-filter-arrow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </view>
-      </view>
-
-      <view class="add-btn press-scale" @click="openAddModal">
-        <svg class="add-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 5V19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-          <path d="M5 12H19" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <view class="pl-page">
+    <!-- 头部 -->
+    <view class="pl-head">
+      <view class="pl-back" @click="goBack">
+        <svg class="pl-back__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 19L8 12L15 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <text class="add-text">新增提示词</text>
       </view>
-
-      <!-- 空状态 -->
-      <view v-if="!loading && promptList.length === 0" class="empty-state">
-        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M4 5C4 3.89543 4.89543 3 6 3H18C19.1046 3 20 3.89543 20 5V15C20 16.1046 19.1046 17 18 17H11L6 21V17H6C4.89543 17 4 16.1046 4 15V5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <text class="empty-text">还没有提示词</text>
+      <text class="pl-head__title">提示词</text>
+      <view class="pl-add" v-if="activeTab === 'mine' || adminMode" @click="openAddModal">
+        <text>＋ 新建</text>
       </view>
-
-      <!-- 提示词列表 -->
-      <view v-else class="prompt-list">
-        <view
-          v-for="item in promptList"
-          :key="item.id"
-          class="prompt-item animate-fade-in-up"
-        >
-          <view class="item-main">
-            <text class="item-text">{{ item.promptName || item.promptText || '（无名称）' }}</text>
-            <view class="item-meta">
-              <text class="item-tag">{{ item.promptUse === 'format' ? '格式' : '生成内容' }}</text>
-              <text class="item-time">{{ formatTime(item.createTime) }}</text>
-            </view>
-          </view>
-          <view class="item-actions">
-            <view class="action-btn press-scale" @click.stop="openEditModal(item)">
-              <svg class="action-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M17 3C17.5523 2.44772 18.4477 2.44772 19 3L21 5C21.5523 5.55228 21.5523 6.44772 21 7L8 20L4 21L5 17L17 3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </view>
-            <view class="action-btn press-scale" @click.stop="onDelete(item)">
-              <svg class="action-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 6H21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M8 6V4C8 3.44772 8.44772 3 9 3H15C15.5523 3 16 3.44772 16 4V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                <path d="M19 6V20C19 20.5523 18.5523 21 18 21H6C5.44772 21 5 20.5523 5 20V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              </svg>
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <view class="safe-area-bottom"></view>
     </view>
 
-    <!-- 新增/编辑弹窗 -->
-    <view v-if="showModal" class="modal-mask animate-fade-in" @click="closeModal">
-      <view class="modal-content animate-scale-in" @click.stop>
+    <!-- 系统 / 我的 -->
+    <view class="pl-tabs">
+      <text class="pl-tab" :class="{ 'pl-tab--active': activeTab === 'system' }" @click="switchTab('system')">系统</text>
+      <text class="pl-tab" :class="{ 'pl-tab--active': activeTab === 'mine' }" @click="switchTab('mine')">我的</text>
+    </view>
+
+    <!-- 工具筛选（可横向滚动） -->
+    <scroll-view scroll-x class="pl-toolbar" :show-scrollbar="false">
+      <view v-for="t in flatTools" :key="t.toolCode" class="pl-toolchip"
+            :class="{ 'pl-toolchip--on': selectedToolCode === t.toolCode }"
+            @click="onPickTool(t)">
+        {{ t.toolName }}
+      </view>
+    </scroll-view>
+
+    <!-- 生成提示词 / 格式提示词（二级 tab） -->
+    <view class="pl-subtabs">
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'generate' }" @click="switchUse('generate')">生成提示词</text>
+      <text class="pl-subtab" :class="{ 'pl-subtab--active': activeUse === 'format' }" @click="switchUse('format')">格式提示词</text>
+    </view>
+
+    <!-- 列表 -->
+    <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
+    <view v-else-if="filteredList.length === 0" class="redesign-empty">
+      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">📝</text></view>
+      <text class="redesign-empty__text">{{ emptyText }}</text>
+    </view>
+
+    <block v-else>
+      <view v-for="item in filteredList" :key="item.id" class="pl-card">
+        <view class="tool-avatar" :class="'tool-avatar--' + iconType(item.toolCode)">
+          <text class="ta-emoji">{{ emoji(item.toolCode) }}</text>
+        </view>
+        <view class="pl-card__body">
+          <text class="pl-card__title">{{ item.promptName || '未命名' }}</text>
+          <view class="pl-card__tags">
+            <text class="redesign-tag">{{ toolNameOf(item) }}</text>
+            <text class="redesign-tag">{{ item.promptUse === 'format' ? '格式' : '生成内容' }}</text>
+          </view>
+          <text class="pl-card__preview">{{ item.promptText }}</text>
+          <text class="pl-card__time">更新于 {{ formatTime(item.createTime) }}</text>
+          <!-- 「我的」可编辑/删除；「系统」仅管理员可编辑/删除 -->
+          <view v-if="activeTab === 'mine' || adminMode" class="pl-card__acts">
+            <text class="pl-act pl-act--primary" @click="openEditModal(item)">编辑</text>
+            <view class="pl-act__sep"></view>
+            <text class="pl-act pl-act--danger" @click="onDelete(item)">删除</text>
+          </view>
+          <view v-else class="pl-card__readonly">
+            <text class="pl-card__readonly-text">系统预制 · 只读</text>
+          </view>
+        </view>
+      </view>
+    </block>
+
+    <!-- 新增/编辑弹层 -->
+    <view v-if="showModal" class="modal-mask" @click="closeModal">
+      <view class="modal-card" @click.stop>
         <text class="modal-title">{{ modalTitle }}</text>
-        <view class="modal-tool-row">
-          <text class="modal-tool-label">所属工具</text>
-          <text class="modal-tool-name">{{ selectedToolName || '未选择' }}</text>
+
+        <text class="modal-label">名称</text>
+        <input class="modal-input" v-model="modalName" placeholder="给提示词起个名字" placeholder-class="pl-ph" :maxlength="32" />
+
+        <text class="modal-label">类型</text>
+        <view class="modal-seg">
+          <text class="modal-seg__item" :class="{ 'modal-seg__item--on': modalUse === 'generate' }" @click="modalUse = 'generate'">生成内容</text>
+          <text class="modal-seg__item" :class="{ 'modal-seg__item--on': modalUse === 'format' }" @click="modalUse = 'format'">格式</text>
         </view>
-        <view class="modal-type-row">
-          <view
-            class="modal-type-btn press-scale"
-            :class="{ active: modalUse === 'format' }"
-            @click="modalUse = 'format'"
-          >格式</view>
-          <view
-            class="modal-type-btn press-scale"
-            :class="{ active: modalUse === 'generate' }"
-            @click="modalUse = 'generate'"
-          >生成内容</view>
-        </view>
-        <input
-          class="modal-name-input"
-          v-model="modalName"
-          placeholder="提示词名称（必填，同一工具下不可重复）"
-          placeholder-class="textarea-placeholder"
-          maxlength="64"
-        />
-        <textarea
-          class="modal-input"
-          v-model="modalText"
-          placeholder="请输入提示词内容"
-          maxlength="2000"
-        ></textarea>
-        <view class="modal-buttons">
-          <view class="modal-btn cancel-btn press-scale" @click="closeModal">取消</view>
-          <view class="modal-btn confirm-btn press-scale" @click="saveModal">保存</view>
+
+        <text class="modal-label">内容</text>
+        <textarea class="modal-textarea" v-model="modalText" placeholder="请输入提示词内容..." placeholder-class="pl-ph" :maxlength="2000" />
+
+        <view class="modal-actions">
+          <view class="modal-btn" @click="closeModal">取消</view>
+          <view class="modal-btn modal-btn--primary" @click="saveModal">保存</view>
         </view>
       </view>
     </view>
 
-    <!-- 工具选择弹窗（按 tool_type 分组） -->
-    <view v-if="showToolPicker" class="modal-mask animate-fade-in" @click="showToolPicker = false">
-      <view class="modal-content tool-picker-content animate-scale-in" @click.stop>
-        <text class="modal-title">选择所属工具</text>
-        <scroll-view scroll-y class="tool-picker-list">
-          <view v-for="group in toolGroups" :key="group.toolType" class="tool-picker-group">
-            <text class="tool-picker-group-title">{{ group.toolType }}</text>
-            <view
-              v-for="tool in group.tools"
-              :key="tool.toolCode"
-              class="tool-picker-item press-scale"
-              :class="{ active: selectedToolCode === tool.toolCode }"
-              @click="onPickTool(tool)"
-            >
-              <text class="tool-picker-item-text">{{ tool.toolName }}</text>
-            </view>
-          </view>
-          <view v-if="toolGroups.length === 0" class="prompt-empty">
-            <text>暂无可用工具</text>
-          </view>
-        </scroll-view>
-        <view class="modal-buttons">
-          <view class="modal-btn cancel-btn press-scale" @click="showToolPicker = false">关闭</view>
-        </view>
-      </view>
-    </view>
+    <view class="safe-bottom"></view>
   </view>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import PageHeader from '@/components/PageHeader.vue'
-import { promptListApi, promptAddApi, promptUpdateApi, promptDeleteApi, toolListApi } from '@/api/prompt'
-import { requireLogin } from '@/utils/auth'
+import { promptListApi, promptAddApi, promptUpdateApi, promptDeleteApi, toolListApi, systemPromptListApi, systemPromptAddApi, systemPromptUpdateApi, systemPromptDeleteApi } from '@/api/prompt'
+import { requireLogin, isAdmin } from '@/utils/auth'
+import { safeBack } from '@/utils/pageTransition'
 import { REALIZED_TOOLS, TOOLS } from '@/config/tools'
 
 const loading = ref(false)
+/** 当前用户是否管理员（仅控制前端显隐，权限由后端校验） */
+const adminMode = ref(false)
 const promptList = ref([])
-const showToolPicker = ref(false)
-const toolGroups = ref([]) // [{ toolType, tools: [{ toolCode, toolName }] }]
-// 工具筛选下拉：按 tool_type 分组展示，默认选第一个已实现工具
+const systemList = ref([])
+const activeTab = ref('mine')
+/** 二级 tab：提示词用途（generate 生成内容 / format 格式） */
+const activeUse = ref('generate')
+const flatTools = ref([])
 const selectedToolCode = ref('')
 
-// 当前选中工具的名称（用于标题/标签展示）
 const selectedToolName = computed(() => {
   const t = TOOLS[selectedToolCode.value]
   return t ? t.name : ''
 })
 
-// 列表项所属工具名称（优先用接口返回的 toolName，回退到本地配置）
 const toolNameOf = (item) => {
   if (item.toolName) return item.toolName
   const t = TOOLS[item.toolCode]
-  return t ? t.name : ''
+  return t ? t.name : (item.toolCode || '')
+}
+
+/** 按用途过滤（前端过滤） */
+const filteredList = computed(() => {
+  const src = activeTab.value === 'system' ? systemList.value : promptList.value
+  // 用途过滤：generate 生成内容 / format 格式
+  const use = activeUse.value
+  return src.filter(i => {
+    const u = i.promptUse === 'format' ? 'format' : 'generate'
+    return u === use
+  })
+})
+
+/** 空态文案：区分 系统/我的 × 生成提示词/格式提示词 */
+const emptyText = computed(() => {
+  const useLabel = activeUse.value === 'format' ? '格式提示词' : '生成提示词'
+  if (activeTab.value === 'system') return `该工具暂无${useLabel}`
+  return `还没有${useLabel}`
+})
+
+const iconType = (code) => {
+  const c = code || ''
+  if (c.includes('ocr') || c.includes('recognize')) return 'ocr'
+  if (c.includes('image') || c.includes('photo') || c.includes('qr')) return 'image'
+  if (c.includes('doc') || c.includes('file-reader')) return 'doc'
+  return 'text'
+}
+const emoji = (code) => {
+  const m = { ocr: '🖨', image: '🖼️', doc: '📄', text: '📝' }
+  return m[iconType(code)] || '📝'
 }
 
 const showModal = ref(false)
 const modalTitle = ref('')
 const modalText = ref('')
-const modalName = ref('')   // 提示词名称
-const modalUse = ref('generate') // 类型：format 格式 / generate 生成内容
+const modalName = ref('')
+const modalUse = ref('generate')
 const editingId = ref(null)
 
 const formatTime = (time) => {
@@ -173,55 +167,57 @@ const formatTime = (time) => {
   return String(time).replace('T', ' ').slice(0, 16)
 }
 
+/** 返回：栈内有上一页则返回，否则回「我的」页（本页入口来源） */
+const goBack = () => safeBack('/pages/my')
+
 const fetchToolList = async () => {
   try {
     const res = await toolListApi()
     const list = (res && res.data) || []
-    // 兼容两种返回结构：[{ toolType, tools: [...] }] 或扁平 [{ toolCode, toolType, toolName }]
-    if (list.length && Array.isArray(list[0].tools)) {
-      toolGroups.value = list
-    } else {
-      const map = new Map()
-      for (const t of list) {
-        const type = t.toolType || '其他'
-        if (!map.has(type)) map.set(type, [])
-        map.get(type).push({ toolCode: t.toolCode, toolName: t.toolName })
-      }
-      toolGroups.value = Array.from(map, ([toolType, tools]) => ({ toolType, tools }))
-    }
+    flatTools.value = list.map(t => ({ toolCode: t.toolCode, toolName: t.toolName }))
   } catch (e) {
-    toolGroups.value = []
+    flatTools.value = []
   }
-  // 默认选第一个已实现工具，回退到下拉首个工具
   if (!selectedToolCode.value) {
     const firstRealized = REALIZED_TOOLS[0]
-    const firstAvailable = toolGroups.value.flatMap(g => g.tools)[0]
+    const firstAvailable = flatTools.value[0]
     selectedToolCode.value = firstRealized || (firstAvailable && firstAvailable.toolCode) || ''
   }
 }
 
-const onToolChange = () => {
+const onPickTool = (tool) => {
+  selectedToolCode.value = tool.toolCode
   fetchList()
 }
 
-const onPickTool = (tool) => {
-  selectedToolCode.value = tool.toolCode
-  showToolPicker.value = false
+const switchTab = (t) => {
+  activeTab.value = t
   fetchList()
+}
+
+/** 切换二级 tab（用途）——本地过滤，无需重新请求 */
+const switchUse = (u) => {
+  activeUse.value = u
 }
 
 const fetchList = async () => {
   if (!selectedToolCode.value) {
     promptList.value = []
+    systemList.value = []
     return
   }
   loading.value = true
   try {
-    const res = await promptListApi(selectedToolCode.value)
-    promptList.value = res.data || []
+    if (activeTab.value === 'system') {
+      const res = await systemPromptListApi(selectedToolCode.value)
+      systemList.value = res.data || []
+    } else {
+      const res = await promptListApi(selectedToolCode.value)
+      promptList.value = res.data || []
+    }
   } catch (err) {
-    // request.js 已统一提示错误，这里清空列表避免残留旧数据
-    promptList.value = []
+    if (activeTab.value === 'system') systemList.value = []
+    else promptList.value = []
   } finally {
     loading.value = false
   }
@@ -229,22 +225,33 @@ const fetchList = async () => {
 
 onShow(async () => {
   if (!requireLogin()) return
+  adminMode.value = isAdmin()
   await fetchToolList()
   fetchList()
 })
 
 const openAddModal = () => {
+  // 系统 tab 下仅管理员可新增
+  if (activeTab.value === 'system' && !isAdmin()) {
+    uni.showToast({ title: '系统提示词不可新增', icon: 'none' })
+    return
+  }
   showModal.value = true
-  modalTitle.value = '新增提示词'
+  modalTitle.value = activeTab.value === 'system' ? '新增系统提示词' : '新增提示词'
   editingId.value = null
   modalText.value = ''
   modalName.value = ''
-  modalUse.value = 'generate'
+  modalUse.value = activeUse.value
 }
 
 const openEditModal = (item) => {
+  // 系统 tab 下仅管理员可编辑
+  if (activeTab.value === 'system' && !isAdmin()) {
+    uni.showToast({ title: '仅管理员可编辑系统提示词', icon: 'none' })
+    return
+  }
   showModal.value = true
-  modalTitle.value = '编辑提示词'
+  modalTitle.value = activeTab.value === 'system' ? '编辑系统提示词' : '编辑提示词'
   editingId.value = item.id
   modalText.value = item.promptText || ''
   modalName.value = item.promptName || ''
@@ -275,7 +282,16 @@ const saveModal = async () => {
     return
   }
   try {
-    if (editingId.value) {
+    if (activeTab.value === 'system') {
+      // 系统提示词：仅管理员（后端二次校验）
+      if (editingId.value) {
+        await systemPromptUpdateApi(editingId.value, text, modalUse.value, selectedToolCode.value, name)
+        uni.showToast({ title: '修改成功', icon: 'none' })
+      } else {
+        await systemPromptAddApi(text, modalUse.value, selectedToolCode.value, name)
+        uni.showToast({ title: '新增成功', icon: 'none' })
+      }
+    } else if (editingId.value) {
       await promptUpdateApi(editingId.value, text, modalUse.value, selectedToolCode.value, name)
       uni.showToast({ title: '修改成功', icon: 'none' })
     } else {
@@ -290,15 +306,27 @@ const saveModal = async () => {
 }
 
 const onDelete = (item) => {
+  const isSystem = activeTab.value === 'system'
+  if (isSystem && !isAdmin()) {
+    uni.showToast({ title: '仅管理员可删除系统提示词', icon: 'none' })
+    return
+  }
   uni.showModal({
-    title: '删除提示词',
-    content: '确定要删除这条提示词吗？',
+    title: isSystem ? '删除系统提示词' : '删除提示词',
+    content: isSystem
+      ? '确定要删除这条【系统预制】提示词吗？删除后所有用户将无法再选用。'
+      : '确定要删除这条提示词吗？',
     confirmColor: '#211E1E',
     success: async (res) => {
       if (!res.confirm) return
       try {
-        await promptDeleteApi(item.id)
-        promptList.value = promptList.value.filter((p) => p.id !== item.id)
+        if (isSystem) {
+          await systemPromptDeleteApi(item.id)
+          systemList.value = systemList.value.filter((p) => p.id !== item.id)
+        } else {
+          await promptDeleteApi(item.id)
+          promptList.value = promptList.value.filter((p) => p.id !== item.id)
+        }
         uni.showToast({ title: '删除成功', icon: 'none' })
       } catch (err) {
         // request.js 已统一提示错误
@@ -309,359 +337,263 @@ const onDelete = (item) => {
 </script>
 
 <style lang="scss" scoped>
-.page-container {
+@import '@/styles/redesign.scss';
+
+.pl-page {
   min-height: 100vh;
-  background-color: $bg-color;
+  background: #F9FAFB;
+  padding-bottom: 40rpx;
+}
+
+.pl-head {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+  padding: 32rpx 32rpx 16rpx;
 }
-
-.page-content {
-  flex: 1;
-  padding: 0 $spacing-md;
-}
-
-.add-btn {
-  margin-top: $spacing-md;
-  height: 88rpx;
-  border-radius: $radius-lg;
-  background-color: $bg-white;
-  border: 1rpx solid $border-color;
-  box-shadow: $shadow-card;
+.pl-back {
+  width: 64rpx;
+  height: 64rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-
-  .add-icon {
-    width: 36rpx;
-    height: 36rpx;
-    color: $text-primary;
-    margin-right: $spacing-xs;
-  }
-
-  .add-text {
-    font-size: $font-size-md;
-    font-weight: 600;
-    color: $text-primary;
-  }
+  margin-left: -12rpx;
+  border-radius: 50%;
 }
-
-.empty-state {
-  padding: $spacing-xl * 3 0;
+.pl-back__icon {
+  width: 44rpx;
+  height: 44rpx;
+  color: #111827;
+}
+.pl-head__title {
+  flex: 1;
+  font-size: 48rpx;
+  font-weight: 700;
+  color: #111827;
+}
+.pl-add {
+  height: 72rpx;
+  padding: 0 28rpx;
+  border-radius: 9999rpx;
+  background: #3B82F6;
+  color: #fff;
+  font-size: 26rpx;
+  font-weight: 600;
   display: flex;
-  flex-direction: column;
   align-items: center;
-
-  .empty-icon {
-    width: 96rpx;
-    height: 96rpx;
-    color: $text-tertiary;
-    margin-bottom: $spacing-md;
-  }
-
-  .empty-text {
-    font-size: $font-size-md;
-    color: $text-tertiary;
-  }
 }
 
-.prompt-list {
-  padding-top: $spacing-md;
-}
-
-.prompt-item {
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  padding: $spacing-md;
-  margin-bottom: $spacing-md;
-  box-shadow: $shadow-card;
+.pl-tabs {
   display: flex;
-  align-items: flex-start;
-
-  .item-main {
-    flex: 1;
-    min-width: 0;
-    margin-right: $spacing-sm;
-
-    .item-text {
-      display: block;
-      font-size: $font-size-sm;
-      color: $text-primary;
-      line-height: 1.6;
-      word-break: break-all;
-      white-space: pre-wrap;
-      margin-bottom: $spacing-xs;
-    }
-
-    .item-meta {
-      display: flex;
-      align-items: center;
-
-      .item-tag {
-        font-size: $font-size-xs;
-        color: $text-secondary;
-        background-color: $bg-gray;
-        border-radius: $radius-pill;
-        padding: 2rpx 14rpx;
-        margin-right: $spacing-xs;
-      }
-
-      .item-time {
-        font-size: $font-size-xs;
-        color: $text-tertiary;
-      }
-    }
-  }
-
-  .item-actions {
-    display: flex;
-    flex-shrink: 0;
-
-    .action-btn {
-      width: 64rpx;
-      height: 64rpx;
-      border-radius: $radius-pill;
-      background-color: $bg-gray;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-left: $spacing-xs;
-
-      .action-icon {
-        width: 32rpx;
-        height: 32rpx;
-        color: $text-secondary;
-      }
-    }
-  }
+  gap: 40rpx;
+  padding: 0 32rpx;
+  border-bottom: 2rpx solid #F3F4F6;
+}
+.pl-tab {
+  padding: 24rpx 0;
+  font-size: 28rpx;
+  color: #9CA3AF;
+  position: relative;
+}
+.pl-tab--active { color: #111827; font-weight: 600; }
+.pl-tab--active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -2rpx;
+  height: 4rpx;
+  background: #3B82F6;
 }
 
+/* 二级 tab：生成内容 / 格式（胶囊样式，与一级下划线 tab 区分） */
+.pl-subtabs {
+  display: flex;
+  gap: 16rpx;
+  padding: 8rpx 32rpx 0;
+}
+.pl-subtab {
+  flex: 1;
+  text-align: center;
+  height: 56rpx;
+  line-height: 56rpx;
+  border-radius: 9999rpx;
+  background: #F3F4F6;
+  font-size: 24rpx;
+  color: #6B7280;
+}
+.pl-subtab--active {
+  background: #EFF6FF;
+  color: #2563EB;
+  font-weight: 600;
+}
+
+.pl-toolbar {
+  white-space: nowrap;
+  padding: 24rpx 32rpx 8rpx;
+}
+.pl-toolchip {
+  display: inline-block;
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 24rpx;
+  margin-right: 16rpx;
+  border-radius: 9999rpx;
+  background: #fff;
+  border: 2rpx solid #F3F4F6;
+  font-size: 24rpx;
+  color: #4B5563;
+}
+.pl-toolchip--on {
+  background: #EFF6FF;
+  border-color: #BFDBFE;
+  color: #2563EB;
+  font-weight: 500;
+}
+
+.pl-ph { color: #9CA3AF; }
+
+.pl-card {
+  display: flex;
+  gap: 24rpx;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin: 0 32rpx 24rpx;
+  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
+}
+.pl-card__body { flex: 1; min-width: 0; }
+.pl-card__title {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 12rpx;
+}
+.pl-card__tags { display: flex; gap: 12rpx; margin-bottom: 12rpx; }
+.pl-card__preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 24rpx;
+  color: #9CA3AF;
+  line-height: 1.5;
+}
+.pl-card__time {
+  display: block;
+  font-size: 22rpx;
+  color: #D1D5DB;
+  margin-top: 12rpx;
+}
+.pl-card__acts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 24rpx;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #F3F4F6;
+}
+.pl-act { font-size: 26rpx; color: #4B5563; }
+.pl-act--primary { color: #3B82F6; }
+.pl-act--danger { color: #EF4444; }
+.pl-act__sep { width: 2rpx; height: 28rpx; background: #F3F4F6; }
+
+/* 非管理员查看系统提示词时的只读标记 */
+.pl-card__readonly {
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 2rpx solid #F3F4F6;
+  display: flex;
+  justify-content: flex-end;
+}
+.pl-card__readonly-text {
+  font-size: 22rpx;
+  color: #9CA3AF;
+}
+
+/* 弹层 */
 .modal-mask {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.45);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-
-  .modal-content {
-    width: 600rpx;
-    background-color: $bg-white;
-    border-radius: $radius-lg;
-    padding: $spacing-lg;
-    display: flex;
-    flex-direction: column;
-
-    .modal-title {
-      font-size: $font-size-lg;
-      font-weight: 600;
-      color: $text-primary;
-      margin-bottom: $spacing-md;
-    }
-
-    .modal-type-row {
-      display: flex;
-      margin-bottom: $spacing-md;
-
-      .modal-type-btn {
-        flex: 1;
-        height: 72rpx;
-        border-radius: $radius-pill;
-        background-color: $bg-gray;
-        color: $text-secondary;
-        font-size: $font-size-sm;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: $spacing-sm;
-
-        &:last-child {
-          margin-right: 0;
-        }
-
-        &.active {
-          background-color: #211E1E;
-          color: #FFFFFF;
-        }
-      }
-    }
-
-    .modal-name-input {
-      width: 100%;
-      box-sizing: border-box;
-      height: 80rpx;
-      background-color: $bg-gray;
-      border-radius: $radius-md;
-      padding: 0 $spacing-md;
-      font-size: $font-size-sm;
-      color: $text-primary;
-      margin-bottom: $spacing-md;
-    }
-
-    .modal-input {
-      width: 100%;
-      box-sizing: border-box;
-      min-height: 200rpx;
-      max-height: 400rpx;
-      background-color: $bg-gray;
-      border-radius: $radius-md;
-      padding: $spacing-sm $spacing-md;
-      font-size: $font-size-sm;
-      color: $text-primary;
-      line-height: 1.6;
-    }
-
-    .modal-buttons {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: $spacing-lg;
-
-      .modal-btn {
-        min-width: 144rpx;
-        height: 72rpx;
-        border-radius: $radius-pill;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: $font-size-sm;
-        margin-left: $spacing-sm;
-      }
-
-      .cancel-btn {
-        background-color: $bg-gray;
-        color: $text-secondary;
-      }
-
-      .confirm-btn {
-        background-color: #211E1E;
-        color: #FFFFFF;
-      }
-    }
-  }
+  align-items: flex-end;
+  z-index: 1000;
+}
+.modal-card {
+  width: 100%;
+  background: #fff;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 40rpx 32rpx 48rpx;
+  box-sizing: border-box;
+}
+.modal-title {
+  display: block;
+  font-size: 34rpx;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 24rpx;
+  text-align: center;
+}
+.modal-label {
+  display: block;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 12rpx;
+}
+.modal-input {
+  height: 88rpx;
+  padding: 0 24rpx;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  margin-bottom: 24rpx;
+  box-sizing: border-box;
+  width: 100%;
+}
+.modal-seg { display: flex; gap: 16rpx; margin-bottom: 24rpx; }
+.modal-seg__item {
+  flex: 1;
+  height: 72rpx;
+  line-height: 72rpx;
+  text-align: center;
+  border-radius: 16rpx;
+  background: #F3F4F6;
+  color: #4B5563;
+  font-size: 26rpx;
+}
+.modal-seg__item--on {
+  background: #EFF6FF;
+  color: #2563EB;
+  font-weight: 600;
+}
+.modal-textarea {
+  width: 100%;
+  min-height: 200rpx;
+  padding: 20rpx 24rpx;
+  border: 2rpx solid #E5E7EB;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  box-sizing: border-box;
+  margin-bottom: 32rpx;
+}
+.modal-actions { display: flex; gap: 24rpx; }
+.modal-btn {
+  flex: 1;
+  height: 88rpx;
+  line-height: 88rpx;
+  text-align: center;
+  border-radius: 9999rpx;
+  background: #F3F4F6;
+  color: #374151;
+  font-size: 28rpx;
+}
+.modal-btn--primary {
+  background: #3B82F6;
+  color: #fff;
+  font-weight: 600;
 }
 
-// 工具筛选下拉
-.tool-filter {
-  margin-top: $spacing-md;
-  background-color: $bg-white;
-  border-radius: $radius-lg;
-  border: 1rpx solid $border-color;
-  box-shadow: $shadow-card;
-  padding: $spacing-md;
-  display: flex;
-  align-items: center;
-
-  .tool-filter-label {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-    margin-right: $spacing-sm;
-    flex-shrink: 0;
-  }
-
-  .tool-filter-select {
-    flex: 1;
-    height: 64rpx;
-    border-radius: $radius-pill;
-    background-color: $bg-gray;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 $spacing-md;
-
-    .tool-filter-name {
-      font-size: $font-size-sm;
-      color: $text-primary;
-      flex: 1;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-    }
-
-    .tool-filter-arrow {
-      width: 32rpx;
-      height: 32rpx;
-      color: $text-secondary;
-      margin-left: $spacing-xs;
-    }
-  }
-}
-
-// 弹窗内所属工具展示行
-.modal-tool-row {
-  display: flex;
-  align-items: center;
-  margin-bottom: $spacing-md;
-
-  .modal-tool-label {
-    font-size: $font-size-sm;
-    color: $text-secondary;
-    margin-right: $spacing-sm;
-  }
-
-  .modal-tool-name {
-    font-size: $font-size-sm;
-    color: $text-primary;
-    font-weight: 500;
-  }
-}
-
-// 工具选择弹窗
-.tool-picker-content {
- max-height: 80vh;
-
-  .tool-picker-list {
-    max-height: 600rpx;
-    margin-bottom: $spacing-md;
-
-    .tool-picker-group {
-      margin-bottom: $spacing-md;
-
-      .tool-picker-group-title {
-        display: block;
-        font-size: $font-size-xs;
-        color: $text-tertiary;
-        margin-bottom: $spacing-xs;
-      }
-
-      .tool-picker-item {
-        height: 72rpx;
-        border-radius: $radius-md;
-        background-color: $bg-gray;
-        display: flex;
-        align-items: center;
-        padding: 0 $spacing-md;
-        margin-bottom: $spacing-xs;
-
-        .tool-picker-item-text {
-          font-size: $font-size-sm;
-          color: $text-primary;
-        }
-
-        &.active {
-          background-color: #211E1E;
-
-          .tool-picker-item-text {
-            color: #FFFFFF;
-          }
-        }
-      }
-    }
-
-    .prompt-empty {
-      padding: $spacing-xl 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      text {
-        font-size: $font-size-sm;
-        color: $text-tertiary;
-      }
-    }
-  }
-}
+.safe-bottom { height: 40rpx; }
 </style>
