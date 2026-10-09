@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.Base64;
 import java.util.Locale;
 
@@ -92,6 +93,106 @@ public class OcrServiceImpl implements OcrService {
             throw new BusinessException(ResultCode.OCR_FAILED.getCode(), "PDF 解析失败，请确认文件未加密且未损坏");
         } finally {
             closeQuietly(document);
+        }
+    }
+
+    /**
+     * docx 内嵌图片 → 逐张送腾讯云 OCR → 按顺序拼接。
+     * <p>
+     * 财务/办公文档常把扫描件、发票、盖章、签名截图内嵌在 Word 中，
+     * 这部分内容不在文字层里（POI 抽不到），只能靠 OCR 补齐。
+     * <p>
+     * 单张识别失败只记日志跳过；全部失败时返回空串（由调用方决定是否报错）。
+     */
+    @Override
+    public String recognizeDocxImages(MultipartFile docFile, int maxImages) {
+        if (docFile == null || docFile.isEmpty()) {
+            return "";
+        }
+        if (!Boolean.TRUE.equals(ocrConfig.getEnabled())) {
+            throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(), "识别能力未启用，请联系管理员");
+        }
+        org.apache.poi.xwpf.usermodel.XWPFDocument doc = null;
+        try {
+            doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(docFile.getInputStream());
+            java.util.List<org.apache.poi.xwpf.usermodel.XWPFPictureData> pictures = doc.getAllPictures();
+            if (pictures == null || pictures.isEmpty()) {
+                return "";
+            }
+            int limit = Math.min(pictures.size(), Math.max(maxImages, 1));
+            StringBuilder sb = new StringBuilder();
+            int ok = 0;
+            for (int i = 0; i < limit; i++) {
+                org.apache.poi.xwpf.usermodel.XWPFPictureData pic = pictures.get(i);
+                if (pic == null) {
+                    continue;
+                }
+                // 跳过明显的图标/装饰（XWPFPictureData 无尺寸 API，用 ImageIO 读字节判断）
+                if (!isMeaningfulImage(pic.getData())) {
+                    continue;
+                }
+                try {
+                    String ext = pic.suggestFileExtension();
+                    String name = "embedded-" + (i + 1) + "." + (ext == null ? "png" : ext);
+                    String text = doOcr(pic.getData(), name);
+                    if (text != null && !text.isBlank()) {
+                        if (sb.length() > 0) {
+                            sb.append("\n\n");
+                        }
+                        sb.append(text);
+                        ok++;
+                    }
+                } catch (Exception e) {
+                    log.warn("[ocr-docx] 第 {} 张内嵌图片识别失败，跳过", i + 1, e);
+                }
+            }
+            if (pictures.size() > limit) {
+                log.info("[ocr-docx] 共 {} 张内嵌图片，仅识别前 {} 张（受 maxImages 限制）",
+                        pictures.size(), limit);
+            }
+            log.info("[ocr-docx] 完成 成功={}/{} 字符数={}", ok, limit, sb.length());
+            return sb.toString().trim();
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[ocr-docx] docx 解析失败", e);
+            return "";
+        } finally {
+            closeDocxQuietly(doc);
+        }
+    }
+
+    /**
+     * 判断内嵌图片是否值得送 OCR。
+     * <p>
+     * Word 里大量内嵌图其实是项目符号、装饰线条、小图标（宽高常 &lt; 80px），
+     * 全送 OCR 会白花钱且拉低准确率。这里用 ImageIO 读尺寸过滤，
+     * 读不出尺寸（无法解码）时保守放行，交给 OCR 判断。
+     */
+    private boolean isMeaningfulImage(byte[] data) {
+        if (data == null || data.length == 0) {
+            return false;
+        }
+        try {
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(data));
+            if (img == null) {
+                return false;   // 不是可识别格式（emf/wmf 等），OCR 也处理不了
+            }
+            return img.getWidth() >= 80 && img.getHeight() >= 80;
+        } catch (IOException e) {
+            // 尺寸读失败不阻塞流程，交给 OCR 尝试
+            return true;
+        }
+    }
+
+    private static void closeDocxQuietly(org.apache.poi.xwpf.usermodel.XWPFDocument doc) {
+        if (doc == null) {
+            return;
+        }
+        try {
+            doc.close();
+        } catch (Exception ignored) {
+            // 关闭失败不影响主流程
         }
     }
 

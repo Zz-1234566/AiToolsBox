@@ -49,11 +49,14 @@ public class DocToTextServiceImpl implements DocToTextService {
     /** 图片扩展名（直送 OCR，不做文字层解析） */
     private static final Set<String> IMAGE_EXTS = Set.of("png", "jpg", "jpeg", "bmp", "gif", "webp");
 
-    /** 文档扩展名（走文字层解析） */
-    private static final Set<String> DOC_EXTS = Set.of("txt", "docx", "pdf");
+    /** 文档扩展名（走文字层解析；docx / pdf 有各自专属分支，不在此列） */
+    private static final Set<String> DOC_EXTS = Set.of("txt");
 
     /** 扫描件 PDF 最多渲染页数（避免上百页 PDF 触发 OCR 费用失控） */
     private static final int MAX_OCR_PAGES = 20;
+
+    /** Word 内嵌图片最多识别张数（控制 OCR 调用成本） */
+    private static final int MAX_OCR_IMAGES = 20;
 
     /** PDF 渲染 DPI（与 AiFileReaderServiceImpl 保持一致） */
     private static final float PDF_RENDER_DPI = 150f;
@@ -94,6 +97,12 @@ public class DocToTextServiceImpl implements DocToTextService {
                 } else {
                     method = METHOD_TEXT_LAYER;
                 }
+            } else if ("docx".equals(ext)) {
+                // Word：POI 抽文字层 + 内嵌图片送 OCR（财务文档常把发票/盖章截图内嵌）
+                String docText = documentParser.parse(file);
+                String imgText = ocrService.recognizeDocxImages(file, MAX_OCR_IMAGES);
+                text = joinText(docText, imgText);
+                method = METHOD_TEXT_LAYER;
             } else if (DOC_EXTS.contains(ext)) {
                 text = documentParser.parse(file);
                 method = METHOD_TEXT_LAYER;
@@ -120,6 +129,22 @@ public class DocToTextServiceImpl implements DocToTextService {
     private String extensionOf(String fileName) {
         int dot = fileName.lastIndexOf('.');
         return dot >= 0 ? fileName.substring(dot + 1).toLowerCase(Locale.ROOT) : "";
+    }
+
+    /** 拼接两段文本，自动处理空值与空行；两段都空时返回空串 */
+    private String joinText(String a, String b) {
+        boolean ea = a == null || a.isBlank();
+        boolean eb = b == null || b.isBlank();
+        if (ea && eb) {
+            return "";
+        }
+        if (ea) {
+            return b.trim();
+        }
+        if (eb) {
+            return a.trim();
+        }
+        return a.trim() + "\n\n" + b.trim();
     }
 
     /**

@@ -155,10 +155,15 @@ npm run dev:h5
 | 输入 | 通道 | 实现 |
 |---|---|---|
 | `txt` | `text-layer` | 编码自适应（UTF-8 失败回退 GBK） |
-| `docx` | `text-layer` | POI 抽段落 + 表格 |
+| `docx` | `text-layer` | POI 抽段落 + 表格，**并对内嵌图片逐张送 OCR 后拼接** |
 | `pdf`（文本型） | `text-layer` | PDFBox 抽文字层 |
 | `pdf`（扫描件，**抽不到文字层**） | `ocr` | 逐页渲染成 PNG（150 DPI，最多 20 页）后送腾讯云 OCR |
 | `png` / `jpg` / `jpeg` / `bmp` / `gif` / `webp` | `ocr` | 直接送腾讯云 OCR |
+
+> **Word 内嵌图片为什么要 OCR**：财务/办公文档常把发票、盖章、签名、整页扫描件截图内嵌在 Word 里，
+> 这部分内容**不在文字层中**（POI 抽不到），只能靠 OCR 补齐。
+> 实现上先用 `ImageIO` 读图片尺寸过滤掉 < 80×80 的项目符号/装饰图标（避免白花钱），
+> 剩余图片逐张送腾讯云 OCR，最多 20 张。该能力参考自实习项目广晟财务共享平台（`WordUtil.processImages`）。
 
 > **为什么扫描件要自己渲染**：腾讯云 `GeneralAccurateOCR` 官方注释明确「支持 PNG、JPG、JPEG、BMP」，
 > 其 OCR 模块下不存在任何 Pdf Request 类（已核实 SDK 3.1.270 全量 class），故扫描件 PDF 必须先转图片。

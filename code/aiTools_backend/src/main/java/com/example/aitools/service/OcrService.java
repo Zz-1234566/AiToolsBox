@@ -36,4 +36,18 @@ public interface OcrService {
      * @return 全部页面的识别文字（页间以空行分隔）；无可识别内容时返回空串
      */
     String recognizePdfPages(MultipartFile pdfFile, int maxPages, float dpi);
+
+    /**
+     * 识别 docx 文档内嵌图片中的文字。
+     * <p>
+     * 财务/办公文档常把扫描件、发票、盖章、签名截图内嵌在 Word 里，
+     * 这些内容不在文字层中（POI 抽不到），必须对每张图片单独送 OCR。
+     * <p>
+     * 逐张识别后按出现顺序拼接为纯文本返回。
+     *
+     * @param docFile   docx 文件（注意：不支持老式 .doc 二进制格式）
+     * @param maxImages 最多识别多少张图片（控制 OCR 调用成本）
+     * @return 所有图片的识别文字（图片之间用空行分隔）；无内嵌图片时返回空串
+     */
+    String recognizeDocxImages(MultipartFile docFile, int maxImages);
 }
