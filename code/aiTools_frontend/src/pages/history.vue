@@ -52,7 +52,7 @@
                 </svg>
               </view>
             </view>
-            <text class="hist-card__line">输入：{{ brief(item.inputContent) }}</text>
+            <text class="hist-card__line">输入：{{ inputLine(item) }}</text>
             <text class="hist-card__line">结果：{{ item.status === 1 ? brief(item.outputContent) : (item.errorMsg || '处理失败') }}</text>
             <text class="hist-card__time">{{ formatTime(item.createTime) }}</text>
           </view>
@@ -76,6 +76,7 @@ import { onShow, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { historyListApi, historyDeleteApi, historyClearAllApi } from '@/api/history'
 import { requireLogin } from '@/utils/auth'
 import { safeBack } from '@/utils/pageTransition'
+import { isFileUrl, extensionOf, fileKeyOf, fileNameFromUrl, isAudioExt } from '@/utils/fileDisplayName'
 
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -101,6 +102,20 @@ const brief = (s) => {
   if (!s) return '—'
   const t = String(s).replace(/\s+/g, ' ').trim()
   return t.length > 28 ? t.slice(0, 28) + '…' : t
+}
+
+/**
+ * 「输入」一行：文件类输入（inputContent 就是整条 COS 签名 URL）显示文件名，
+ * 音频额外带 🎵 提示；纯文本输入沿用 brief 截断，与历史详情页展示口径一致。
+ * 整卡仍跳详情页，列表页不做下载。
+ */
+const inputLine = (item) => {
+  const raw = item && item.inputContent
+  if (!raw || !isFileUrl(raw)) return brief(raw)
+  const meta = (item.files || []).find((f) => f && f.fileUrl && fileKeyOf(f.fileUrl) === fileKeyOf(raw))
+  const name = (meta && meta.fileName) || fileNameFromUrl(raw) || '查看文件'
+  const prefix = isAudioExt(extensionOf(name)) ? '🎵 ' : ''
+  return prefix + (name.length > 24 ? name.slice(0, 24) + '…' : name)
 }
 
 /** 工具图标类型（按 aiCode 粗分，与设计稿渐变对应） */

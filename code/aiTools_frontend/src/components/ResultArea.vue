@@ -26,6 +26,8 @@
 </template>
 
 <script setup>
+import { copyRaw } from '@/utils/clipboard'
+
 const props = defineProps({
   title: {
     type: String,
@@ -44,13 +46,8 @@ const props = defineProps({
 const emit = defineEmits(['copy', 'regenerate'])
 
 const onCopy = () => {
-  uni.setClipboardData({
-    data: props.content || '',
-    success: () => {
-      uni.showToast({ title: '已复制', icon: 'none' })
-      emit('copy')
-    }
-  })
+  copyRaw(props.content)
+  emit('copy')
 }
 
 const onRegenerate = () => {

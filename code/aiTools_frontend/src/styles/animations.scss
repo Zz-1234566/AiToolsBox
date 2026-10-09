@@ -87,3 +87,28 @@
     &:nth-child(3) { animation-delay: 0.4s; }
   }
 }
+
+/* ---------- 工作流运行页（对齐 docs/ui-spec/prototype 工作流运行设计稿）---------- */
+
+/* 呼吸：运行中节点光环 / 运行中小圆点 */
+@keyframes breathe {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+/* 旋转：加载环 / 节点运行光环（conic-gradient 遮罩转） */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 脉动：骨架屏 */
+@keyframes pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* 彗星：轨道连线上的流光 */
+@keyframes comet {
+  0% { transform: translateY(-110%); }
+  100% { transform: translateY(240%); }
+}

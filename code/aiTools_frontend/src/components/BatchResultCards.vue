@@ -77,6 +77,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { copyRaw } from '@/utils/clipboard'
 
 const props = defineProps({
   // items: [{ index, fileName, status, costMs, errorMsg, output }]
@@ -153,31 +154,10 @@ const parseSections = (text) => {
 }
 
 // ========== 复制逻辑 ==========
-const doCopy = (text) => {
-  if (!text) return
-  // 优先走 uni（HBuilderX / 小程序 / APP 全端兼容）
-  if (typeof uni !== 'undefined' && uni.setClipboardData) {
-    uni.setClipboardData({
-      data: text,
-      success: () => uni.showToast({ title: '已复制', icon: 'none' }),
-      fail: () => fallbackCopy(text)
-    })
-  } else {
-    fallbackCopy(text)
-  }
-}
-
-const fallbackCopy = (text) => {
-  // H5 端兜底：Clipboard API
-  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(
-      () => uni.showToast({ title: '已复制', icon: 'none' }),
-      () => uni.showToast({ title: '复制失败', icon: 'none' })
-    )
-  } else {
-    uni.showToast({ title: '复制失败', icon: 'none' })
-  }
-}
+// 已统一到 utils/clipboard.js（copyRaw / copyPlain），本页只需传原文。
+// 结果内容可能是 markdown，也可能就是普通文本，统一走 copyRaw 保留原文；
+// 若某场景需要剥语法，用 copyPlain 即可（同一模块内切换）。
+const doCopy = (text) => copyRaw(text)
 
 // 复制整张卡片 output
 const onCopyAll = (item) => {

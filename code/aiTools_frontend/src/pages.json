@@ -4,6 +4,7 @@
     { "path": "pages/category", "style": { "navigationStyle": "custom" } },
     { "path": "pages/workflow", "style": { "navigationStyle": "custom" } },
     { "path": "pages/workflow-edit", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/workflow-run", "style": { "navigationBarTitleText": "工作流运行", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/favorites", "style": { "navigationStyle": "custom" } },
     { "path": "pages/my", "style": { "navigationStyle": "custom" } },
     { "path": "pages/search", "style": { "navigationStyle": "custom" } },

@@ -213,7 +213,7 @@
         <view class="section-title-row">
           <text class="section-title">生成结果（JSON 结构化）</text>
           <view class="result-actions">
-            <view class="result-action-btn" @click="copyToClipboard(JSON.stringify(meetingJsonResult, null, 2), '已复制 JSON')">
+            <view class="result-action-btn" @click="copyRaw(JSON.stringify(meetingJsonResult, null, 2), 'JSON')">
               <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
               <text>复制 JSON</text>
             </view>
@@ -232,11 +232,11 @@
         <view class="section-title-row">
           <text class="section-title">生成结果（SSE 流式 Markdown）</text>
           <view class="result-actions">
-            <view class="result-action-btn" @click="copyToClipboard(meetingMarkdownText, '已复制 Markdown')">
+            <view class="result-action-btn" @click="copyRaw(meetingMarkdownText, 'Markdown')">
               <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
               <text>复制 Markdown</text>
             </view>
-            <view class="result-action-btn" @click="copyToClipboard(meetingMarkdownText.replace(/[#*_>`~\-]+/g, ''), '已复制纯文本')">
+            <view class="result-action-btn" @click="copyPlain(meetingMarkdownText, '纯文本')">
               <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8C6.9 5 6 5.9 6 7v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
               <text>复制纯文本</text>
             </view>
@@ -277,144 +277,96 @@
       </view>
     </block>
 
-    <!-- 证件照换背景色：上传 + 3 色块 + 示例对比 -->
+    <!-- 证件照换背景色：上传 + 3 色块 + 结果区（真实接口 /api/ai-office/id-photo-bg-change） -->
     <block v-if="toolId === 'id-photo-bg-change'">
-      <view class="upload-card" @click="onFilePickerClick">
+      <!-- 已选图：展示缩略图 + 文件名，可重新选择 -->
+      <view v-if="idPhotoPicked" class="idphoto-picked" @click="onIdPhotoPick">
+        <image class="idphoto-picked__img" :src="idPhotoPicked.path" mode="aspectFill"></image>
+        <view class="idphoto-picked__body">
+          <text class="idphoto-picked__name">{{ idPhotoPicked.name }}</text>
+          <text class="idphoto-picked__meta">{{ idPhotoPicked.sizeText }}</text>
+        </view>
+        <view class="idphoto-picked__change">
+          <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 13c0-4.42-3.58-8-8-8zm0 12c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 6.74A7.93 7.93 0 004 11c0 4.42 3.58 8 8 8v4l5-5-5-5v4z"/></svg>
+          <text>重新选择</text>
+        </view>
+      </view>
+      <!-- 未选图：上传卡片 -->
+      <view v-else class="upload-card" @click="onIdPhotoPick">
         <view class="upload-card__icon">
           <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
         </view>
-        <text class="upload-card__title">点击上传证件照</text>
-        <text class="upload-card__desc">支持 JPG、PNG 格式</text>
+        <text class="upload-card__title">{{ toolInfo.uploadTitle || '点击上传证件照' }}</text>
+        <text class="upload-card__desc">{{ toolInfo.uploadDesc || '支持 JPG、PNG 格式' }}</text>
       </view>
+
+      <!-- 底色选择：红 / 蓝 / 白 单选 -->
       <view class="section-title">选择背景色</view>
       <view class="color-picker">
-        <view v-for="c in bgColors" :key="c.code" class="color-item" @click="selectBgColor(c.code)">
+        <view v-for="c in bgColorChips" :key="c.code" class="color-item" @click="selectBgColor(c.code)">
           <view class="color-item__chip" :class="[c.cls, { 'is-active': selectedBgColor === c.code }]"></view>
           <text class="color-item__label">{{ c.label }}</text>
         </view>
       </view>
-      <view class="example-card">
-        <view class="example-card__title">示例效果</view>
-        <view class="example-compare">
-          <view class="example-cell">
-            <view class="example-cell__img">👤</view>
-            <text class="example-cell__label">原图</text>
-          </view>
-          <text class="example-arrow">→</text>
-          <view class="example-cell">
-            <view class="example-cell__img example-cell__img--blue">👤</view>
-            <text class="example-cell__label">换背景后</text>
-          </view>
-        </view>
-      </view>
-    </block>
-
-    <!-- 人像换背景图：上传 + tab + 4 缩略图 + 示例对比 -->
-    <block v-if="toolId === 'portrait-bg-replace'">
-      <view class="upload-card" @click="onFilePickerClick">
-        <view class="upload-card__icon">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        </view>
-        <text class="upload-card__title">点击上传人物照片</text>
-        <text class="upload-card__desc">支持 JPG、PNG 格式</text>
-      </view>
-      <view class="section-title">选择背景</view>
-      <view class="tabs">
-        <view class="tab-item" :class="{ 'is-active': bgTab === 'recommend' }" @click="bgTab = 'recommend'">推荐背景</view>
-        <view class="tab-item" :class="{ 'is-active': bgTab === 'custom' }" @click="bgTab = 'custom'">自定义上传</view>
-      </view>
-      <view class="thumb-grid">
-        <view v-for="(t, i) in bgThumbs" :key="i" class="thumb-item" :class="[t.cls, { 'is-active': selectedThumb === i }]" @click="selectedThumb = i"></view>
-        <view class="thumb-item thumb-item--upload" v-if="bgTab === 'custom'">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          <text>上传</text>
-        </view>
-      </view>
-      <view class="example-card">
-        <view class="example-card__title">示例效果</view>
-        <view class="example-compare">
-          <view class="example-cell">
-            <view class="example-cell__img">👤</view>
-            <text class="example-cell__label">原图</text>
-          </view>
-          <text class="example-arrow">→</text>
-          <view class="example-cell">
-            <view class="example-cell__img example-cell__img--with-bg">👤</view>
-            <text class="example-cell__label">换背景后</text>
-          </view>
-        </view>
-      </view>
-    </block>
-
-    <!-- 图片压缩：上传 + 图片信息 + slider -->
-    <block v-if="toolId === 'image-compress'">
-      <view class="upload-card" @click="onFilePickerClick">
-        <view class="upload-card__icon">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        </view>
-        <text class="upload-card__title">点击上传图片</text>
-        <text class="upload-card__desc">支持 JPG、PNG 格式</text>
-      </view>
-      <view class="section-title">图片信息</view>
-      <view class="image-info">
-        <view class="image-info__thumb">🖼️</view>
-        <view class="image-info__body">
-          <text class="image-info__name">示例图片.jpg</text>
-          <view class="image-info__meta">
-            <text>大小 <text class="meta-strong">5.2 MB</text></text>
-            <text>尺寸 <text class="meta-strong">1920×1080</text></text>
-          </view>
-        </view>
-      </view>
-      <view class="compress-settings">
-        <view class="compress-settings__title">压缩设置</view>
-        <view class="slider-row">
-          <text class="slider-label">质量</text>
-          <text class="slider-value">{{ compressQuality }}%</text>
-        </view>
-        <view class="slider-track" @click="onSliderTrackClick">
-          <text class="slider-fill" :style="{ width: compressQuality + '%' }"></text>
-          <text class="slider-thumb" :style="{ left: compressQuality + '%' }"></text>
-        </view>
-        <view class="estimate-row">
-          <text class="estimate-label">预计压缩后大小</text>
-          <text class="estimate-value">约 {{ (5.2 * compressQuality / 100).toFixed(1) }} MB</text>
-        </view>
-      </view>
-    </block>
-
-    <!-- 二维码生成：textarea + 样式/尺寸 + QR 码 -->
-    <block v-if="toolId === 'qr-code-gen'">
-      <view class="content-card">
-        <label class="content-card__label">输入内容</label>
-        <textarea class="content-card__textarea" v-model="qrContent" placeholder="请输入文本或 URL" :maxlength="200"></textarea>
-        <text class="content-card__counter">{{ qrContent.length }}/200</text>
-      </view>
-      <view class="section-title">二维码样式</view>
-      <view class="options-row">
-        <view v-for="(s, i) in qrStyles" :key="i" class="option-item" :class="{ 'is-active': qrStyle === s }" @click="qrStyle = s">{{ s }}</view>
-      </view>
-      <view class="section-title">尺寸</view>
-      <view class="options-row">
-        <view v-for="(s, i) in qrSizes" :key="i" class="option-item" :class="{ 'is-active': qrSize === s.label }" @click="qrSize = s.label">{{ s.label }}</view>
-      </view>
-      <view class="qr-card">
-        <view class="qr-code">
-          <view v-for="(cell, i) in qrMatrix" :key="i" class="qr-cell" :class="{ 'is-dark': cell }"></view>
-        </view>
-        <view class="qr-info">
-          <text class="qr-info__label">生成结果</text>
-          <text class="qr-info__code">{{ qrContent || 'https://aitoolsbox.app' }}</text>
-          <view class="qr-info__copy" @click="copyQrCode">
-            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-            <text>复制链接</text>
-          </view>
-        </view>
-      </view>
       <view class="tip">
         <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-        <text>请定期更换密码，避免使用相同密码</text>
+        <text>建议上传正面免冠、背景干净的半身照，换底色效果更佳</text>
       </view>
+
+      <!-- 结果区：loading → 错误 → 图片预览 -->
+      <block v-if="idPhotoLoading">
+        <view class="idphoto-loading">
+          <view class="idphoto-loading__spinner"></view>
+          <text class="idphoto-loading__text">AI 抠图中，请稍候…</text>
+        </view>
+      </block>
+      <view v-else-if="idPhotoError" class="idphoto-error">
+        <text class="idphoto-error__text">{{ idPhotoError }}</text>
+        <view class="idphoto-error__retry" @click="handleGenerate">
+          <text>重试</text>
+        </view>
+      </view>
+      <block v-else-if="idPhotoResult">
+        <view class="section-title-row">
+          <text class="section-title">{{ toolInfo.resultTitle || '换背景结果' }}</text>
+          <view class="result-actions">
+            <view class="result-action-btn" @click="previewIdPhoto">
+              <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>
+              <text>放大预览</text>
+            </view>
+            <view class="result-action-btn" @click="saveIdPhoto">
+              <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+              <text>保存图片</text>
+            </view>
+          </view>
+        </view>
+        <view class="idphoto-result">
+          <image
+            class="idphoto-result__img"
+            :src="idPhotoResult.fileUrl"
+            mode="widthFix"
+            @click="previewIdPhoto"
+          ></image>
+          <view class="idphoto-result__meta">
+            <view class="idphoto-result__row">
+              <text class="idphoto-result__k">文件名</text>
+              <text class="idphoto-result__v">{{ idPhotoResult.fileName || '—' }}</text>
+            </view>
+            <view class="idphoto-result__row">
+              <text class="idphoto-result__k">文件大小</text>
+              <text class="idphoto-result__v">{{ idPhotoResult.fileSizeText || formatFileSize(idPhotoResult.fileSize) }}</text>
+            </view>
+            <view class="idphoto-result__row">
+              <text class="idphoto-result__k">图片尺寸</text>
+              <text class="idphoto-result__v">{{ idPhotoResult.width || '—' }} × {{ idPhotoResult.height || '—' }}</text>
+            </view>
+            <view class="idphoto-result__row">
+              <text class="idphoto-result__k">底色</text>
+              <text class="idphoto-result__v">{{ selectedBgColorLabel }}</text>
+            </view>
+          </view>
+        </view>
+      </block>
     </block>
 
     <!-- 密码生成：slider + 字符选项 + 密码框 + 强度 -->
@@ -549,25 +501,17 @@ import { BASE_URL } from '@/config/env'
 import { onLoad } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
 import { requireLogin } from '@/utils/auth'
-import PageHeader from '@/components/PageHeader.vue'
-import InputSwitcher from '@/components/InputSwitcher.vue'
-import TextInputArea from '@/components/TextInputArea.vue'
-import FileInputArea from '@/components/FileInputArea.vue'
-import AudioInputArea from '@/components/AudioInputArea.vue'
-import PromptInputArea from '@/components/PromptInputArea.vue'
-import ResultArea from '@/components/ResultArea.vue'
-import BatchFilePicker from '@/components/BatchFilePicker.vue'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
-import { uploadFileApi, batchUpload, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting } from '@/api/ai.js'
+import { uploadFileApi, batchUpload, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting, idPhotoBgChange } from '@/api/ai.js'
 import { historyListByToolApi } from '@/api/history.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
+import { copyRaw, copyPlain } from '@/utils/clipboard'
 import { request } from '@/api/request'
 import MarkdownView from '@/components/MarkdownView.vue'
 import { promptListApi, systemPromptListApi, generatePromptApi, promptAddApi } from '@/api/prompt'
 import { getTool, validate } from '@/config/tools'
-import BatchResultCards from '@/components/BatchResultCards.vue'
 import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
 
 const toolId = ref('')
@@ -577,7 +521,6 @@ const fileName = ref('')
 const filePath = ref('')
 const fileObj = ref(null)          // 原生 File/Blob 对象（H5 端用于 multipart 上传且保留真实文件名）
 const uploading = ref(false)
-const batchPickerRef = ref(null)   // BatchFilePicker 组件引用：通过 getFiles() 拿当前文件列表
 const fileUrl = ref('')
 const loading = ref(false)
 const resultContent = ref('')
@@ -618,9 +561,6 @@ const TOOL_META = {
   'ocr-recognize':       { iconType: 'ocr',    emoji: '🔍', action: '开始识别', steps: ['上传文件', '选择类型', '获取结果'] },
   'ocr-recognition':     { iconType: 'ocr',    emoji: '🔍', action: '开始识别', steps: ['上传文件', '选择类型', '获取结果'] },
   'id-photo-bg-change':  { iconType: 'image',  emoji: '🖼️', action: '生成证件照', steps: ['上传照片', '选择背景', '生成下载'] },
-  'portrait-bg-replace': { iconType: 'image',  emoji: '🎨', action: '开始处理', steps: ['上传照片', '选择背景', '生成效果'] },
-  'image-compress':      { iconType: 'dev',    emoji: '🗜️', action: '开始压缩', steps: ['上传图片', '设置参数', '开始压缩'] },
-  'qr-code-gen':         { iconType: 'image',  emoji: '🔳', action: '保存二维码', steps: ['输入内容', '选择样式', '生成下载'] },
   'password-gen':        { iconType: 'image',  emoji: '🔐', action: '生成新密码', steps: ['设置参数', '生成密码', '复制使用'] },
   'todo-list':           { iconType: 'image',  emoji: '✅', action: '保存清单', steps: ['添加任务', '完成任务', '保存清单'] }
 }
@@ -954,29 +894,147 @@ const ocrTypes = ref([
 ])
 const selectRecognizeType = (code) => { uni.showToast({ title: '识别类型：' + code + '（开发中）', icon: 'none' }) }
 
-const bgColors = ref([
-  { code: 'white', cls: 'color-item__chip--white', label: '白色' },
-  { code: 'blue',  cls: 'color-item__chip--blue',  label: '蓝色' },
-  { code: 'red',   cls: 'color-item__chip--red',   label: '红色' }
-])
-const selectedBgColor = ref('blue')
+const selectedBgColor = ref('red')   // 默认底色（与 tools.js 的 defaultBgColor 一致）
 const selectBgColor = (code) => { selectedBgColor.value = code }
 
-const bgTab = ref('recommend')
-const selectedThumb = ref(0)
-const bgThumbs = ref([{ cls: 'thumb-item--grass' }, { cls: 'thumb-item--mountain' }, { cls: 'thumb-item--sea' }])
+// ===== 证件照换背景色（id-photo-bg-change）=====
+// 底色选项以 tools.js 配置为准（value 与后端 bgColor 入参一致），配置缺失时退回本地兜底
+const ID_PHOTO_BG_FALLBACK = [
+  { value: 'red',   label: '红色', hex: '#EF4444' },
+  { value: 'blue',  label: '蓝色', hex: '#3B82F6' },
+  { value: 'white', label: '白色', hex: '#FFFFFF' }
+]
+// 色块样式类映射（设计稿的 3 个色块）
+const BG_COLOR_CLS = {
+  red: 'color-item__chip--red',
+  blue: 'color-item__chip--blue',
+  white: 'color-item__chip--white'
+}
+const idPhotoBgOptions = computed(() => toolInfo.value.bgColorOptions || ID_PHOTO_BG_FALLBACK)
+// 模板用的色块列表：由配置派生，避免配置与 UI 各写一份
+const bgColorChips = computed(() => idPhotoBgOptions.value.map((c) => ({
+  code: c.value, label: c.label, cls: BG_COLOR_CLS[c.value] || ''
+})))
+const selectedBgColorLabel = computed(() => {
+  const hit = idPhotoBgOptions.value.find((c) => c.value === selectedBgColor.value)
+  return hit ? hit.label : ''
+})
+/** 已选证件照：{ path, name, sizeText, file }，file 为 H5 原生 File/Blob（保留真实文件名） */
+const idPhotoPicked = ref(null)
+/** 换背景结果：后端返回的 ToolOutputVO（fileUrl / fileName / width / height …） */
+const idPhotoResult = ref(null)
+const idPhotoLoading = ref(false)
+const idPhotoError = ref('')
 
-const compressQuality = ref(70)
-const onSliderTrackClick = () => { compressQuality.value = 50 }
+/** 选择证件照：H5 用原生 input 拿 File 对象，App/小程序用 uni.chooseImage 拿临时路径 */
+const onIdPhotoPick = () => {
+  // #ifdef H5
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/jpeg,image/png,image/bmp'
+  input.onchange = () => {
+    const f = (input.files && input.files[0]) || null
+    if (!f) return
+    // 上一次选图的 objectURL 及时释放，避免内存泄漏
+    const prev = idPhotoPicked.value
+    if (prev && prev.isObjectUrl) URL.revokeObjectURL(prev.path)
+    idPhotoPicked.value = {
+      path: URL.createObjectURL(f),
+      isObjectUrl: true,
+      name: f.name,
+      sizeText: formatFileSize(f.size),
+      size: f.size || 0,
+      file: f
+    }
+    idPhotoResult.value = null
+    idPhotoError.value = ''
+  }
+  input.click()
+  return
+  // #endif
+  // #ifndef H5
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: (res) => {
+      const path = (res.tempFilePaths || [])[0]
+      if (!path) return
+      const temp = (res.tempFiles || [])[0]
+      idPhotoPicked.value = {
+        path,
+        name: (temp && temp.name) || path.split('/').pop() || '证件照',
+        sizeText: formatFileSize((temp && temp.size) || 0),
+        size: (temp && temp.size) || 0,
+        file: null
+      }
+      idPhotoResult.value = null
+      idPhotoError.value = ''
+    },
+    fail: () => uni.showToast({ title: '未选择图片', icon: 'none' })
+  })
+  // #endif
+}
 
-const qrContent = ref('')
-const qrStyles = ref(['默认', '艺术', '个性化'])
-const qrStyle = ref('默认')
-const qrSizes = ref([{ label: '128×128', val: 128 }, { label: '256×256', val: 256 }, { label: '512×512', val: 512 }])
-const qrSize = ref('256×256')
-const qrMatrix = ref(Array.from({ length: 49 }, () => Math.random() > 0.5))
-const copyQrCode = () => {
-  uni.setClipboardData({ data: qrContent.value || 'https://aitoolsbox.app' })
+/** 调 /api/ai-office/id-photo-bg-change：上传选中的证件照 → 返回合成好底色的新图 */
+const runIdPhotoBgChange = async () => {
+  const picked = idPhotoPicked.value
+  if (!picked) {
+    idPhotoError.value = '请先上传证件照'
+    uni.showToast({ title: '请先上传证件照', icon: 'none' })
+    return
+  }
+  idPhotoLoading.value = true
+  idPhotoError.value = ''
+  idPhotoResult.value = null
+  try {
+    const res = await idPhotoBgChange(picked.file || picked.path, { bgColor: selectedBgColor.value })
+    const data = (res && res.data) || null
+    if (!res || res.code !== 200 || !data || !data.fileUrl) {
+      throw new Error((res && (res.message || res.msg)) || '换背景色失败，请稍后重试')
+    }
+    idPhotoResult.value = data
+  } catch (err) {
+    console.error('id-photo-bg-change error:', err)
+    idPhotoError.value = (err && err.message) || '换背景色失败，请稍后重试'
+  } finally {
+    idPhotoLoading.value = false
+  }
+}
+
+/** 放大预览结果图（uni.previewImage 跨端通用） */
+const previewIdPhoto = () => {
+  const url = idPhotoResult.value && idPhotoResult.value.fileUrl
+  if (!url) return
+  uni.previewImage({ urls: [url], current: url })
+}
+
+/** 保存/下载结果图：H5 走 a[download]，App 端 uni.downloadFile + openDocument 交系统保存 */
+const saveIdPhoto = () => {
+  const out = idPhotoResult.value
+  if (!out || !out.fileUrl) return
+  // #ifdef H5
+  const a = document.createElement('a')
+  a.href = out.fileUrl
+  a.download = out.fileName || 'id-photo-bg-change.png'
+  a.target = '_blank'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  // #endif
+  // #ifndef H5
+  uni.downloadFile({
+    url: out.fileUrl,
+    success: (res) => {
+      if (res.statusCode === 200) {
+        uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
+      } else {
+        uni.showToast({ title: '保存失败', icon: 'none' })
+      }
+    },
+    fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
+  })
+  // #endif
 }
 
 const pwdLength = ref(16)
@@ -986,10 +1044,7 @@ const pwdStrength = ref(80)
 const pwdStrengthLabel = ref('强')
 const onPwdLengthTrackClick = () => { pwdLength.value = 12 }
 const togglePwdChar = (i) => { pwdChars.value[i].checked = !pwdChars.value[i].checked }
-const copyPassword = () => {
-  uni.setClipboardData({ data: generatedPassword.value })
-  uni.showToast({ title: '已复制密码', icon: 'success' })
-}
+const copyPassword = () => copyRaw(generatedPassword.value, '密码')
 
 const taskTab = ref('all')
 const newTaskText = ref('')
@@ -1127,7 +1182,10 @@ const removePureConvertFile = (idx) => {
 // 通用校验（按工具 + 输入方式）：返回第一个失败的错误文案，null = 通过
 // 在 handleGenerate 入口前置校验，不通过直接 return + toast，不进 if-else 分支
 const runValidation = () => validate(toolId.value, currentInputType.value, {
-  filePath: isPureConvert.value ? (pureConvertFiles.value.length ? 'selected' : '') : filePath.value,
+  // 证件照换背景色自己维护已选文件（idPhotoPicked），把它映射成通用的 filePath 参与校验
+  filePath: isPureConvert.value
+    ? (pureConvertFiles.value.length ? 'selected' : '')
+    : (idPhotoPicked.value ? 'selected' : filePath.value),
   batchFiles: isPureConvert.value ? pureConvertFiles.value : uploadedFiles.value,
   inputText: inputText.value,
   promptFormat: promptFormatText.value,
@@ -1216,19 +1274,7 @@ const formatHistoryTime = (s) => {
 }
 // 说明：自研的 parseInline / markdownToRichTextNodes（markdown → rich-text 节点数组）已删除，
 // App 端改由 MarkdownView 内部使用 mp-html 渲染同一份 markdown-it HTML。
-// 复制到剪贴板：text 为空时直接提示"无内容可复制"；toast 默认成功
-const copyToClipboard = (text, label = '已复制') => {
-  const data = text == null ? '' : String(text)
-  if (!data) {
-    uni.showToast({ title: '暂无可复制内容', icon: 'none' })
-    return
-  }
-  uni.setClipboardData({
-    data,
-    success: () => uni.showToast({ title: label, icon: 'none' }),
-    fail: () => uni.showToast({ title: '复制失败', icon: 'none' })
-  })
-}
+// 复制能力已统一到 utils/clipboard.js 的 copyRaw / copyPlain（见文件顶部 import）。
 // 点击某条历史：回填文本输入 + 把历史结果写到结果区（不自动调 AI，用户需手动点生成重跑）
 //   - 文本类工具(work-summary/weekly-report/meeting-minutes)：inputText + 提示词 + resultContent
 //   - meeting-minutes：inputText + 提示词 + meetingMarkdownText + meetingRoute（不重跑，只展示）
@@ -1729,6 +1775,12 @@ const handleGenerate = async () => {
 
   try {
     const id = toolId.value
+
+    // 证件照换背景色：单图上传 + 底色 → 后端换底色 → 渲染结果图（自有 loading/error 状态，不走通用纯转换分支）
+    if (id === 'id-photo-bg-change') {
+      await runIdPhotoBgChange()
+      return
+    }
 
     // 录音转写若选中多个文件，走批量；单个则退回原有单文件纯转换路径
     const audioBatchFiles = pureConvertFiles.value.length > 1
@@ -3197,6 +3249,129 @@ svg {
 .color-item__label {
   font-size: 24rpx;
   color: var(--text-secondary, #4B5563);
+}
+
+/* ============ 证件照换背景色（id-photo-bg-change） ============ */
+/* 已选证件照（缩略图 + 文件名 + 重新选择） */
+.idphoto-picked {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  margin: 0 32rpx 24rpx;
+  padding: 24rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+}
+.idphoto-picked__img {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 16rpx;
+  background: var(--bg-gray, #F3F4F6);
+  flex-shrink: 0;
+}
+.idphoto-picked__body { flex: 1; min-width: 0; }
+.idphoto-picked__name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text-primary, #111827);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.idphoto-picked__meta { display: block; margin-top: 4rpx; font-size: 24rpx; color: var(--text-tertiary, #9CA3AF); }
+.idphoto-picked__change {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 10rpx 18rpx;
+  background: var(--brand-primary-light, #EFF6FF);
+  color: var(--brand-primary, #3B82F6);
+  font-size: 22rpx;
+  border-radius: 12rpx;
+  flex-shrink: 0;
+}
+.idphoto-picked__change svg { width: 28rpx; height: 28rpx; fill: currentColor; }
+
+/* loading */
+.idphoto-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+  margin: 0 32rpx 24rpx;
+  padding: 64rpx 32rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+}
+.idphoto-loading__spinner {
+  width: 56rpx;
+  height: 56rpx;
+  border: 4rpx solid var(--brand-primary-light, #EFF6FF);
+  border-top-color: var(--brand-primary, #3B82F6);
+  border-radius: 50%;
+  animation: idphotoSpin 0.9s linear infinite;
+}
+@keyframes idphotoSpin {
+  to { transform: rotate(360deg); }
+}
+.idphoto-loading__text { font-size: 26rpx; color: var(--text-secondary, #6B7280); }
+
+/* 错误提示（可重试） */
+.idphoto-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24rpx;
+  margin: 0 32rpx 24rpx;
+  padding: 24rpx 32rpx;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1rpx solid rgba(239, 68, 68, 0.2);
+  border-radius: 24rpx;
+}
+.idphoto-error__text { flex: 1; min-width: 0; font-size: 26rpx; color: #EF4444; }
+.idphoto-error__retry {
+  padding: 10rpx 28rpx;
+  background: #EF4444;
+  color: #FFFFFF;
+  font-size: 24rpx;
+  border-radius: 999rpx;
+  flex-shrink: 0;
+}
+
+/* 结果区 */
+.idphoto-result {
+  margin: 0 32rpx 24rpx;
+  padding: 24rpx;
+  background: var(--bg-card, #FFFFFF);
+  border-radius: 24rpx;
+}
+.idphoto-result__img {
+  width: 100%;
+  border-radius: 16rpx;
+  background: var(--bg-gray, #F3F4F6);
+  display: block;
+}
+.idphoto-result__meta { margin-top: 24rpx; }
+.idphoto-result__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24rpx;
+  padding: 14rpx 0;
+  border-bottom: 1rpx solid var(--border-color, #F3F4F6);
+}
+.idphoto-result__row:last-child { border-bottom: none; }
+.idphoto-result__k {
+  font-size: 24rpx;
+  color: var(--text-tertiary, #9CA3AF);
+  flex-shrink: 0;
+}
+.idphoto-result__v {
+  font-size: 24rpx;
+  color: var(--text-primary, #111827);
+  text-align: right;
+  word-break: break-all;
 }
 
 /* 示例对比 */

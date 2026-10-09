@@ -60,12 +60,18 @@
     <view v-if="runVisible" class="mask" @click="runVisible = false">
       <view class="sheet" @click.stop>
         <text class="sheet__title">运行：{{ runTarget && runTarget.name }}</text>
-        <text v-if="!streamFrames.length && !streamRunning" class="sheet__desc">请为以下起始节点提供输入</text>
+        <text class="sheet__desc">请为以下起始节点提供输入</text>
 
-        <!-- 未运行时：输入区 -->
-        <scroll-view v-if="!streamFrames.length && !streamRunning" scroll-y class="sheet__body">
+        <scroll-view scroll-y class="sheet__body">
           <view v-for="n in sourceNodes" :key="n.nodeId" class="run-node">
-            <text class="run-node__name">{{ n.toolName || n.name }}</text>
+            <view class="run-node__head">
+              <!-- 节点图标：后端按工具类型给 icon 标识（file-text / mic / meeting …），前端映射到统一图标 -->
+              <view class="run-node__icon"><svg viewBox="0 0 24 24" class="run-node__icon-svg"><path :d="nodeIconPath(n.icon || n.nodeRef)" /></svg></view>
+              <view class="run-node__headtext">
+                <text class="run-node__name">{{ n.toolName || n.name }}</text>
+                <text v-if="n.description" class="run-node__desc">{{ n.description }}</text>
+              </view>
+            </view>
             <textarea v-if="isTextInput(n)" class="run-node__text" v-model="runInputs[n.nodeId].text"
                       placeholder="请输入文本内容" placeholder-class="wfe-ph" :maxlength="5000" />
             <view v-else class="run-node__file">
@@ -84,63 +90,10 @@
           </view>
         </scroll-view>
 
-        <!-- 运行中/已完成：进度区（独立可滚动区域；不显示滚动条，可自由下滑） -->
-        <scroll-view v-else scroll-y :show-scrollbar="false" class="stream-panel" :scroll-top="streamScrollTop">
-          <view class="stream-panel__head">
-            <text class="stream-panel__title">执行进度</text>
-            <text class="stream-panel__sub">{{ streamDoneCount }}/{{ streamFileTotal }} 个文件</text>
-          </view>
-          <view v-for="(fr, fi) in streamFrames" :key="fi" class="stream-file">
-            <view class="stream-file__head">
-              <!-- 标题：文件名（有则显示文件名，无则「文件 N」） -->
-              <text class="stream-file__idx">{{ fr.fileName || ('文件 ' + (fi + 1)) }}</text>
-              <text class="stream-file__st" :class="fr.ok ? 'st-ok' : (fr.failed ? 'st-fail' : 'st-run')">
-                {{ fr.ok ? '✓ 完成' : (fr.failed ? '✗ 失败' : '处理中…') }}
-              </text>
-            </view>
-            <!-- 每个节点：标题用「转写结果 / 会议纪要结果」等可读名 -->
-            <view v-for="(nd, ni) in fr.nodes" :key="ni" class="stream-node">
-              <text class="stream-node__name">{{ nd.title || nd.nodeRef || nd.nodeId }}</text>
-              <text v-if="nd.errorMsg" class="stream-node__err">{{ nd.errorMsg }}</text>
-              <view v-else-if="nd.text" class="stream-node__text">
-                <MarkdownView :source="nd.text" :streaming="!nd.done" />
-              </view>
-              <text v-else-if="!nd.done" class="stream-node__wait">处理中…</text>
-            </view>
-          </view>
-        </scroll-view>
-
         <!-- 操作按钮：固定在弹层底部，不被内容挤压 -->
         <view class="sheet__footer">
-          <view class="btn-solid" :class="{ 'btn-solid--disabled': running }" @click="running ? null : doRun()">
-            {{ running ? '运行中…' : (streamFrames.length ? '再次运行' : '开始运行') }}
-          </view>
+          <view class="btn-solid" @click="doRun">开始运行</view>
         </view>
-      </view>
-    </view>
-
-    <!-- ============ 结果弹窗 ============ -->
-    <view v-if="resultVisible" class="mask" @click="resultVisible = false">
-      <view class="sheet" @click.stop>
-        <text class="sheet__title">运行结果</text>
-        <text class="sheet__desc">
-          {{ runResult && runResult.statusLabel }} · 成功 {{ runResult && runResult.successCount }} / 失败 {{ runResult && runResult.failCount }} · {{ runResult && runResult.duration }}ms
-        </text>
-        <scroll-view scroll-y class="sheet__body">
-          <view v-for="(nr, nodeId) in (runResult && runResult.nodeResults) || {}" :key="nodeId" class="res-node">
-            <view class="res-node__head">
-              <text class="res-node__id">{{ nodeId }}</text>
-              <text class="res-node__st" :class="nr.status === 2 ? 'st-ok' : 'st-fail'">{{ nr.status === 2 ? '成功' : '失败' }}</text>
-            </view>
-            <text v-if="nr.errorMsg" class="res-node__err">{{ nr.errorMsg }}</text>
-            <view v-for="(out, oi) in nr.outputs || []" :key="oi" class="res-out">
-              <text class="res-out__idx">输出 {{ oi + 1 }}</text>
-              <view class="res-out__body">
-                <MarkdownView :source="out" :streaming="false" />
-              </view>
-            </view>
-          </view>
-        </scroll-view>
       </view>
     </view>
 
@@ -149,13 +102,54 @@
       <view class="sheet" @click.stop>
         <text class="sheet__title">运行历史</text>
         <scroll-view scroll-y class="sheet__body">
-          <view v-if="runs.length === 0" class="redesign-empty"><text class="redesign-empty__text">暂无运行记录</text></view>
-          <view v-for="r in runs" :key="r.runId" class="run-item">
-            <view class="run-item__head">
-              <text :class="r.status === 2 ? 'st-ok' : (r.status === 3 ? 'st-part' : 'st-fail')">{{ r.statusLabel }}</text>
-              <text class="run-item__time">{{ r.createTime }}</text>
+          <!-- 统计三格：跑过多少次 / 成功率 / 平均耗时 -->
+          <view v-if="runs.length" class="run-stats">
+            <view class="run-stat">
+              <view class="run-stat__v"><text>{{ runs.length }}</text><text class="run-stat__u">次</text></view>
+              <text class="run-stat__l">近期运行</text>
             </view>
-            <text class="run-item__meta">成功 {{ r.successCount }} / 失败 {{ r.failCount }} · {{ r.duration }}ms</text>
+            <view class="run-stat run-stat--ok">
+              <view class="run-stat__v"><text>{{ successRate }}</text><text class="run-stat__u">%</text></view>
+              <text class="run-stat__l">成功率</text>
+            </view>
+            <view class="run-stat">
+              <view class="run-stat__v"><text>{{ avgDuration }}</text></view>
+              <text class="run-stat__l">平均耗时</text>
+            </view>
+          </view>
+
+          <!-- 状态筛选：全部 / 成功 / 失败 -->
+          <view v-if="runs.length" class="run-seg">
+            <view v-for="s in RUN_FILTERS" :key="s.key" class="run-seg__i"
+                  :class="{ 'run-seg__i--on': runFilter === s.key }"
+                  @click="runFilter = s.key">
+              <text>{{ s.text }}</text><text class="run-seg__c">{{ countByFilter(s.key) }}</text>
+            </view>
+          </view>
+
+          <view v-if="runs.length === 0" class="redesign-empty"><text class="redesign-empty__text">暂无运行记录</text></view>
+          <view v-for="r in visibleRuns" :key="r.runId" class="run-item">
+            <view class="run-item__head">
+              <text class="run-item__name">{{ runTarget && runTarget.name }}</text>
+              <text class="run-pill" :class="runPillCls(r)">
+                <text v-if="r.status === 1" class="run-item__dot"></text>
+                {{ r.statusLabel }}
+              </text>
+            </view>
+            <text class="run-item__meta">
+              成功 {{ r.successCount }} / 失败 {{ r.failCount }} · {{ durationText(r.duration) }}
+            </text>
+            <text class="run-item__time">{{ r.createTime }}</text>
+            <text v-if="runFirstErr(r)" class="run-item__err">{{ runFirstErr(r) }}</text>
+            <!-- 迷你轨道：不点开也能看出断在哪一步 -->
+            <view class="run-mini">
+              <block v-for="(s, i) in miniStates(r)" :key="i">
+                <view class="run-mini__p" :class="'run-mini__p--' + s"></view>
+                <view v-if="i < miniStates(r).length - 1" class="run-mini__l"
+                      :class="'run-mini__l--' + miniLinkState(r, i)"></view>
+              </block>
+              <text class="run-mini__t" :class="{ 'run-mini__t--stop': r.failCount > 0 }">{{ miniLabel(r) }}</text>
+            </view>
             <text class="run-item__act" @click="openRunDetail(r.runId)">查看详情</text>
           </view>
         </scroll-view>
@@ -169,38 +163,28 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import MarkdownView from '@/components/MarkdownView.vue'
-import { BASE_URL } from '@/config/env'
 import { toolListApi } from '@/api/prompt'
 import { uploadFile } from '@/api/request'
 import {
-  workflowListApi, workflowDetailApi, workflowDeleteApi,
-  workflowRunApi, workflowRunsApi, workflowRunDetailApi
+  workflowListApi, workflowDetailApi, workflowDeleteApi, workflowRunsApi
 } from '@/api/workflow'
+import { setWorkflowRunTarget } from '@/utils/workflowRunContext'
+import {
+  nodeIconPath, fileDisplayName, openFile, durationText
+} from '@/utils/workflowView'
 
 const workflows = ref([])
 const loading = ref(false)
 const tools = ref([])
 
 const runVisible = ref(false)
-const running = ref(false)
 const runTarget = ref(null)
 const runInputs = reactive({})
 
-const resultVisible = ref(false)
-const runResult = ref(null)
-
-/* ===== 流式执行状态（SSE 边跑边展示）===== */
-/** 每个文件的执行进度：[{ ok, nodes: [{nodeId, nodeRef, text, done, errorMsg}] }] */
-const streamFrames = ref([])
-const streamRunning = ref(false)
-const streamFileTotal = ref(0)
-const streamDoneCount = ref(0)
-/** 流式面板滚动位置（自动滚到底部，让用户看到最新进度） */
-const streamScrollTop = ref(0)
-
 const runsVisible = ref(false)
 const runs = ref([])
+/** 历史列表状态筛选：all / ok / fail（后端 status 2=成功 3=部分失败 4=失败） */
+const runFilter = ref('all')
 
 const toolByCode = (code) => tools.value.find(t => t.toolCode === code)
 
@@ -238,6 +222,13 @@ const loadList = async () => {
 onShow(async () => {
   if (!tools.value.length) await loadTools()
   await loadList()
+  // 从运行页返回时（该跑完了），历史弹层若还开着要重拉，否则看不到刚产生的记录
+  if (runsVisible.value && runTarget.value) {
+    try {
+      const res = await workflowRunsApi(runTarget.value.workflowId, 20)
+      runs.value = (res && res.data) || []
+    } catch (e) { /* ignore */ }
+  }
 })
 
 const goCreate = () => uni.navigateTo({ url: '/pages/workflow-edit' })
@@ -339,7 +330,12 @@ const uploadFiles = async (n, list) => {
   }
 }
 
-const doRun = async () => {
+/**
+ * 「开始运行」：本页只负责收集各源节点输入，收集完跳独立运行页。
+ * 真正的调用（同步 / SSE）与实时过程展示都在 workflow-run.vue。
+ * inputs 不走 query（文件 URL + 文本长度不可控），走单例传递，见 utils/workflowRunContext.js。
+ */
+const doRun = () => {
   const inputs = {}
   for (const n of sourceNodes.value) {
     const v = runInputs[n.nodeId]
@@ -351,203 +347,18 @@ const doRun = async () => {
       inputs[n.nodeId] = v.files.map(f => (typeof f === 'string' ? f : (f.url || f.fileUrl || '')))
     }
   }
-
-  // 文件数 > 1 → SSE 流式（边跑边展示）；单文件/纯文本 → 原同步接口
-  const maxFiles = Math.max(0, ...Object.values(inputs).map(a => a.length))
-  if (maxFiles > 1) {
-    return doRunStream(inputs, maxFiles)
-  }
-
-  running.value = true
-  uni.showLoading({ title: '运行中，请稍候…' })
-  try {
-    const res = await workflowRunApi(runTarget.value.workflowId, inputs)
-    runResult.value = res.data
-    runVisible.value = false
-    resultVisible.value = true
-    await loadList()
-  } catch (e) { /* request.js 已提示 */ } finally {
-    running.value = false
-    uni.hideLoading()
-  }
-}
-
-/**
- * SSE 流式运行：逐帧接收，边跑边展示（每个文件完整跑完后立即可见）
- * 帧类型：run_start / file_start / node_start / chunk / node_done / file_done / all_done / error
- */
-const doRunStream = (inputs, fileTotal) => {
-  const token = uni.getStorageSync('token')
-  const url = BASE_URL + `/api/workflow/${runTarget.value.workflowId}/run/stream`
-
-  // 重置流式状态
-  streamFrames.value = []
-  streamFileTotal.value = fileTotal
-  streamDoneCount.value = 0
-  streamRunning.value = true
-  running.value = true
-
-  // 每个文件的显示名（按源节点输入顺序，取用户上传时的文件名）
-  const fileNames = []
-  const srcNode = sourceNodes.value[0]
-  if (srcNode && runInputs[srcNode.nodeId] && runInputs[srcNode.nodeId].files) {
-    runInputs[srcNode.nodeId].files.forEach(f => fileNames.push(fileDisplayName(f)))
-  }
-
-  const xhr = new XMLHttpRequest()
-  xhr.open('POST', url, true)
-  xhr.setRequestHeader('Content-Type', 'application/json')
-  if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token)
-
-  // SSE 增量解析（按空行分隔事件，事件内多行 data: 拼回）
-  let consumed = 0
-  let buffer = ''
-  const handleFrame = (obj) => {
-    const t = obj.type
-    if (t === 'file_start') {
-      streamFrames.value.push({
-        fileName: fileNames[obj.fileIndex] || ('文件 ' + (obj.fileIndex + 1)),
-        ok: false, failed: false, nodes: []
-      })
-    } else if (t === 'node_start') {
-      const f = streamFrames.value[obj.fileIndex]
-      if (f) {
-        f.nodes.push({
-          nodeId: obj.nodeId,
-          nodeRef: obj.nodeRef,
-          // 可读标题：优先用工具名（如「录音转写」「会议纪要」），后端未传则退回 nodeRef
-          title: nodeTitleOf(obj.nodeRef, obj.title),
-          text: '', done: false, errorMsg: null
-        })
-        autoScrollStream()
-      }
-    } else if (t === 'chunk') {
-      const f = streamFrames.value[obj.fileIndex]
-      const nd = f && f.nodes.find(x => x.nodeId === obj.nodeId)
-      if (nd) nd.text = (nd.text || '') + (obj.text || '')
-    } else if (t === 'node_done') {
-      const f = streamFrames.value[obj.fileIndex]
-      const nd = f && f.nodes.find(x => x.nodeId === obj.nodeId)
-      if (nd) {
-        nd.done = true
-        if (!obj.ok) nd.errorMsg = obj.errMsg || '执行失败'
-        // 非 text 节点通过 output 带回完整内容（text 节点已由 chunk 累积）
-        if (obj.output) nd.text = (nd.text || '') + obj.output
-      }
-      autoScrollStream()
-    } else if (t === 'file_done') {
-      const f = streamFrames.value[obj.fileIndex]
-      if (f) {
-        f.ok = !!obj.ok
-        f.failed = !obj.ok
-      }
-      streamDoneCount.value = Math.max(streamDoneCount.value, obj.fileIndex + 1)
-      autoScrollStream()
-    } else if (t === 'all_done') {
-      streamRunning.value = false
-      running.value = false
-      streamFrames.value = streamFrames.value.slice()
-      autoScrollStream()
-    } else if (t === 'error') {
-      streamRunning.value = false
-      running.value = false
-      uni.showToast({ title: obj.message || '运行失败', icon: 'none', duration: 3000 })
-    }
-  }
-
-  /** 节点可读标题：用工具名（来自工具列表），查不到则退回 nodeRef */
-  const nodeTitleOf = (nodeRef, backendTitle) => {
-    if (backendTitle) return backendTitle
-    const t = tools.value.find(x => x.toolCode === nodeRef)
-    return (t && t.toolName) || nodeRef || '节点'
-  }
-
-  /** 内容增长后自动滚到底部（让用户始终看到最新进度） */
-  const autoScrollStream = () => {
-    // 用极大值触发滚动到底；下一帧再重置，避免 scroll-top 相同值不触发
-    streamScrollTop.value = 999999
-    setTimeout(() => { streamScrollTop.value = 0 }, 60)
-  }
-
-  const feed = (fullText, done) => {
-    buffer += fullText.slice(consumed)
-    consumed = fullText.length
-    const events = buffer.split(/\r?\n\r?\n/)
-    buffer = events.pop()
-    for (const ev of events) {
-      const lines = ev.split(/\r?\n/).filter(l => l.startsWith('data:'))
-      if (!lines.length) continue
-      const payload = lines.map(l => l.slice(5).replace(/^ /, '')).join('\n')
-      if (!payload || payload === '[DONE]') continue
-      try { handleFrame(JSON.parse(payload)) } catch (e) { /* 忽略非 JSON 帧 */ }
-    }
-    if (done && buffer) {
-      const lines = buffer.split(/\r?\n/).filter(l => l.startsWith('data:'))
-      if (lines.length) {
-        const payload = lines.map(l => l.slice(5).replace(/^ /, '')).join('\n')
-        try { handleFrame(JSON.parse(payload)) } catch (e) { /* ignore */ }
-      }
-      buffer = ''
-    }
-  }
-
-  xhr.onprogress = () => feed(xhr.responseText)
-  xhr.onload = () => {
-    if (xhr.status >= 400) {
-      streamRunning.value = false
-      running.value = false
-      let msg = '请求失败（' + xhr.status + '）'
-      try {
-        const body = JSON.parse(xhr.responseText || '{}')
-        if (body && body.message) msg = body.message
-      } catch (e) { /* ignore */ }
-      uni.showToast({ title: msg, icon: 'none', duration: 3000 })
-      return
-    }
-    feed(xhr.responseText, true)
-    streamRunning.value = false
-    running.value = false
-    loadList()
-  }
-  xhr.onerror = () => {
-    streamRunning.value = false
-    running.value = false
-    uni.showToast({ title: '网络异常，运行中断', icon: 'none' })
-  }
-  xhr.send(JSON.stringify({ inputs }))
-}
-
-/** 文件显示名：兼容 {name,url} 与纯 url 字符串 */
-const fileDisplayName = (f) => {
-  if (!f) return '文件'
-  if (typeof f === 'string') {
-    const s = f.split('?')[0]
-    const seg = s.split('/').pop() || '文件'
-    const cut = seg.indexOf('_')   // 形如 8eb03bf1_文件名.pdf
-    return cut > 0 && cut < 40 ? seg.slice(cut + 1) : seg
-  }
-  return f.name || f.fileName || '文件'
-}
-
-/** 点击文件：跳下载（新窗口打开签名 URL） */
-const openFile = (f) => {
-  const url = typeof f === 'string' ? f : (f && (f.url || f.fileUrl))
-  if (!url) {
-    uni.showToast({ title: '文件链接不可用', icon: 'none' })
+  if (!Object.keys(inputs).length) {
+    uni.showToast({ title: '请先为起始节点填写输入', icon: 'none' })
     return
   }
-  // #ifdef H5
-  window.open(url, '_blank')
-  // #endif
-  // #ifndef H5
-  uni.downloadFile({
-    url,
-    success: (res) => {
-      if (res.statusCode === 200) uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-    },
-    fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
+  setWorkflowRunTarget({
+    workflowId: runTarget.value.workflowId,
+    name: runTarget.value.name,
+    description: runTarget.value.description,
+    inputs
   })
-  // #endif
+  runVisible.value = false
+  uni.navigateTo({ url: `/pages/workflow-run?mode=run&workflowId=${runTarget.value.workflowId}` })
 }
 
 /* ==================== 历史 ==================== */
@@ -555,22 +366,100 @@ const viewRuns = async (wf) => {
   try {
     const res = await workflowRunsApi(wf.workflowId, 20)
     runs.value = (res && res.data) || []
+    runFilter.value = 'all'
     runsVisible.value = true
   } catch (e) { /* ignore */ }
 }
 
-const openRunDetail = async (runId) => {
-  try {
-    const res = await workflowRunDetailApi(runId)
-    runResult.value = res.data
-    runsVisible.value = false
-    resultVisible.value = true
-  } catch (e) { /* ignore */ }
+/**
+ * 「查看详情」：跳独立运行页的 detail 模式。
+ * 节点真名（避免退化成 n1/n2）的补拉逻辑已搬到 workflow-run.vue：
+ * 运行页拿到 runDetail.workflowId 后自己 workflowDetailApi 补一次，本页不再需要。
+ */
+const openRunDetail = (runId) => {
+  runsVisible.value = false
+  uni.navigateTo({ url: `/pages/workflow-run?mode=detail&runId=${runId}` })
 }
+
+/* ==================== 历史列表：统计 / 筛选 / 迷你轨道 ==================== */
+const RUN_FILTERS = [
+  { key: 'all', text: '全部' },
+  { key: 'ok', text: '成功' },
+  { key: 'fail', text: '失败' }
+]
+
+/** 后端 status：1 运行中 2 成功 3 部分失败 4 失败 */
+const isOkRun = (r) => r.status === 2 || r.status === 3
+const countByFilter = (k) => (k === 'ok' ? runs.value.filter(isOkRun).length : k === 'fail' ? runs.value.filter(r => !isOkRun(r)).length : runs.value.length)
+const visibleRuns = computed(() => runs.value.filter(r => runFilter.value === 'all' || (runFilter.value === 'ok' ? isOkRun(r) : !isOkRun(r))))
+
+const successRate = computed(() => {
+  if (!runs.value.length) return 0
+  return Math.round((runs.value.filter(isOkRun).length / runs.value.length) * 100)
+})
+const avgDuration = computed(() => {
+  if (!runs.value.length) return '0秒'
+  return durationText(Math.round(runs.value.reduce((a, r) => a + (r.duration || 0), 0) / runs.value.length))
+})
+
+const runPillCls = (r) => (r.status === 2 || r.status === 3 ? 'run-pill--ok' : r.status === 1 ? 'run-pill--run' : 'run-pill--fail')
+
+/** 迷你轨道节点数：取该次运行 nodeResults 的节点总数（无结果时退回 1，避免空轨道） */
+const miniCount = (r) => {
+  const n = r.nodeResults ? Object.keys(r.nodeResults).length : 0
+  return n || 1
+}
+/** 迷你轨道状态：done / fail / blk（failCount 之后一律按「断点后未执行」画灰虚线） */
+const miniStates = (r) => {
+  const total = miniCount(r)
+  const out = []
+  const nr = r.nodeResults || {}
+  const ids = Object.keys(nr)
+  for (let i = 0; i < total; i++) {
+    const id = ids[i]
+    const node = id ? nr[id] : null
+    if (node && node.status === 2) out.push('done')
+    else if (node && node.status === 4 && node.errorMsg !== '上游节点失败，本节点未执行') out.push('fail')
+    else if (r.status === 1 && out.length === doneCountOf(r)) out.push('run')
+    else out.push('blk')
+  }
+  return out
+}
+const doneCountOf = (r) => {
+  const nr = r.nodeResults || {}
+  return Object.keys(nr).filter(k => nr[k].status === 2).length
+}
+const miniLinkState = (r, i) => {
+  const st = miniStates(r)
+  if (st[i] === 'fail') return 'fail'
+  if (st[i] === 'done' && st[i + 1] === 'run') return 'run'
+  if (st[i] === 'done' && st[i + 1] === 'done') return 'done'
+  if (st[i] === 'done') return 'blk'
+  return 'idle'
+}
+const miniLabel = (r) => {
+  const st = miniStates(r)
+  const failAt = st.indexOf('fail')
+  if (failAt >= 0) return `断在第 ${failAt + 1} 步`
+  if (r.status === 1) {
+    const runAt = st.indexOf('run')
+    return runAt >= 0 ? `第 ${runAt + 1} 步进行中` : '进行中'
+  }
+  return `${st.filter(x => x === 'done').length}/${st.length} 节点`
+}
+/** 失败记录在列表里直接摊出断点原因（node_results 里第一个真失败的 errorMsg） */
+const runFirstErr = (r) => {
+  const nr = r.nodeResults || {}
+  const hit = Object.keys(nr).find(k => nr[k].status === 4 && nr[k].errorMsg && nr[k].errorMsg !== '上游节点失败，本节点未执行')
+  if (!hit) return ''
+  return `${hit} · ${nr[hit].errorMsg}`
+}
+
 </script>
 
 <style lang="scss" scoped>
 @import '@/styles/redesign.scss';
+@import '@/styles/animations.scss';
 
 .wf-page {
   min-height: 100vh;
@@ -699,9 +588,35 @@ const openRunDetail = async (runId) => {
   font-size: 28rpx;
   font-weight: 600;
   color: #111827;
-  margin-bottom: 16rpx;
 }
 .run-node__tool { font-size: 22rpx; color: #9CA3AF; font-weight: 400; }
+/* 节点卡头：图标 + 名称 + 工具描述 */
+.run-node__head {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-bottom: 16rpx;
+}
+.run-node__icon {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 16rpx;
+  background: #EFF6FF;
+  color: #2563EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.run-node__icon-svg { width: 36rpx; height: 36rpx; fill: currentColor; }
+.run-node__headtext { flex: 1; min-width: 0; }
+.run-node__desc {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: #9CA3AF;
+  line-height: 1.4;
+}
 .run-node__text {
   width: 100%;
   min-height: 180rpx;
@@ -745,112 +660,49 @@ const openRunDetail = async (runId) => {
   text-overflow: ellipsis;
 }
 
-/* 流式执行进度面板：独立可滚动区域（滚动条可见）
-   注意：uni-h5 的 scroll-view 会渲染两层 .uni-scroll-view（外层 overflow:visible，
-   高度跟随内容；内层 overflow:auto 才是真正的滚动容器）。
-   仅给自定义元素设 flex/max-height 不够——必须约束外层 .uni-scroll-view 的高度，
-   否则内层高度跟随内容、整块溢出，表现为「看不到按钮 + 无法滚动」。 */
-.stream-panel {
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: 46vh;
-  margin-top: 20rpx;
-  padding: 20rpx;
-  background: #F9FAFB;
-  border-radius: 16rpx;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-.stream-panel > .uni-scroll-view {
-  height: 100%;
-  max-height: 46vh;
-  overflow: hidden;
-}
-.stream-panel > .uni-scroll-view > .uni-scroll-view {
-  height: 100%;
-}
-/* 不显示滚动条（保留滚动能力）：uni 的 scrollbar-hidden 类 + WebKit 兜底 */
-.stream-panel .uni-scroll-view-scrollbar-hidden::-webkit-scrollbar,
-.stream-panel .uni-scroll-view::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-.stream-panel .uni-scroll-view {
-  scrollbar-width: none;      /* Firefox */
-  -ms-overflow-style: none;   /* IE/Edge */
-}
-
-/* 底部操作按钮：固定在弹层底部，不随内容滚动/被挤压 */
-.sheet__footer {
-  flex-shrink: 0;
-  padding-top: 20rpx;
+/* 历史记录项：迷你轨道 + 状态 pill（对齐设计稿历史运行页） */
+.run-stats { display: flex; gap: 16rpx; margin-bottom: 24rpx; }
+.run-stat {
+  flex: 1;
   background: #fff;
-  position: relative;
-  z-index: 2;
+  border-radius: 24rpx;
+  padding: 22rpx 20rpx;
+  box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.06);
+  border: 2rpx solid rgba(17, 24, 39, 0.04);
+  text-align: center;
 }
-.stream-panel__head {
+.run-stat__v {
+  font-size: 34rpx;
+  font-weight: 700;
+  line-height: 44rpx;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
+.run-stat--ok .run-stat__v { color: #047857; }
+.run-stat__u { font-size: 22rpx; font-weight: 600; color: #9CA3AF; margin-left: 2rpx; }
+.run-stat__l { display: block; font-size: 21rpx; color: #9CA3AF; margin-top: 6rpx; }
+
+.run-seg {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12rpx;
-}
-.stream-panel__title { font-size: 28rpx; font-weight: 600; color: #111827; }
-.stream-panel__sub { font-size: 24rpx; color: #6B7280; }
-
-.stream-file {
-  background: #fff;
-  border-radius: 14rpx;
-  padding: 18rpx;
-  margin-bottom: 14rpx;
-}
-.stream-file__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10rpx;
-}
-.stream-file__idx { font-size: 26rpx; font-weight: 600; color: #111827; }
-.stream-file__st { font-size: 22rpx; }
-.st-ok { color: #10B981; }
-.st-fail { color: #EF4444; }
-.st-run { color: #6B7280; }
-
-.stream-node { margin-top: 12rpx; padding-left: 8rpx; border-left: 4rpx solid #E5E7EB; }
-.stream-node__name { display: block; font-size: 22rpx; color: #6B7280; margin-bottom: 6rpx; }
-.stream-node__err { display: block; font-size: 24rpx; color: #EF4444; }
-.stream-node__wait { display: block; font-size: 24rpx; color: #9CA3AF; }
-.stream-node__text { font-size: 26rpx; color: #374151; }
-
-.res-node { border-bottom: 2rpx solid #F3F4F6; padding: 24rpx 0; }
-.res-node__head { display: flex; align-items: center; justify-content: space-between; }
-.res-node__id {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: #374151;
+  gap: 4rpx;
+  padding: 6rpx;
   background: #F3F4F6;
-  padding: 6rpx 20rpx;
-  border-radius: 9999rpx;
-}
-.res-node__st { font-size: 24rpx; font-weight: 500; }
-.res-node__err {
-  display: block;
-  font-size: 24rpx;
-  color: #EF4444;
-  margin-top: 12rpx;
-  background: #FEF2F2;
-  padding: 16rpx;
-  border-radius: 12rpx;
-}
-.res-out { margin-top: 16rpx; }
-.res-out__idx { font-size: 22rpx; color: #9CA3AF; }
-.res-out__body {
-  background: #F9FAFB;
   border-radius: 16rpx;
-  padding: 20rpx;
-  margin-top: 8rpx;
-  border: 2rpx solid #F3F4F6;
+  margin-bottom: 24rpx;
 }
+.run-seg__i {
+  flex: 1;
+  height: 60rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  font-size: 25rpx;
+  color: #4B5563;
+}
+.run-seg__i--on { background: #fff; color: #3B82F6; font-weight: 600; box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.06); }
+.run-seg__c { font-size: 21rpx; font-weight: 600; opacity: 0.6; }
 
 .run-item {
   padding: 24rpx;
@@ -858,10 +710,59 @@ const openRunDetail = async (runId) => {
   border-radius: 16rpx;
   margin-bottom: 16rpx;
   background: #FCFDFF;
+  position: relative;
 }
-.run-item__head { display: flex; justify-content: space-between; align-items: center; }
-.run-item__time { font-size: 22rpx; color: #9CA3AF; }
-.run-item__meta { display: block; font-size: 24rpx; color: #4B5563; margin-top: 12rpx; }
+.run-item__head { display: flex; align-items: center; gap: 16rpx; }
+.run-item__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 27rpx;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.run-pill {
+  height: 40rpx;
+  padding: 0 14rpx;
+  border-radius: 8rpx;
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.run-pill--ok { background: #D1FAE5; color: #047857; }
+.run-pill--run { background: #EFF6FF; color: #3B82F6; }
+.run-pill--fail { background: #FEE2E2; color: #DC2626; }
+.run-item__dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #3B82F6;
+  animation: breathe 1.5s ease-in-out infinite;
+}
+.run-item__time { display: block; font-size: 22rpx; color: #9CA3AF; margin-top: 6rpx; }
+.run-item__meta {
+  display: block;
+  font-size: 24rpx;
+  color: #111827;
+  font-weight: 500;
+  margin-top: 8rpx;
+}
+.run-item__err {
+  display: block;
+  margin-top: 14rpx;
+  padding: 10rpx 14rpx;
+  border-radius: 8rpx;
+  background: #FEE2E2;
+  font-size: 21rpx;
+  line-height: 30rpx;
+  color: #B91C1C;
+  word-break: break-all;
+}
 .run-item__act {
   display: block;
   font-size: 24rpx;
@@ -870,9 +771,31 @@ const openRunDetail = async (runId) => {
   text-align: right;
 }
 
-.st-ok { color: #10B981; }
-.st-part { color: #F59E0B; }
-.st-fail { color: #EF4444; }
+/* 迷你轨道：五点进度，不点开也能看出断在哪一步 */
+.run-mini { display: flex; align-items: center; margin-top: 18rpx; }
+.run-mini__p {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #F3F4F6;
+}
+.run-mini__p--done { background: #10B981; }
+.run-mini__p--fail { background: #EF4444; }
+.run-mini__p--run { background: #3B82F6; }
+.run-mini__l { flex: 1; height: 3rpx; background: #F3F4F6; }
+.run-mini__l--done { background: #10B981; }
+.run-mini__l--fail { background: #EF4444; }
+.run-mini__l--run { background: linear-gradient(90deg, #10B981, #3B82F6); }
+.run-mini__l--blk { background: repeating-linear-gradient(90deg, #D1D5DB 0 4rpx, transparent 4rpx 10rpx); }
+.run-mini__t {
+  margin-left: auto;
+  padding-left: 16rpx;
+  font-size: 20rpx;
+  color: #9CA3AF;
+  white-space: nowrap;
+}
+.run-mini__t--stop { color: #DC2626; font-weight: 600; }
 
 .safe-bottom { height: 40rpx; }
 </style>

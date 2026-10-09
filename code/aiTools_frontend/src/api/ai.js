@@ -1,4 +1,4 @@
-import { uploadFile, request } from './request'
+import { uploadFile, uploadWithFormData, request } from './request'
 import { BASE_URL } from '../config/env'
 
 // ==================== 文件上传 ====================
@@ -224,6 +224,20 @@ async function transcribeMeetingH5(filePath, opts = {}) {
   return json
 }
 // #endif
+
+/**
+ * 证件照换背景色（单文件 multipart 上传 → 后端本地 ONNX 抠图 → 合成底色）
+ * 鉴权沿用项目既有机制：Bearer token 放请求头（与 uploadFile / batchCreate 一致）
+ * @param {String|Blob} filePath - 本地临时路径（H5 端可为原生 File/Blob 对象）
+ * @param {Object} [opts]
+ * @param {String} [opts.bgColor] - 底色 red | blue | white，不传后端默认 red
+ * @returns {Promise<Object>} Result<ToolOutputVO>（含 fileUrl / fileName / width / height 等）
+ */
+export const idPhotoBgChange = (filePath, opts = {}) => {
+  const formData = {}
+  if (opts.bgColor) formData.bgColor = opts.bgColor
+  return uploadWithFormData('/api/ai-office/id-photo-bg-change', filePath, formData, 'file')
+}
 
 /**
  * 会议纪要 AI 路由决策：判断本次会议内容适合 SSE 流式还是 JSON 结构化输出

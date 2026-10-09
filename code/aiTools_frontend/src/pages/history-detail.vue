@@ -43,7 +43,15 @@
       <view class="hd-block">
         <text class="hd-block__title">输入</text>
         <view class="hd-box">
-          <text v-if="!item.inputContent" class="hd-box__empty">（无输入）</text>
+          <text v-if="!item.inputContent && !inputFile" class="hd-box__empty">（无输入）</text>
+          <!-- 文件类输入：只显示文件名 + 下载入口，不把 COS 签名 URL 铺在页面上 -->
+          <view v-else-if="inputFile" class="hd-inputfile" hover-class="hd-inputfile--hover" @click="onInputFileTap">
+            <text class="hd-inputfile__icon">{{ fileIcon(inputFile.ext) }}</text>
+            <view class="hd-inputfile__name">
+              <text class="hd-inputfile__base">{{ inputFile.base }}</text><text class="hd-inputfile__ext">{{ inputFile.suffix }}</text>
+            </view>
+            <text class="hd-inputfile__action">{{ inputFileAction }}</text>
+          </view>
           <scroll-view v-else-if="isLong(item.inputContent)" scroll-y class="hd-box__scroll">
             <text class="hd-box__text">{{ item.inputContent }}</text>
           </scroll-view>
@@ -121,14 +129,99 @@ import { onLoad } from '@dcloudio/uni-app'
 import { historyListByToolApi } from '@/api/history'
 import { requireLogin } from '@/utils/auth'
 import { safeBack } from '@/utils/pageTransition'
+import { copyRaw } from '@/utils/clipboard'
+import { isFileUrl, extensionOf, fileKeyOf, fileNameFromUrl, isPlayableExt, isAudioExt } from '@/utils/fileDisplayName'
 import MarkdownView from '@/components/MarkdownView.vue'
 
 const loading = ref(false)
 const item = ref(null)
+const fileLoading = ref(false)   // 输入文件下载中，防止重复点击
 
 const statusOk = computed(() => !!item.value && item.value.status === 1)
 const files = computed(() => (item.value && item.value.files) || [])
 const hasPrompt = computed(() => !!item.value && (item.value.promptFormat || item.value.promptGenerate))
+
+/** 文件图标（按扩展名粗分，与详情页既有 emoji 风格一致） */
+const fileIcon = (ext) => {
+  if (isAudioExt(ext)) return '🎵'
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].indexOf(ext) >= 0) return '🖼️'
+  if (ext === 'pdf') return '📕'
+  if (['doc', 'docx', 'txt', 'md'].indexOf(ext) >= 0) return '📄'
+  return '📎'
+}
+
+/**
+ * 「输入」区域的文件对象；非 URL 输入（工作总结等纯文本）返回 null，
+ * 此时沿用原有纯文本展示，不做改造。
+ * 文件名取值优先级：files 元数据 fileName → URL 末段 → 「查看文件」兜底。
+ */
+const inputFile = computed(() => {
+  const raw = item.value && item.value.inputContent
+  if (!raw) return null
+  const s = String(raw).trim()
+  // 只认整串就是一个 URL，避免把正文里内嵌链接的文本误判成文件
+  if (!isFileUrl(s)) return null
+  // 按 object key 匹配：签名 URL 每次查询重新签发（q-sign-time 变），完整 URL 必然不相等
+  const k = fileKeyOf(s)
+  const meta = files.value.find((f) => f && f.fileUrl && fileKeyOf(f.fileUrl) === k)
+  const name = (meta && meta.fileName) || fileNameFromUrl(s) || '查看文件'
+  const ext = extensionOf(name)
+  const dot = name.lastIndexOf('.')
+  const hasExt = dot > 0 && dot < name.length - 1
+  return {
+    url: s,
+    ext,
+    base: hasExt ? name.slice(0, dot) : name,
+    suffix: hasExt ? name.slice(dot) : '',
+    playable: isPlayableExt(ext)
+  }
+})
+
+const inputFileAction = computed(() => (inputFile.value && inputFile.value.playable ? '试听' : '下载'))
+
+/**
+ * 输入文件点击：
+ * - 音频：先下载到临时路径再 playVoice（小程序端 playVoice 只吃本地路径，直接传网络地址会失败），
+ *   且 openDocument 不支持音频，试听体验明显更好；
+ * - 其余：uni.downloadFile + uni.openDocument。
+ */
+const onInputFileTap = () => {
+  const f = inputFile.value
+  if (!f || !f.url) {
+    uni.showToast({ title: '文件链接不可用', icon: 'none' })
+    return
+  }
+  if (fileLoading.value) return
+  fileLoading.value = true
+  uni.showLoading({ title: f.playable ? '加载中…' : '下载中…', mask: true })
+  uni.downloadFile({
+    url: f.url,
+    success: (res) => {
+      // COS 私有签名 URL 有效期约 5 分钟，过期返回 403
+      if (res.statusCode !== 200) {
+        uni.showToast({ title: '下载失败（链接可能已过期）', icon: 'none' })
+        return
+      }
+      if (f.playable) {
+        uni.playVoice({
+          src: res.tempFilePath,
+          fail: () => uni.showToast({ title: '该音频无法播放', icon: 'none' })
+        })
+      } else {
+        uni.openDocument({
+          filePath: res.tempFilePath,
+          showMenu: true,
+          fail: () => uni.showToast({ title: '无法预览该文件', icon: 'none' })
+        })
+      }
+    },
+    fail: () => uni.showToast({ title: '下载失败', icon: 'none' }),
+    complete: () => {
+      uni.hideLoading()
+      fileLoading.value = false
+    }
+  })
+}
 
 const getToolName = (it) => it.toolName || it.aiCode || '未知工具'
 
@@ -179,14 +272,7 @@ onLoad((option) => {
 
 const onCopyResult = () => {
   const text = item.value && (statusOk.value ? item.value.outputContent : (item.value.errorMsg || ''))
-  if (!text) {
-    uni.showToast({ title: '没有可复制的内容', icon: 'none' })
-    return
-  }
-  uni.setClipboardData({
-    data: String(text),
-    success: () => uni.showToast({ title: '已复制', icon: 'none' })
-  })
+  copyRaw(text, '', '没有可复制的内容')
 }
 
 /** 再次使用：跳转到对应工具页，带上本次记录 id，工具页自动回填参数 */
@@ -322,6 +408,26 @@ const onOpenFile = (f) => {
 }
 .hd-box__text--error { color: #DC2626; }
 .hd-box__empty { font-size: 26rpx; color: #9CA3AF; }
+
+/* 输入文件（只展示文件名，不暴露签名 URL） */
+.hd-inputfile {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 4rpx;
+}
+.hd-inputfile--hover { opacity: 0.6; }
+.hd-inputfile__icon { font-size: 36rpx; }
+.hd-inputfile__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hd-inputfile__base { font-size: 26rpx; color: #2563EB; }
+.hd-inputfile__ext { font-size: 26rpx; color: #93C5FD; }
+.hd-inputfile__action { font-size: 26rpx; color: #2563EB; }
 
 /* 提示词 */
 .hd-prompt {
