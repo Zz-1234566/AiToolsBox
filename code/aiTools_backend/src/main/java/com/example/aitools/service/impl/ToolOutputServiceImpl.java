@@ -56,7 +56,8 @@ public class ToolOutputServiceImpl implements ToolOutputService {
         o.setFileIndex(fileIndex);
         o.setOutputType(outputType);
         o.setFileName(up.getFileName() != null ? up.getFileName() : fileName);
-        o.setFileUrl(up.getFileUrl());
+        // 存 key 不存签名 URL：tool-output/ 是公开读直链，存 key 才能让「读出即签发」链路统一
+        o.setFileUrl(up.getCosKey());
         o.setCosKey(up.getCosKey());
         o.setFileSize((long) content.length);
         o.setMimeType(mimeType);
@@ -117,7 +118,9 @@ public class ToolOutputServiceImpl implements ToolOutputService {
         vo.setOutputType(o.getOutputType());
         vo.setContent(o.getTextContent());
         vo.setFileName(o.getFileName());
-        vo.setFileUrl(o.getFileUrl());
+        // 读出即签发：库内存 key（老数据可能是带签名的旧 URL，signUrl 内部会剥掉旧签名重签）
+        String key = o.getCosKey() != null && !o.getCosKey().isBlank() ? o.getCosKey() : o.getFileUrl();
+        vo.setFileUrl(fileStorageService.signUrl(key));
         vo.setFileSize(o.getFileSize());
         vo.setFileSizeText(humanSize(o.getFileSize()));
         vo.setMimeType(o.getMimeType());

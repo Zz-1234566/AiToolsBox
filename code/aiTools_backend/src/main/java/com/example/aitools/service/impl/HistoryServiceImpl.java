@@ -12,6 +12,7 @@ import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.mapper.HistoryDetailMapper;
 import com.example.aitools.mapper.HistoryFileMapper;
 import com.example.aitools.mapper.HistoryMapper;
+import com.example.aitools.service.FileStorageService;
 import com.example.aitools.service.HistoryService;
 import com.example.aitools.vo.HistoryFileVO;
 import com.example.aitools.vo.HistoryVO;
@@ -33,6 +34,7 @@ public class HistoryServiceImpl implements HistoryService {
     private final HistoryDetailMapper historyDetailMapper;
     private final HistoryFileMapper historyFileMapper;
     private final AiToolMapper aiToolMapper;
+    private final FileStorageService fileStorageService;
 
     @Override
     public Long record(Long userId, Long toolId, Long modelId, String aiCode,
@@ -89,6 +91,9 @@ public class HistoryServiceImpl implements HistoryService {
             for (HistoryFileDTO f : files) {
                 HistoryFile file = new HistoryFile();
                 BeanUtils.copyProperties(f, file);
+                // 存对象 key 而非签名 URL：签名 URL 是一次性凭证（默认几分钟过期），
+                // 持久化后必然失效；查询时统一实时签发，历史记录才能长期可用。
+                file.setFileUrl(FileStorageService.toObjectKey(file.getFileUrl()));
                 file.setHistoryId(historyId);
                 file.setDr(Constants.DR_NORMAL);
                 historyFileMapper.insert(file);
@@ -267,8 +272,8 @@ public class HistoryServiceImpl implements HistoryService {
         // 明细
         HistoryDetail detail = detailMap.get(h.getId());
         if (detail != null) {
-            vo.setInputContent(detail.getInputContent());
-            vo.setOutputContent(detail.getOutputContent());
+            vo.setInputContent(renewSignedUrls(detail.getInputContent()));
+            vo.setOutputContent(renewSignedUrls(detail.getOutputContent()));
             vo.setErrorMsg(detail.getErrorMsg());
             vo.setPromptFormat(detail.getPromptFormat());
             vo.setPromptGenerate(detail.getPromptGenerate());
@@ -281,7 +286,8 @@ public class HistoryServiceImpl implements HistoryService {
             fvo.setId(f.getId());
             fvo.setFileId(f.getFileId());
             fvo.setFileName(f.getFileName());
-            fvo.setFileUrl(f.getFileUrl());
+            // 读出即签发：库内存 key；老数据是已过期的签名 URL，signUrl 内部剥掉旧签名后重签
+            fvo.setFileUrl(fileStorageService.signUrl(f.getFileUrl()));
             fvo.setFileType(f.getFileType());
             fvo.setRole(f.getRole());
             return fvo;
@@ -289,6 +295,44 @@ public class HistoryServiceImpl implements HistoryService {
 
         return vo;
     }
+
+    /**
+     * 把文本里已过期的 COS 签名 URL 换成重新签发的新 URL。
+     * <p>
+     * 背景：部分历史记录的 {@code input_content}/{@code output_content} 里
+     * 直接存了整条签名 URL（如上传音频后把地址当输入内容提交），
+     * 签名到期后前端点开就是 403。存量数据不迁移，而是在读取时顺手续签，
+     * 保证老记录同样能打开。
+     * <p>
+     * 只替换「带 {@code ?sign=} 的本桶 https 地址」，普通文本里的链接、换行、
+     * 中文标点原样保留；未命中时直接返回原字符串（零拷贝）。
+     */
+    private String renewSignedUrls(String text) {
+        if (text == null || text.isEmpty() || !text.contains("?sign=")) {
+            return text;
+        }
+        StringBuilder sb = new StringBuilder(text.length() + 64);
+        java.util.regex.Matcher m = SIGNED_URL_PATTERN.matcher(text);
+        int last = 0;
+        boolean replaced = false;
+        while (m.find()) {
+            String renewed = fileStorageService.signUrl(m.group());
+            // 本地存储无签名概念，signUrl 会返回 /uploads/xxx → 不是等价替换，保持原值
+            if (renewed != null && renewed.startsWith("http")) {
+                sb.append(text, last, m.start()).append(renewed);
+                last = m.end();
+                replaced = true;
+            }
+        }
+        if (!replaced) {
+            return text;
+        }
+        return sb.append(text, last, text.length()).toString();
+    }
+
+    /** 匹配带签名的 COS 对象地址：https://{bucket}.cos.{region}.myqcloud.com/{key}?sign=... */
+    private static final java.util.regex.Pattern SIGNED_URL_PATTERN = java.util.regex.Pattern.compile(
+            "https?://[A-Za-z0-9._-]+\\.cos\\.[A-Za-z0-9-]+\\.myqcloud\\.com/[^\\s\"'<>?]+\\?sign=[^\\s\"'<>]+");
 
     @Override
     public void delete(Long id, Long userId) {

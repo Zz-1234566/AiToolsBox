@@ -99,6 +99,27 @@ public class CosFileStorageService implements FileStorageService {
     }
 
     /**
+     * 按 key（或历史遗留的带签名 URL）实时签发一个可访问 URL。
+     * <p>
+     * 查询历史记录时读出的都是库内旧值（可能早已过期的签名 URL），
+     * 统一先 {@link FileStorageService#toObjectKey} 剥掉旧签名再重签，兼容新旧两种数据形态。
+     */
+    @Override
+    public String signUrl(String urlOrKey) {
+        String key = FileStorageService.toObjectKey(urlOrKey);
+        if (isBlank(key)) {
+            return urlOrKey;
+        }
+        return buildAccessUrl(key, FileStorageService.isPrivatePrefix(prefixOfKey(key)));
+    }
+
+    /** 取 key 的第一段作为前缀（如 file/1/a.mp3 → file） */
+    private String prefixOfKey(String key) {
+        int slash = key.indexOf('/');
+        return slash > 0 ? key.substring(0, slash) : "";
+    }
+
+    /**
      * 构造访问 URL：
      * - 公开：直链
      * - 私有：生成 cosClient.generatePresignedUrl 临时签名 URL
@@ -132,7 +153,7 @@ public class CosFileStorageService implements FileStorageService {
         String name = filename == null ? "output.bin" : filename;
         String ext = FileStorageService.extractExtension(name);
         String fileId = UUID.randomUUID().toString().replace("-", "");
-        String key = buildKey(prefix, fileId, ext.isEmpty() ? ".bin" : "." + ext);
+        String key = buildKey(prefix, fileId, ext.isEmpty() ? ".bin" : ext);
         boolean isPrivate = FileStorageService.isPrivatePrefix(prefix);
         try (InputStream in = new ByteArrayInputStream(content)) {
             ObjectMetadata metadata = new ObjectMetadata();
@@ -140,8 +161,24 @@ public class CosFileStorageService implements FileStorageService {
             String mime = (mimeType != null && !mimeType.isBlank()) ? mimeType : guessMime(name);
             metadata.setContentType(mime);
             cosClient.putObject(new PutObjectRequest(cosConfig.getBucket(), key, in, metadata));
+            // 公开前缀：setObjectAcl 设为 PublicRead，URL 可直接访问
+            // 私有前缀：不 setAcl，默认私有读，URL 必须带签名
             if (!isPrivate) {
-                cosClient.setObjectAcl(cosConfig.getBucket(), key, CannedAccessControlList.PublicRead);
+                try {
+                    cosClient.setObjectAcl(cosConfig.getBucket(), key, CannedAccessControlList.PublicRead);
+                } catch (Exception aclEx) {
+                    // 与 store(MultipartFile) 版本对齐（同一类缺陷，此前只在 MultipartFile 重载上补过补偿）：
+                    // put 成功但 setAcl 失败 → 对象保持私有而 URL 是公开直链，访问必然 403；
+                    // 修复：删掉这个对象 + 抛错，避免返回"看似可用但实际 403"的 URL，
+                    // 同时不留无 ACL、无产物记录的孤儿文件。
+                    log.error("setObjectAcl failed after put, deleting orphan key={}", key, aclEx);
+                    try {
+                        cosClient.deleteObject(cosConfig.getBucket(), key);
+                    } catch (Exception delEx) {
+                        log.error("Failed to delete orphan after setAcl failure: key={}", key, delEx);
+                    }
+                    throw new BusinessException(ResultCode.SYSTEM_ERROR.getCode(), "文件上传失败（权限设置异常），请重试");
+                }
             }
             String fileUrl = buildAccessUrl(key, isPrivate);
             log.info("Workflow output stored: {} -> {} ({} bytes, private={})", name, key, content.length, isPrivate);
@@ -149,6 +186,10 @@ public class CosFileStorageService implements FileStorageService {
         } catch (IOException e) {
             log.error("Failed to store output to COS: key={}", key, e);
             throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "产物保存失败，请重试");
+        } catch (BusinessException e) {
+            // 原样抛出：ACL 补偿分支已在此之前抛出面向用户的文案，
+            // 不能被下面的兜底 catch 吞掉并改写成笼统的「产物保存失败」
+            throw e;
         } catch (Exception e) {
             log.error("Unexpected error storing output: key={}", key, e);
             throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "产物保存失败，请重试");

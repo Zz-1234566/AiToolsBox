@@ -5,6 +5,8 @@ import com.example.aitools.dto.FileUploadResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
@@ -39,6 +41,19 @@ public interface FileStorageService {
     FileUploadResponse store(byte[] content, String filename, String mimeType, String prefix);
 
     /**
+     * 按对象 key 实时生成一个可访问 URL（查询历史记录等「读出即签发」的场景）。
+     * <p>
+     * 入参允许是完整 URL 或纯 key，内部统一经 {@link #toObjectKey} 还原，
+     * 因此<b>库内存的老数据（带 ?sign= 的过期 URL）也能直接传入</b>：
+     * 剥掉旧签名 → 按当前有效期重新签发，返回一定可用的新链接。
+     * <ul>
+     *   <li>私有前缀（file/）→ 新签名 URL，有效期见 cos.signed-url-ttl-seconds</li>
+     *   <li>公开前缀 / 本地存储 → 直链，原样返回</li>
+     * </ul>
+     */
+    String signUrl(String urlOrKey);
+
+    /**
      * 归一化前缀：去除首尾空白与斜杠，空串表示根目录
      */
     static String normalizePrefix(String prefix) {
@@ -58,11 +73,61 @@ public interface FileStorageService {
     /**
      * 提取文件扩展名（含点，如 ".jpg"），统一小写。找不到点返回空串。
      * default 方法：3 个调用方共用，避免在 Controller / Local / Cos 各自重复。
+     *
+     * <p><b>调用约定（勿改）</b>：返回值<b>自带前导点</b>，拼接文件名时直接相加即可，
+     * <b>不要再手动加 "."</b>；只有需要「不带点」的比较场景（如扩展名白名单校验）才用
+     * {@code replaceFirst("^\\.", "")} 剥掉。反例：{@code "." + extractExtension("a.png")}
+     * 会得到 {@code "..png"}，生成 {@code uuid..png} 这类双扩展名 key。
      */
     static String extractExtension(String originalFilename) {
         if (originalFilename == null) return "";
         int dot = originalFilename.lastIndexOf('.');
         return dot >= 0 ? originalFilename.substring(dot).toLowerCase(Locale.ROOT) : "";
+    }
+
+    /**
+     * 把 COS 访问地址还原成对象 key（剥掉域名与签名 query）。
+     * <p>
+     * 用于「库内存 key、查询时实时签发」的链路：
+     * <pre>
+     * https://b.cos.ap-guangzhou.myqcloud.com/file/1/a.mp3?sign=xxx
+     *   → file/1/a.mp3
+     * </pre>
+     * <p><b>入参两种形态都要兼容</b>（老数据带签名、新数据已是纯 key）：
+     * <ul>
+     *   <li>纯 key（无 scheme、无 {@code ?}）→ 原样返回，不抛异常</li>
+     *   <li>完整 URL → 去域名、截断 {@code ?} 后的 query、去首斜杠、URL 解码</li>
+     * </ul>
+     * 签名参数全部位于 query，截断 {@code ?} 即完成剥签名；不做 URL 解码会导致
+     * key 中含 {@code %} 的对象（如 {@code a%20b.mp3}）取回时 404。
+     */
+    static String toObjectKey(String urlOrKey) {
+        if (urlOrKey == null) return null;
+        String s = urlOrKey.trim();
+        if (s.isEmpty()) return s;
+        // 截断 query：签名参数全在 ? 之后
+        int q = s.indexOf('?');
+        if (q >= 0) {
+            s = s.substring(0, q);
+        }
+        // 去掉协议与域名：https://bucket.cos.region.myqcloud.com/xxx
+        int scheme = s.indexOf("://");
+        if (scheme >= 0) {
+            int slash = s.indexOf('/', scheme + 3);
+            s = slash >= 0 ? s.substring(slash + 1) : "";
+        }
+        while (s.startsWith("/")) {
+            s = s.substring(1);
+        }
+        // key 段做过 URL 编码，解回真实字符
+        if (s.indexOf('%') >= 0) {
+            try {
+                s = URLDecoder.decode(s, StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException ignored) {
+                // 非法的百分号转义（如文件名里本来就有 %）→ 保留原样
+            }
+        }
+        return s;
     }
 
     /**

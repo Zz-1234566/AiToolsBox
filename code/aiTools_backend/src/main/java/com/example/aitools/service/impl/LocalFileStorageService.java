@@ -81,7 +81,7 @@ public class LocalFileStorageService implements FileStorageService {
         String name = filename == null ? "output.bin" : filename;
         String ext = FileStorageService.extractExtension(name);
         String fileId = UUID.randomUUID().toString().replace("-", "");
-        String storedName = fileId + (ext.isEmpty() ? ".bin" : "." + ext);
+        String storedName = fileId + (ext.isEmpty() ? ".bin" : ext);
         String prefixPath = FileStorageService.normalizePrefix(prefix);
         Path dir = prefixPath.isEmpty() ? uploadDir : uploadDir.resolve(prefixPath).normalize();
         if (!dir.startsWith(uploadDir)) {
@@ -99,5 +99,20 @@ public class LocalFileStorageService implements FileStorageService {
         String urlPath = prefixPath.isEmpty()
                 ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
         return new FileUploadResponse(fileId, urlPath, name, null);
+    }
+
+    /**
+     * 本地存储无签名概念：把 key 还原成 {@code /uploads/xxx} 相对路径原样返回。
+     * <p>
+     * 走 {@link FileStorageService#toObjectKey} 是为了兼容库内可能存的完整 URL 形态，
+     * 去掉域名后重新拼回 uploads 路径，保证查询链路与 COS 实现行为一致。
+     */
+    @Override
+    public String signUrl(String urlOrKey) {
+        if (urlOrKey == null || urlOrKey.isBlank()) {
+            return urlOrKey;
+        }
+        String key = FileStorageService.toObjectKey(urlOrKey);
+        return "/uploads/" + key;
     }
 }
