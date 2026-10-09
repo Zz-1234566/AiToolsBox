@@ -46,16 +46,34 @@ public class NodeExecutor {
     private final AiClient aiClient;
     private final AiPromptTemplateService aiPromptTemplateService;
     private final AiToolMapper aiToolMapper;
+    private final com.example.aitools.service.HistoryService historyService;
 
     /**
-     * 执行节点：N 进 N 出。
+     * 执行节点：N 进 N 出（不含工作流来源信息，历史按「单工具调用」记录）。
+     *
+     * @see #execute(String, List, Map, Long, String, String)
+     */
+    public List<String> execute(String toolCode, List<String> inputs, Map<String, String> params) {
+        return execute(toolCode, inputs, params, null, null, null, null);
+    }
+
+    /**
+     * 执行节点：N 进 N 出，并按需写入带工作流来源的工具历史。
+     * <p>
+     * 每处理一个输入写一条历史（sourceType=2 + runId + nodeId + nodeName），
+     * 使工具使用历史可反查「由哪条工作流的哪个节点产生」。
      *
      * @param toolCode 节点对应的工具编码（sys_aitools_tool.tool_code）
      * @param inputs   输入列表。文本节点为文本内容；文件节点为文件路径/URL 标识（由调用方落盘后传入）
      * @param params   节点参数（promptFormat / promptGenerate / promptId 等），可为 null
+     * @param userId   发起工作流的用户；为 null 时不写历史（历史需归属用户）
+     * @param runId    工作流运行 ID；为 null 时按「单工具调用」记录
+     * @param nodeId   节点 ID（node_results 的键，如 n1）
+     * @param nodeName 节点名称快照；为 null 时用工具名兜底
      * @return 输出列表，与 inputs 等长（逐项处理）
      */
-    public List<String> execute(String toolCode, List<String> inputs, Map<String, String> params) {
+    public List<String> execute(String toolCode, List<String> inputs, Map<String, String> params,
+                                Long userId, String runId, String nodeId, String nodeName) {
         if (inputs == null || inputs.isEmpty()) {
             throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点缺少输入内容，请检查上游节点配置");
         }
@@ -65,12 +83,38 @@ public class NodeExecutor {
         List<String> outputs = new ArrayList<>(inputs.size());
         for (int i = 0; i < inputs.size(); i++) {
             String input = inputs.get(i);
-            String out = executeOne(toolCode, inputType, input, params);
-            outputs.add(out);
-            log.info("[workflow-node] toolCode={} inputType={} [{}/{}] outLen={}",
-                    toolCode, inputType, i + 1, inputs.size(), out == null ? 0 : out.length());
+            Long historyId = null;
+            if (userId != null) {
+                historyId = historyService.createWorkflowNodeHistory(userId, tool.getId(), null,
+                        toolCode, truncateForHistory(input), runId, nodeId,
+                        nodeName != null ? nodeName : tool.getToolName());
+            }
+            long start = System.currentTimeMillis();
+            try {
+                String out = executeOne(toolCode, inputType, input, params);
+                outputs.add(out);
+                if (historyId != null) {
+                    historyService.completeHistory(historyId, out, (int) (System.currentTimeMillis() - start));
+                }
+                log.info("[workflow-node] toolCode={} inputType={} [{}/{}] outLen={} history={}",
+                        toolCode, inputType, i + 1, inputs.size(), out == null ? 0 : out.length(), historyId);
+            } catch (Exception e) {
+                if (historyId != null) {
+                    historyService.failHistory(historyId, e.getMessage());
+                }
+                throw e;
+            }
         }
         return outputs;
+    }
+
+    /** 写历史前的输入截断（与 HistoryServiceImpl 的上限保持一致，避免超长文本写库失败） */
+    private String truncateForHistory(String input) {
+        if (input == null) {
+            return null;
+        }
+        int max = com.example.aitools.common.Constants.AI_INPUT_MAX_LENGTH;
+        return input.length() <= max ? input : input.substring(0, max);
     }
 
     /**

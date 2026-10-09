@@ -34,6 +34,31 @@ import java.util.concurrent.*;
 public class WorkflowEngine {
 
     private final NodeExecutor nodeExecutor;
+    private final com.example.aitools.service.HistoryService historyService;
+    private final com.example.aitools.mapper.AiToolMapper aiToolMapper;
+
+    /** 按 toolCode 查工具 id；查不到返回 null（历史记录的 tool_id 允许为空，不阻断流程） */
+    private Long workflowToolId(String toolCode) {
+        try {
+            com.example.aitools.entity.AiTool t = aiToolMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.example.aitools.entity.AiTool>()
+                            .eq(com.example.aitools.entity.AiTool::getToolCode, toolCode)
+                            .eq(com.example.aitools.entity.AiTool::getDr, Constants.DR_NORMAL)
+                            .last("LIMIT 1"));
+            return t == null ? null : t.getId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 写历史前的输入截断，避免超长文本写库失败 */
+    private String truncateForHistory(String input) {
+        if (input == null) {
+            return null;
+        }
+        int max = Constants.AI_INPUT_MAX_LENGTH;
+        return input.length() <= max ? input : input.substring(0, max);
+    }
 
     /** 节点级结果状态（复用 WorkflowRunStatusEnum 的编码：2成功 / 4失败） */
     private static final int NODE_SUCCESS = 2;
@@ -44,9 +69,16 @@ public class WorkflowEngine {
      *
      * @param plan           已校验的执行计划
      * @param sourceInputs   源节点输入：nodeId → 输入数组（文本内容 或 文件路径/dataURL）
+     * @param userId         发起用户；为 null 时节点执行不写工具历史
+     * @param runId          本次运行 ID（用于把工具历史关联到工作流）；为 null 时按单工具记录
      * @return 执行汇总
      */
     public ExecutionResult execute(WorkflowValidator.Plan plan, Map<String, List<String>> sourceInputs) {
+        return execute(plan, sourceInputs, null, null);
+    }
+
+    public ExecutionResult execute(WorkflowValidator.Plan plan, Map<String, List<String>> sourceInputs,
+                                   Long userId, String runId) {
         long start = System.currentTimeMillis();
 
         Map<String, List<String>> outputsByNode = new HashMap<>(); // 已成功节点的输出
@@ -83,7 +115,7 @@ public class WorkflowEngine {
                     }
                     String nodeId = node.getNodeId();
                     try {
-                        futures.add(Map.entry(nodeId, pool.submit(() -> runNode(node, sourceInputs, outputsByNode))));
+                        futures.add(Map.entry(nodeId, pool.submit(() -> runNode(node, sourceInputs, outputsByNode, userId, runId))));
                     } catch (Exception e) {
                         // 提交失败（线程池饱和/关闭）：同样要记为失败，不能丢
                         log.error("[workflow] 节点提交失败 nodeId={}", nodeId, e);
@@ -169,6 +201,16 @@ public class WorkflowEngine {
     public ExecutionResult executeWithProgress(WorkflowValidator.Plan plan,
                                                Map<String, List<String>> sourceInputs,
                                                ProgressListener listener) {
+        return executeWithProgress(plan, sourceInputs, listener, null, null);
+    }
+
+    /**
+     * 流式执行（带工具历史写入）。上下文参数语义同 {@link #execute}。
+     */
+    public ExecutionResult executeWithProgress(WorkflowValidator.Plan plan,
+                                               Map<String, List<String>> sourceInputs,
+                                               ProgressListener listener,
+                                               Long userId, String runId) {
         long start = System.currentTimeMillis();
 
         // 汇总容器：nodeId -> WorkflowNodeResult（outputs 按文件顺序累加）
@@ -247,6 +289,18 @@ public class WorkflowEngine {
                     }
 
                     long t0 = System.currentTimeMillis();
+                    // 写工具历史（sourceType=2 + runId + nodeId），使工具使用历史可反查来源工作流
+                    Long historyId = null;
+                    if (userId != null) {
+                        try {
+                            historyId = historyService.createWorkflowNodeHistory(userId,
+                                    workflowToolId(node.getNodeRef()), null, node.getNodeRef(),
+                                    truncateForHistory(input), runId, nodeId,
+                                    node.getName() != null ? node.getName() : node.getNodeRef());
+                        } catch (Exception he) {
+                            log.warn("[workflow] 写工具历史失败 nodeId={}", nodeId, he);
+                        }
+                    }
                     try {
                         final int fileIdx = fi;
                         String out = nodeExecutor.executeStreaming(node.getNodeRef(), input, node.getParams(),
@@ -257,12 +311,23 @@ public class WorkflowEngine {
                         agg.getOutputs().add(out == null ? "" : out);
                         agg.setCostMs(agg.getCostMs() + (int) (System.currentTimeMillis() - t0));
                         outputsByNode.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(out == null ? "" : out);
+                        if (historyId != null) {
+                            historyService.completeHistory(historyId, out,
+                                    (int) (System.currentTimeMillis() - t0));
+                        }
                         if (listener != null) listener.onNodeDone(nodeId, fi, true, out, null);
                     } catch (Exception e) {
                         String userMsg = (e instanceof BusinessException)
                                 ? e.getMessage() : ResultCode.WORKFLOW_NODE_FAILED.getMessage();
                         log.warn("[workflow] 流式执行节点失败 nodeId={} fileIndex={}: {}", nodeId, fi, userMsg);
                         if (!(e instanceof BusinessException)) log.error("[workflow] 节点异常", e);
+                        if (historyId != null) {
+                            try {
+                                historyService.failHistory(historyId, userMsg);
+                            } catch (Exception he) {
+                                log.warn("[workflow] 标记工具历史失败 nodeId={}", nodeId, he);
+                            }
+                        }
                         failedNodes.add(nodeId);
                         agg.setStatus(NODE_FAILED);
                         if (agg.getErrorMsg() == null) agg.setErrorMsg(userMsg);
@@ -314,7 +379,8 @@ public class WorkflowEngine {
     /** 执行单个节点：算输入数组 → 调 NodeExecutor → 组装结果 */
     private LevelTask runNode(WorkflowNode node,
                               Map<String, List<String>> sourceInputs,
-                              Map<String, List<String>> outputsByNode) {
+                              Map<String, List<String>> outputsByNode,
+                              Long userId, String runId) {
         WorkflowNodeResult r = new WorkflowNodeResult();
         String nodeId = node.getNodeId();
         long start = System.currentTimeMillis();
@@ -325,7 +391,8 @@ public class WorkflowEngine {
             }
             r.setStatus(NODE_SUCCESS);
             r.setInputs(inputs);
-            List<String> outputs = nodeExecutor.execute(node.getNodeRef(), inputs, node.getParams());
+            List<String> outputs = nodeExecutor.execute(node.getNodeRef(), inputs, node.getParams(),
+                    userId, runId, node.getNodeId(), node.getName());
             r.setOutputs(outputs);
             r.setCostMs((int) (System.currentTimeMillis() - start));
             return new LevelTask(nodeId, r);

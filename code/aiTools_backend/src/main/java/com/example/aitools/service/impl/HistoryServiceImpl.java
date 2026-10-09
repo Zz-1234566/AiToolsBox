@@ -125,6 +125,31 @@ public class HistoryServiceImpl implements HistoryService {
     }
 
     @Override
+    public Long createWorkflowNodeHistory(Long userId, Long toolId, Long modelId, String aiCode,
+                                          String inputContent, String runId, String nodeId, String nodeName) {
+        History history = new History();
+        history.setUserId(userId);
+        history.setToolId(toolId);
+        history.setModelId(modelId);
+        history.setAiCode(aiCode);
+        history.setSourceType(Constants.HISTORY_SOURCE_WORKFLOW);
+        history.setRunId(runId);
+        history.setNodeId(nodeId);
+        history.setNodeName(nodeName);
+        history.setStatus(Constants.HISTORY_STATUS_PROCESSING);
+        history.setDr(Constants.DR_NORMAL);
+        historyMapper.insert(history);
+
+        HistoryDetail detail = new HistoryDetail();
+        detail.setHistoryId(history.getId());
+        detail.setInputContent(truncate(inputContent, Constants.AI_INPUT_MAX_LENGTH));
+        detail.setDr(Constants.DR_NORMAL);
+        historyDetailMapper.insert(detail);
+
+        return history.getId();
+    }
+
+    @Override
     public void completeHistory(Long historyId, String outputContent, Integer duration) {
         // 更新主表 status=1 + duration
         History history = new History();

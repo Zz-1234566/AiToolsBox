@@ -45,6 +45,24 @@ public interface HistoryService {
     void failHistory(Long historyId, String errorMsg);
 
     /**
+     * 记录一次「工作流节点」的工具调用历史。
+     * <p>
+     * 与 {@link #createPendingHistory} 的区别：额外带上工作流来源信息
+     * （sourceType=2 + runId + nodeId + nodeName），
+     * 使历史记录可反查「这次是哪个工作流的哪个节点产生的」。
+     * <p>
+     * 设计上不用联合主键：单独跑工具时 runId 为空，主键无意义；
+     * 且一条工作流跑 N 个节点会产出 N 条同 runId 的记录，联合主键必然冲突。
+     *
+     * @param runId    工作流运行 ID（sys_workflow_run.run_id）
+     * @param nodeId   节点 ID（node_results 的键，如 n1）
+     * @param nodeName 节点名称快照（如「文档提取」）
+     * @return historyId，供后续 complete/fail
+     */
+    Long createWorkflowNodeHistory(Long userId, Long toolId, Long modelId, String aiCode,
+                                   String inputContent, String runId, String nodeId, String nodeName);
+
+    /**
      * 查询用户最近历史（组装主表+明细+文件+工具名），取 10 条
      */
     List<HistoryVO> listRecent(Long userId, int limit);

@@ -166,7 +166,7 @@ public class WorkflowServiceImpl implements WorkflowService {
         WorkflowEngine.ExecutionResult er;
         String fatal = null;
         try {
-            er = workflowEngine.execute(plan, sourceInputs);
+            er = workflowEngine.execute(plan, sourceInputs, userId, run.getRunId());
         } catch (Exception e) {
             log.error("[workflow] 运行异常 workflowId={}", workflowId, e);
             // 脱敏：原始异常 message 可能含内部细节（如节点输入路径/上游地址），只进日志
@@ -285,7 +285,7 @@ public class WorkflowServiceImpl implements WorkflowService {
                                 sendEvent(emitter, Map.of("type", "file_done",
                                         "fileIndex", fileIndex, "fileTotal", fileTotal, "ok", ok));
                             }
-                        });
+                        }, userId, run.getRunId());
 
                 // 4) 落库终态
                 run.setStatus(er.status);

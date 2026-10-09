@@ -147,6 +147,12 @@ public class Constants {
     /** 历史状态：失败 */
     public static final int HISTORY_STATUS_FAILED = 2;
 
+    /** 历史来源：单工具直接调用（runId / nodeId 为空） */
+    public static final int HISTORY_SOURCE_SINGLE = 1;
+
+    /** 历史来源：工作流节点调用（带 runId / nodeId / nodeName） */
+    public static final int HISTORY_SOURCE_WORKFLOW = 2;
+
     /** 默认历史记录查询条数 */
     public static final int HISTORY_LIST_DEFAULT_LIMIT = 10;
 
