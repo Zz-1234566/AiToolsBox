@@ -237,6 +237,10 @@ public class WorkflowServiceImpl implements WorkflowService {
             try {
                 sendEvent(emitter, Map.of("type", "run_start", "runId", run.getRunId()));
 
+                // nodeId → 节点中文名，整轮只建一次：SSE 逐节点逐文件推送，
+                // 若每帧查库会退化成「文件数 × 节点数」次查询。nodes 上面已解析好，直接复用不额外查库。
+                final Map<String, String> nodeNameMap = buildNodeNameMap(nodes, workflowId);
+
                 // 本次运行内「已推送过 chunk 的节点」集合（局部变量，无并发共享问题）
                 java.util.Set<String> chunkedNodeIds = java.util.Collections.newSetFromMap(
                         new java.util.concurrent.ConcurrentHashMap<>());
@@ -255,6 +259,9 @@ public class WorkflowServiceImpl implements WorkflowService {
                                 m.put("type", "node_start");
                                 m.put("nodeId", nodeId);
                                 m.put("nodeRef", nodeRef);
+                                // 节点中文名（如「录音转写」）：取不到时为 null，
+                                // 前端据此回退用 nodeRef 反查，不编造「节点1」之类占位符
+                                m.put("nodeName", nodeNameMap.get(nodeId));
                                 m.put("fileIndex", fileIndex);
                                 m.put("fileTotal", fileTotal);
                                 sendEvent(emitter, m);
@@ -276,6 +283,8 @@ public class WorkflowServiceImpl implements WorkflowService {
                                 Map<String, Object> m = new LinkedHashMap<>();
                                 m.put("type", "node_done");
                                 m.put("nodeId", nodeId);
+                                // 同 node_start：带上节点中文名，前端无需再靠 nodeRef 反查
+                                m.put("nodeName", nodeNameMap.get(nodeId));
                                 m.put("fileIndex", fileIndex);
                                 m.put("ok", ok);
                                 m.put("errMsg", errMsg);
@@ -462,14 +471,94 @@ public class WorkflowServiceImpl implements WorkflowService {
         }
         if (r.getNodeResults() != null && !r.getNodeResults().isBlank()) {
             try {
-                vo.setNodeResults(objectMapper.readValue(r.getNodeResults(),
-                        new TypeReference<LinkedHashMap<String, WorkflowNodeResult>>() {}));
+                Map<String, WorkflowNodeResult> parsed = objectMapper.readValue(r.getNodeResults(),
+                        new TypeReference<LinkedHashMap<String, WorkflowNodeResult>>() {});
+                fillNodeNames(parsed, r.getWorkflowId());
+                vo.setNodeResults(parsed);
             } catch (Exception e) {
                 // 传异常对象以保留堆栈：原实现只打 message，数据损坏时无法定位
                 log.warn("解析 node_results 失败 runId={}", r.getRunId(), e);
             }
         }
         return vo;
+    }
+
+    /**
+     * 为 nodeResults 回填 nodeName（节点中文名）。
+     * <p>
+     * node_results JSON 只按 nodeId 索引、不存节点名，故出参时补齐，前端结果面板
+     * 直接展示「文档提取」而非 n1。取值优先级：
+     * <ol>
+     *   <li>sys_workflow.nodes 里该 nodeId 的 name（编排时定的显示名，最准）；</li>
+     *   <li>工具名 sys_aitools_tool.tool_name（节点未命名时兜底）；</li>
+     *   <li>都没有 → 保持 null，由前端回退显示 nodeId（不用占位符）。</li>
+     * </ol>
+     * 工作流被删除或节点被改名时仍能靠工具名兜底，不会因历史记录缺名而报错。
+     */
+    private void fillNodeNames(Map<String, WorkflowNodeResult> parsed, String workflowId) {
+        if (parsed == null || parsed.isEmpty()) {
+            return;
+        }
+        Map<String, String> nameByNodeId = buildNodeNameMap(null, workflowId);
+        for (Map.Entry<String, WorkflowNodeResult> e : parsed.entrySet()) {
+            WorkflowNodeResult nr = e.getValue();
+            if (nr == null) {
+                continue;
+            }
+            nr.setNodeName(nameByNodeId.get(e.getKey()));
+        }
+    }
+
+    /**
+     * 构建 nodeId → 节点显示名的索引（同步出参与 SSE 推送共用同一套取值规则）。
+     * <p>
+     * 取值优先级：sys_workflow.nodes 的 name（编排时定的显示名，最准）
+     * → 工具名 sys_aitools_tool.tool_name（未命名时兜底）
+     * → 都没有则 map 里无此 key，调用方得到 null，由前端回退显示 nodeId。
+     * <p>
+     * 整张 map 只建一次：SSE 多文件多节点逐帧推送，若每帧查库会退化成 N×M 次查询。
+     *
+     * @param knownNodes 已解析好的节点定义；为 null 时按 workflowId 自行查库
+     */
+    private Map<String, String> buildNodeNameMap(List<WorkflowNode> knownNodes, String workflowId) {
+        List<WorkflowNode> defNodes = knownNodes;
+        // 工作流可能已被删除，查不到时全部留 null（前端回退显示 nodeId）
+        if (defNodes == null) {
+            defNodes = new ArrayList<>();
+            try {
+                LambdaQueryWrapper<Workflow> qw = new LambdaQueryWrapper<>();
+                qw.eq(Workflow::getWorkflowId, workflowId).last("LIMIT 1");
+                Workflow wf = workflowMapper.selectOne(qw);
+                if (wf != null) {
+                    defNodes = parseNodes(wf.getNodes());
+                }
+            } catch (Exception e) {
+                log.warn("构建节点名索引失败 workflowId={}", workflowId, e);
+                return new HashMap<>();
+            }
+        }
+
+        // 一次遍历建两张索引，避免按节点重复查库
+        Map<String, String> nameByNodeId = new HashMap<>();
+        Map<String, String> toolNameByNodeId = new HashMap<>();
+        for (WorkflowNode n : defNodes) {
+            if (n.getNodeId() == null) {
+                continue;
+            }
+            if (n.getName() != null && !n.getName().isBlank()) {
+                nameByNodeId.put(n.getNodeId(), n.getName());
+            }
+            if (n.getNodeRef() != null) {
+                AiTool t = findTool(n.getNodeRef());
+                if (t != null && t.getToolName() != null) {
+                    toolNameByNodeId.put(n.getNodeId(), t.getToolName());
+                }
+            }
+        }
+
+        Map<String, String> merged = new HashMap<>(toolNameByNodeId);
+        merged.putAll(nameByNodeId);   // 显示名优先于工具名
+        return merged;
     }
 
     private AiTool findTool(String toolCode) {

@@ -24,4 +24,13 @@ public class WorkflowNodeResult {
 
     /** 失败原因 */
     private String errorMsg;
+
+    /**
+     * 节点显示名（如「文档提取」），由出参组装时按 nodeId 回填，不写回 node_results JSON。
+     * <p>
+     * 取值来源：sys_workflow.nodes 中该 nodeId 的 name，缺失时用工具名
+     * （sys_aitools_tool.tool_name）兜底；都取不到时为 null，
+     * 前端据此回退显示 nodeId，不使用「节点1」这类占位符。
+     */
+    private String nodeName;
 }
