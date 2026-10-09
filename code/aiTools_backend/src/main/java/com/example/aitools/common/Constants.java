@@ -83,7 +83,7 @@ public class Constants {
 
     /** 支持的存储前缀（目录）：头像 / AI 图片 / 去背景 / 通用用户文件区，空串表示根目录 */
     public static final java.util.Set<String> ALLOWED_FILE_PREFIXES =
-            java.util.Set.of("", "avatar", "ai-image", "ai-bg", "file");
+            java.util.Set.of("", "avatar", "ai-image", "ai-bg", "file", "wf-output");
 
     /** 通用用户文件区前缀（强制登录后拼 userId 子目录） */
     public static final String FILE_PREFIX_USER_FILE = "file";

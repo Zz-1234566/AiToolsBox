@@ -66,4 +66,38 @@ public class LocalFileStorageService implements FileStorageService {
         String urlPath = prefixPath.isEmpty() ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
         return new FileUploadResponse(fileId, urlPath, originalFilename);
     }
+
+    /**
+     * 保存服务端生成的字节内容（工作流产物等）。
+     * <p>
+     * 与 {@link #store(MultipartFile, String)} 共用同一套路径规则与防目录逃逸校验，
+     * 仅写入方式不同（无 MultipartFile.transferTo 可用，直接写字节）。
+     */
+    @Override
+    public FileUploadResponse store(byte[] content, String filename, String mimeType, String prefix) {
+        if (content == null || content.length == 0) {
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "文件内容为空");
+        }
+        String name = filename == null ? "output.bin" : filename;
+        String ext = FileStorageService.extractExtension(name);
+        String fileId = UUID.randomUUID().toString().replace("-", "");
+        String storedName = fileId + (ext.isEmpty() ? ".bin" : "." + ext);
+        String prefixPath = FileStorageService.normalizePrefix(prefix);
+        Path dir = prefixPath.isEmpty() ? uploadDir : uploadDir.resolve(prefixPath).normalize();
+        if (!dir.startsWith(uploadDir)) {
+            log.warn("Resolved path escapes uploadDir: prefix={}, dir={}", prefix, dir);
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "非法的存储路径");
+        }
+        try {
+            Files.createDirectories(dir);
+            Files.write(dir.resolve(storedName), content);
+        } catch (IOException e) {
+            log.error("Failed to store output locally: {}", storedName, e);
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "产物保存失败，请重试");
+        }
+        log.info("Workflow output stored locally: {} -> {} ({} bytes)", name, storedName, content.length);
+        String urlPath = prefixPath.isEmpty()
+                ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
+        return new FileUploadResponse(fileId, urlPath, name);
+    }
 }

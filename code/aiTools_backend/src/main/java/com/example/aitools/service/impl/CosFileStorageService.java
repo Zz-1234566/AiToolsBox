@@ -22,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.util.UUID;
 
 /**
@@ -118,8 +119,60 @@ public class CosFileStorageService implements FileStorageService {
     }
 
     /**
-     * 拼接 COS 对象键：{prefix}/{fileId}{ext}（prefix 为空则放根目录）
+     * 保存服务端生成的字节内容（工作流产物等）。
+     * <p>
+     * 复用 {@link #store(MultipartFile, String)} 的 key 规则与 ACL 策略，
+     * 仅数据来源不同：产物由程序/第三方 API 生成，没有 MultipartFile 上下文。
      */
+    @Override
+    public FileUploadResponse store(byte[] content, String filename, String mimeType, String prefix) {
+        if (content == null || content.length == 0) {
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "文件内容为空");
+        }
+        String name = filename == null ? "output.bin" : filename;
+        String ext = FileStorageService.extractExtension(name);
+        String fileId = UUID.randomUUID().toString().replace("-", "");
+        String key = buildKey(prefix, fileId, ext.isEmpty() ? ".bin" : "." + ext);
+        boolean isPrivate = FileStorageService.isPrivatePrefix(prefix);
+        try (InputStream in = new ByteArrayInputStream(content)) {
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentLength(content.length);
+            String mime = (mimeType != null && !mimeType.isBlank()) ? mimeType : guessMime(name);
+            metadata.setContentType(mime);
+            cosClient.putObject(new PutObjectRequest(cosConfig.getBucket(), key, in, metadata));
+            if (!isPrivate) {
+                cosClient.setObjectAcl(cosConfig.getBucket(), key, CannedAccessControlList.PublicRead);
+            }
+            String fileUrl = buildAccessUrl(key, isPrivate);
+            log.info("Workflow output stored: {} -> {} ({} bytes, private={})", name, key, content.length, isPrivate);
+            return new FileUploadResponse(fileId, fileUrl, name);
+        } catch (IOException e) {
+            log.error("Failed to store output to COS: key={}", key, e);
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "产物保存失败，请重试");
+        } catch (Exception e) {
+            log.error("Unexpected error storing output: key={}", key, e);
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "产物保存失败，请重试");
+        }
+    }
+
+    /** 按扩展名推断 MIME（产物场景没有原始 Content-Type） */
+    private String guessMime(String filename) {
+        String lower = filename == null ? "" : filename.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".mp4")) return "video/mp4";
+        if (lower.endsWith(".webm")) return "video/webm";
+        if (lower.endsWith(".mp3")) return "audio/mpeg";
+        if (lower.endsWith(".wav")) return "audio/wav";
+        if (lower.endsWith(".m4a")) return "audio/mp4";
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".json")) return "application/json";
+        if (lower.endsWith(".txt")) return "text/plain; charset=utf-8";
+        return "application/octet-stream";
+    }
+
     private String buildKey(String prefix, String fileId, String ext) {
         String normalized = FileStorageService.normalizePrefix(prefix);
         return normalized.isEmpty() ? fileId + ext : normalized + "/" + fileId + ext;
