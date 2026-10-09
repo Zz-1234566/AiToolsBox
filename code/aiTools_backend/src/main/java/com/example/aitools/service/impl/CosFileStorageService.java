@@ -95,7 +95,7 @@ public class CosFileStorageService implements FileStorageService {
         }
         log.info("File stored to COS: {} -> {} (private={})", originalFilename, key, isPrivate);
         String fileUrl = buildAccessUrl(key, isPrivate);
-        return new FileUploadResponse(fileId, fileUrl, originalFilename);
+        return new FileUploadResponse(fileId, fileUrl, originalFilename, key);
     }
 
     /**
@@ -145,7 +145,7 @@ public class CosFileStorageService implements FileStorageService {
             }
             String fileUrl = buildAccessUrl(key, isPrivate);
             log.info("Workflow output stored: {} -> {} ({} bytes, private={})", name, key, content.length, isPrivate);
-            return new FileUploadResponse(fileId, fileUrl, name);
+            return new FileUploadResponse(fileId, fileUrl, name, key);
         } catch (IOException e) {
             log.error("Failed to store output to COS: key={}", key, e);
             throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "产物保存失败，请重试");

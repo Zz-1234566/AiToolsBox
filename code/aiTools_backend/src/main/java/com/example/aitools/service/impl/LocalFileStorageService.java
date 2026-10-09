@@ -64,7 +64,7 @@ public class LocalFileStorageService implements FileStorageService {
         log.info("File stored locally: {} -> {}", originalFilename, storedName);
         // 返回相对路径，由 Controller 拼装完整访问地址
         String urlPath = prefixPath.isEmpty() ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
-        return new FileUploadResponse(fileId, urlPath, originalFilename);
+        return new FileUploadResponse(fileId, urlPath, originalFilename, null);
     }
 
     /**
@@ -98,6 +98,6 @@ public class LocalFileStorageService implements FileStorageService {
         log.info("Workflow output stored locally: {} -> {} ({} bytes)", name, storedName, content.length);
         String urlPath = prefixPath.isEmpty()
                 ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
-        return new FileUploadResponse(fileId, urlPath, name);
+        return new FileUploadResponse(fileId, urlPath, name, null);
     }
 }

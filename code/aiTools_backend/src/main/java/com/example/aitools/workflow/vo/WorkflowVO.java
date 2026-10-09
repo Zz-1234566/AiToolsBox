@@ -48,6 +48,10 @@ public class WorkflowVO {
         private String inputType;
         /** 工具输出类型（逗号分隔） */
         private String outputType;
+        /** 工具描述（节点卡副标题，如「提取文档/图片中的文字」） */
+        private String description;
+        /** 工具图标标识（前端按此映射通用图标，如 file-text / mic / meeting） */
+        private String icon;
         /** 是否源节点（deps 为空）——运行时需用户提供输入 */
         private Boolean isSource;
     }

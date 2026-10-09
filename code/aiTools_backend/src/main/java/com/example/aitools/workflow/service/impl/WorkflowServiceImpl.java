@@ -21,6 +21,7 @@ import com.example.aitools.workflow.vo.WorkflowRunVO;
 import com.example.aitools.workflow.vo.WorkflowVO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.aitools.service.WorkflowOutputService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,8 +41,12 @@ public class WorkflowServiceImpl implements WorkflowService {
 
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /** 触发方式：手动运行（当前唯一支持的方式） */
+    private static final String TRIGGER_MANUAL = "manual";
+
     private final WorkflowMapper workflowMapper;
     private final WorkflowRunMapper workflowRunMapper;
+    private final WorkflowOutputService workflowOutputService;
     private final AiToolMapper aiToolMapper;
     private final WorkflowValidator workflowValidator;
     private final WorkflowEngine workflowEngine;
@@ -419,6 +424,9 @@ public class WorkflowServiceImpl implements WorkflowService {
                     nv.setToolName(tool.getToolName());
                     nv.setInputType(tool.getInputType());
                     nv.setOutputType(tool.getOutputType());
+                    // 节点卡副标题与图标：来自工具表，前端无需硬编码工具清单
+                    nv.setDescription(tool.getDescription());
+                    nv.setIcon(tool.getIcon());
                 }
                 nodeVOs.add(nv);
             }
@@ -441,6 +449,17 @@ public class WorkflowServiceImpl implements WorkflowService {
         vo.setErrorMsg(r.getErrorMsg());
         vo.setCreateTime(r.getCreateTime() == null ? null : r.getCreateTime().format(FMT));
         vo.setFinishedAt(r.getFinishedAt() == null ? null : r.getFinishedAt().format(FMT));
+        vo.setInputSnapshot(r.getInputSnapshot());
+        vo.setTriggerType(TRIGGER_MANUAL);
+        vo.setTriggerTypeLabel("手动运行");
+        if (workflowOutputService != null) {
+            try {
+                vo.setOutputs(workflowOutputService.listByRunId(r.getRunId()));
+            } catch (Exception e) {
+                // 产物查询失败不影响运行记录的正常展示
+                log.warn("查询工作流产物失败 runId={}", r.getRunId(), e);
+            }
+        }
         if (r.getNodeResults() != null && !r.getNodeResults().isBlank()) {
             try {
                 vo.setNodeResults(objectMapper.readValue(r.getNodeResults(),

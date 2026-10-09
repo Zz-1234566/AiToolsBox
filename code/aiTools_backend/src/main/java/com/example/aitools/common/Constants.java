@@ -88,6 +88,9 @@ public class Constants {
     /** 通用用户文件区前缀（强制登录后拼 userId 子目录） */
     public static final String FILE_PREFIX_USER_FILE = "file";
 
+    /** 工作流产物存储前缀（文件类产物，与用户上传区隔离，便于生命周期管理） */
+    public static final String WORKFLOW_OUTPUT_PREFIX = "wf-output";
+
     /** 本地存储静态资源访问前缀 */
     public static final String LOCAL_STATIC_PATH_PREFIX = "/uploads/";
 
