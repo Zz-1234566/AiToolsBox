@@ -119,7 +119,7 @@ public class CosFileStorageService implements FileStorageService {
     }
 
     /**
-     * 保存服务端生成的字节内容（工作流产物等）。
+     * 保存服务端生成的字节内容（工具产物等）。
      * <p>
      * 复用 {@link #store(MultipartFile, String)} 的 key 规则与 ACL 策略，
      * 仅数据来源不同：产物由程序/第三方 API 生成，没有 MultipartFile 上下文。

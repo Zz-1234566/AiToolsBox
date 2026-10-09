@@ -81,15 +81,15 @@ public class Constants {
             java.util.Set.of("jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "txt",
                     "mp3", "wav", "m4a", "aac", "flac", "ogg", "amr");
 
-    /** 支持的存储前缀（目录）：头像 / AI 图片 / 去背景 / 通用用户文件区，空串表示根目录 */
+    /** 支持的存储前缀（目录）：头像 / AI 图片 / 去背景 / 通用用户文件区 / 工具产物，空串表示根目录 */
     public static final java.util.Set<String> ALLOWED_FILE_PREFIXES =
-            java.util.Set.of("", "avatar", "ai-image", "ai-bg", "file", "wf-output");
+            java.util.Set.of("", "avatar", "ai-image", "ai-bg", "file", "tool-output");
 
     /** 通用用户文件区前缀（强制登录后拼 userId 子目录） */
     public static final String FILE_PREFIX_USER_FILE = "file";
 
-    /** 工作流产物存储前缀（文件类产物，与用户上传区隔离，便于生命周期管理） */
-    public static final String WORKFLOW_OUTPUT_PREFIX = "wf-output";
+    /** 工具产物存储前缀（全局工具产物文件，与用户上传区隔离，便于生命周期管理） */
+    public static final String TOOL_OUTPUT_PREFIX = "tool-output";
 
     /** 本地存储静态资源访问前缀 */
     public static final String LOCAL_STATIC_PATH_PREFIX = "/uploads/";

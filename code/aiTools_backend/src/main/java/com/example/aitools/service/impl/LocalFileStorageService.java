@@ -68,7 +68,7 @@ public class LocalFileStorageService implements FileStorageService {
     }
 
     /**
-     * 保存服务端生成的字节内容（工作流产物等）。
+     * 保存服务端生成的字节内容（工具产物等）。
      * <p>
      * 与 {@link #store(MultipartFile, String)} 共用同一套路径规则与防目录逃逸校验，
      * 仅写入方式不同（无 MultipartFile.transferTo 可用，直接写字节）。

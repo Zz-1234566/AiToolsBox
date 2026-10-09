@@ -25,7 +25,7 @@ public interface FileStorageService {
     FileUploadResponse store(MultipartFile file, String prefix);
 
     /**
-     * 保存服务端生成的字节内容（工作流产物、抠图结果等，非用户上传的场景）。
+     * 保存服务端生成的字节内容（工具产物、抠图结果等，非用户上传的场景）。
      * <p>
      * 与 {@link #store(MultipartFile, String)} 的区别：产物是程序生成或第三方 API 返回的，
      * 没有 MultipartFile 上下文；本方法补齐文件名、MIME 与大小后走同一套存储逻辑。
@@ -33,7 +33,7 @@ public interface FileStorageService {
      * @param content   文件字节
      * @param filename  文件名（含扩展名，用于推断 MIME）
      * @param mimeType  MIME 类型；为空时按扩展名推断
-     * @param prefix    存储前缀目录，如 wf-output（工作流产物）、ai-bg（去背景）
+     * @param prefix    存储前缀目录，如 tool-output（工具产物）、ai-bg（去背景）
      * @return 文件ID、访问URL、原始文件名
      */
     FileUploadResponse store(byte[] content, String filename, String mimeType, String prefix);

@@ -4,12 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.FileUploadResponse;
-import com.example.aitools.entity.WorkflowOutput;
+import com.example.aitools.entity.ToolOutput;
 import com.example.aitools.exception.BusinessException;
-import com.example.aitools.mapper.WorkflowOutputMapper;
+import com.example.aitools.mapper.ToolOutputMapper;
 import com.example.aitools.service.FileStorageService;
-import com.example.aitools.service.WorkflowOutputService;
-import com.example.aitools.vo.WorkflowOutputVO;
+import com.example.aitools.service.ToolOutputService;
+import com.example.aitools.vo.ToolOutputVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,21 +20,24 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 工作流产物服务实现。
+ * 工具产物服务实现（对应全局工具产物表 {@code sys_tool_output}）。
  * <p>
- * 文件实体的存储前缀固定为 {@code wf-output}（Constants.WORKFLOW_OUTPUT_PREFIX），
+ * 任何工具产出文件都走这里落库，不仅限于工作流节点；工作流来源时
+ * {@code runId} / {@code nodeId} 有值，独立调用工具时为 null（无工作流上下文）。
+ * <p>
+ * 文件实体的存储前缀固定为 {@code tool-output}（Constants.TOOL_OUTPUT_PREFIX），
  * 与用户上传区（{@code file/}）隔离，便于生命周期管理与清理。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class WorkflowOutputServiceImpl implements WorkflowOutputService {
+public class ToolOutputServiceImpl implements ToolOutputService {
 
-    private final WorkflowOutputMapper workflowOutputMapper;
+    private final ToolOutputMapper workflowOutputMapper;
     private final FileStorageService fileStorageService;
 
     @Override
-    public WorkflowOutputVO saveFileOutput(String runId, String nodeId, String nodeName, String toolCode,
+    public ToolOutputVO saveFileOutput(String runId, String nodeId, String nodeName, String toolCode,
                                            int fileIndex, int outputType, byte[] content, String fileName,
                                            String mimeType, Integer width, Integer height, Integer durationMs) {
         if (content == null || content.length == 0) {
@@ -42,10 +45,10 @@ public class WorkflowOutputServiceImpl implements WorkflowOutputService {
         }
         // 1) 实体入 COS
         FileUploadResponse up = fileStorageService.store(
-                content, fileName, mimeType, Constants.WORKFLOW_OUTPUT_PREFIX);
+                content, fileName, mimeType, Constants.TOOL_OUTPUT_PREFIX);
 
         // 2) 元信息落库
-        WorkflowOutput o = new WorkflowOutput();
+        ToolOutput o = new ToolOutput();
         o.setRunId(runId);
         o.setNodeId(nodeId);
         o.setNodeName(nodeName);
@@ -63,49 +66,49 @@ public class WorkflowOutputServiceImpl implements WorkflowOutputService {
         o.setDr(Constants.DR_NORMAL);
         workflowOutputMapper.insert(o);
 
-        log.info("[wf-output] 产物已保存 runId={} nodeId={} idx={} type={} name={} size={}B",
+        log.info("[tool-output] 产物已保存 runId={} nodeId={} idx={} type={} name={} size={}B",
                 runId, nodeId, fileIndex, outputType, o.getFileName(), content.length);
         return toVO(o);
     }
 
     @Override
-    public List<WorkflowOutputVO> listByRunId(String runId) {
+    public List<ToolOutputVO> listByRunId(String runId) {
         if (runId == null || runId.isBlank()) {
             return new ArrayList<>();
         }
-        List<WorkflowOutput> list = workflowOutputMapper.selectList(
-                new LambdaQueryWrapper<WorkflowOutput>()
-                        .eq(WorkflowOutput::getRunId, runId)
-                        .eq(WorkflowOutput::getDr, Constants.DR_NORMAL)
-                        .orderByAsc(WorkflowOutput::getNodeId)
-                        .orderByAsc(WorkflowOutput::getFileIndex));
-        List<WorkflowOutputVO> vos = new ArrayList<>(list.size());
-        for (WorkflowOutput o : list) {
+        List<ToolOutput> list = workflowOutputMapper.selectList(
+                new LambdaQueryWrapper<ToolOutput>()
+                        .eq(ToolOutput::getRunId, runId)
+                        .eq(ToolOutput::getDr, Constants.DR_NORMAL)
+                        .orderByAsc(ToolOutput::getNodeId)
+                        .orderByAsc(ToolOutput::getFileIndex));
+        List<ToolOutputVO> vos = new ArrayList<>(list.size());
+        for (ToolOutput o : list) {
             vos.add(toVO(o));
         }
         return vos;
     }
 
     @Override
-    public List<WorkflowOutputVO> listByRunAndNode(String runId, String nodeId) {
+    public List<ToolOutputVO> listByRunAndNode(String runId, String nodeId) {
         if (runId == null || runId.isBlank() || nodeId == null || nodeId.isBlank()) {
             return new ArrayList<>();
         }
-        List<WorkflowOutput> list = workflowOutputMapper.selectList(
-                new LambdaQueryWrapper<WorkflowOutput>()
-                        .eq(WorkflowOutput::getRunId, runId)
-                        .eq(WorkflowOutput::getNodeId, nodeId)
-                        .eq(WorkflowOutput::getDr, Constants.DR_NORMAL)
-                        .orderByAsc(WorkflowOutput::getFileIndex));
-        List<WorkflowOutputVO> vos = new ArrayList<>(list.size());
-        for (WorkflowOutput o : list) {
+        List<ToolOutput> list = workflowOutputMapper.selectList(
+                new LambdaQueryWrapper<ToolOutput>()
+                        .eq(ToolOutput::getRunId, runId)
+                        .eq(ToolOutput::getNodeId, nodeId)
+                        .eq(ToolOutput::getDr, Constants.DR_NORMAL)
+                        .orderByAsc(ToolOutput::getFileIndex));
+        List<ToolOutputVO> vos = new ArrayList<>(list.size());
+        for (ToolOutput o : list) {
             vos.add(toVO(o));
         }
         return vos;
     }
 
-    private WorkflowOutputVO toVO(WorkflowOutput o) {
-        WorkflowOutputVO vo = new WorkflowOutputVO();
+    private ToolOutputVO toVO(ToolOutput o) {
+        ToolOutputVO vo = new ToolOutputVO();
         vo.setId(o.getId());
         vo.setNodeId(o.getNodeId());
         vo.setNodeName(o.getNodeName());

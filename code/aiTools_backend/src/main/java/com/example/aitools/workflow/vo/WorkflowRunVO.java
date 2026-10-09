@@ -60,10 +60,13 @@ public class WorkflowRunVO {
     private String triggerTypeLabel;
 
     /**
-     * 文件类产物（sys_workflow_output）。
+     * 文件类产物（sys_tool_output，全局工具产物表）。
      * <p>
      * 与 nodeResults 的分工：文本留在 nodeResults[nid].outputs，
      * 图片/视频/音频/文件放这里，前端按 outputType 分支渲染。
+     * <p>
+     * 本字段仅工作流来源有值；独立调用工具时产物写全局工具产物表
+     * （runId/nodeId 为 null），通过工具自身的响应返回。
      */
-    private java.util.List<com.example.aitools.vo.WorkflowOutputVO> outputs;
+    private java.util.List<com.example.aitools.vo.ToolOutputVO> outputs;
 }

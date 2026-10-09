@@ -21,7 +21,7 @@ import com.example.aitools.workflow.vo.WorkflowRunVO;
 import com.example.aitools.workflow.vo.WorkflowVO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.example.aitools.service.WorkflowOutputService;
+import com.example.aitools.service.ToolOutputService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,7 +46,7 @@ public class WorkflowServiceImpl implements WorkflowService {
 
     private final WorkflowMapper workflowMapper;
     private final WorkflowRunMapper workflowRunMapper;
-    private final WorkflowOutputService workflowOutputService;
+    private final ToolOutputService workflowOutputService;
     private final AiToolMapper aiToolMapper;
     private final WorkflowValidator workflowValidator;
     private final WorkflowEngine workflowEngine;

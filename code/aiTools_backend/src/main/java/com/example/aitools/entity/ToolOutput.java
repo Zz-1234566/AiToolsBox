@@ -10,19 +10,32 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * 工作流产物（sys_workflow_output）。
+ * 工具产物（sys_tool_output）——全局工具产物表。
  * <p>
- * 与 {@code sys_workflow_run.node_results.outputs} 的关系：
+ * 本表是全局产物表：任何工具产出文件（图片/视频/音频/文件）都写这一张表，
+ * 不仅限于工作流节点。文件实体存 COS，表里只存 URL 与元信息。
+ * <p>
+ * 与 {@code sys_workflow_run.node_results.outputs} 的关系（仅工作流来源）：
  * <ul>
  *   <li>文本类产物仍留在 {@code node_results}（前端直接渲染）；</li>
- *   <li>文件类产物（图片/视频/音频/文件）存本表，实体在 COS，表里只存 URL 与元信息。</li>
+ *   <li>文件类产物（图片/视频/音频/文件）存本表。</li>
  * </ul>
- * 定位维度：{@code runId + nodeId + fileIndex}，与 {@code node_results[nid].outputs}
- * 的下标一一对应（N 个输入 → N 个输出）。
+ * {@code runId} / {@code nodeId} / {@code nodeName} 只有工作流来源才有值；
+ * 独立调用工具时为 null（无工作流上下文）。
+ * <table border="1">
+ *   <caption>来源与字段取值</caption>
+ *   <tr><th>来源</th><th>runId</th><th>nodeId</th><th>nodeName</th><th>toolCode</th></tr>
+ *   <tr><td>工作流节点产出</td><td>有值</td><td>有值</td><td>有值</td><td>有值</td></tr>
+ *   <tr><td>独立调用工具产出</td><td>null</td><td>null</td><td>null</td><td>有值</td></tr>
+ * </table>
+ * <p>
+ * 定位维度：{@code toolCode + runId + nodeId + fileIndex} 联合定位，
+ * 其中 {@code runId} / {@code nodeId} 可为 null（非工作流来源）；
+ * 工作流来源下与 {@code node_results[nid].outputs} 的下标一一对应（N 个输入 → N 个输出）。
  */
 @Data
-@TableName("sys_workflow_output")
-public class WorkflowOutput implements Serializable {
+@TableName("sys_tool_output")
+public class ToolOutput implements Serializable {
 
     /** 产物类型：文本（文本类一般不入本表，保留枚举完整性） */
     public static final int TYPE_TEXT = 1;
@@ -38,13 +51,13 @@ public class WorkflowOutput implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** sys_workflow_run.run_id */
+    /** sys_workflow_run.run_id；仅工作流来源有值，独立调用工具时为 null */
     private String runId;
 
-    /** 节点 ID，如 n1 */
+    /** 节点 ID，如 n1；仅工作流来源有值，独立调用工具时为 null */
     private String nodeId;
 
-    /** 节点名称快照（工作流改名后仍显示当时名称） */
+    /** 节点名称快照（工作流改名后仍显示当时名称）；仅工作流来源有值，独立调用工具时为 null */
     private String nodeName;
 
     /** 产出该产物的工具编码 */

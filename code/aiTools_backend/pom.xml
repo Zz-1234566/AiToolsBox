@@ -24,6 +24,8 @@
         <hutool.version>5.8.25</hutool.version>
         <pdfbox.version>2.0.31</pdfbox.version>
         <poi.version>5.2.5</poi.version>
+        <!-- 图片去背景推理引擎（CPU 版，无需 GPU） -->
+        <onnxruntime.version>1.22.0</onnxruntime.version>
     </properties>
 
     <dependencies>
@@ -131,6 +133,13 @@
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
+        </dependency>
+
+        <!-- 图片去背景：本地 ONNX 推理（U²-Net / u2netp.onnx），纯 CPU 离线运行 -->
+        <dependency>
+            <groupId>com.microsoft.onnxruntime</groupId>
+            <artifactId>onnxruntime</artifactId>
+            <version>${onnxruntime.version}</version>
         </dependency>
 
         <!-- Test -->
