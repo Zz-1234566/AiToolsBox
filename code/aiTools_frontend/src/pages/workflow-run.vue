@@ -2,9 +2,8 @@
   <view class="wfr-page">
     <!-- 顶栏：返回 + 工作流名 + 说明（navigationStyle:custom，必须自绘返回入口） -->
     <view class="wfr-topbar">
-      <view class="wfr-topbar__back" hover-class="wfr-topbar__back--tap" @click="goBack">
-        <WfIcon name="back" :size="24" :stroke-width="2.4" />
-        <text class="wfr-topbar__backt">返回</text>
+      <view class="wfr-topbar__back" hover-class="wfr-topbar__back--tap" aria-label="返回" @click="goBack">
+        <WfIcon name="back" :size="22" :stroke-width="2.4" />
       </view>
       <view class="wfr-topbar__main">
         <text class="wfr-topbar__title">{{ wfName || '工作流运行' }}</text>
@@ -81,11 +80,13 @@
           </view>
           <view v-for="row in snapRows" :key="row.nodeId" class="wfr-snap__grp">
             <text class="wfr-snap__node">{{ nodeTitleOf(row.nodeId) }}</text>
-            <view v-for="(nm, i) in row.names" :key="i" class="wfr-snap__row" @click="onSnapshotClick(nm)">
+            <view v-for="(nm, i) in row.names" :key="i" class="wfr-snap__row" @click="onSnapshotClick(nm, row.nodeId, i)">
               <view class="wfr-snap__ic"><text>{{ fileExt(nm) }}</text></view>
               <text class="wfr-snap__n">{{ nm }}</text>
             </view>
           </view>
+          <!-- 原名没落库时不编造：如实说明这里显示的是存储标识 -->
+          <text v-if="inputNameUnknown" class="wfr-snap__tip">文件名显示为上传时的存储标识，原始文件名未随本次运行保存</text>
         </view>
 
         <!-- 节点链：轨道 + 卡片 -->
@@ -117,12 +118,11 @@
               <text class="wfr-nmeta__txt">{{ n.outSummary || '已完成' }}</text>
             </view>
             <view v-else-if="n._state === 'run'" class="wfr-nmeta">
-              <view v-if="batchRun" class="wfr-spin wfr-spin--sm"></view>
-              <text v-if="batchRun" class="wfr-nmeta__txt">等待执行结果 · 已用 <text class="wfr-nmeta__b">{{ secText(wallMs) }}</text></text>
-              <block v-else>
-                <view class="wfr-spin wfr-spin--sm"></view>
-                <text class="wfr-nmeta__txt">正在处理 · 已用 <text class="wfr-nmeta__b">{{ secText(n._elapsed) }}</text></text>
-              </block>
+              <!-- 只有 SSE 的 node_start 帧能让某节点进入 run 态，
+                   此时 n._elapsed 是真实流逝值，直接显示；
+                   降级模式下不会有节点处于 run，所以这里不会显示任何计时。 -->
+              <view class="wfr-spin wfr-spin--sm"></view>
+              <text class="wfr-nmeta__txt">正在处理 · 已用 <text class="wfr-nmeta__b">{{ secText(nodeElapsed(i)) }}</text></text>
             </view>
             <view v-else-if="n._state === 'fail'" class="wfr-nmeta">
               <text v-if="n.costMs" class="wfr-nmeta__em">已用 {{ secText(n.costMs) }}</text>
@@ -133,7 +133,9 @@
               <text class="wfr-nmeta__txt">流程已在第 {{ failIndex + 1 }} 步中断，此节点未执行</text>
             </view>
             <view v-else class="wfr-nmeta">
-              <text class="wfr-nmeta__txt">{{ n.description || '等待前序节点完成' }}</text>
+              <!-- 降级（同步）模式：整轮跑完才返回，期间真的不知道任何节点在跑，
+                   如实说「等待运行完成」；SSE 模式才是「等待前序节点完成」。 -->
+              <text class="wfr-nmeta__txt">{{ runningNow && !streamMode ? '等待运行完成' : (n.description || '等待前序节点完成') }}</text>
             </view>
 
             <!-- 运行中：进度条 + 骨架屏（宽度按已收块数真实推进；同步模式无块可数，不画） -->
@@ -152,7 +154,7 @@
             </view>
 
             <!-- 流式内容 / 完整输出：运行中走 streaming 纯文本，完成后切 markdown 渲染 -->
-            <view v-if="showText(n)" class="wfr-node__md">
+            <view v-if="showText(n)" class="wfr-node__md" :data-short="isShortOutput(n) ? '1' : '0'">
               <!-- 复制走原始文本（showText 返回后端原始 outputs），不是渲染后的 HTML。
                    两个入口：MD 源码（含 # ** 语法，粘到 Notion/语雀）、
                    纯文本（剥掉语法，粘到微信/钉钉这类不支持 Markdown 的框）。 -->
@@ -167,7 +169,11 @@
                   <text>复制纯文本</text>
                 </view>
               </view>
-              <MarkdownView :source="showText(n)" :streaming="n._state === 'run'" />
+              <!-- 正文单独一层滚动容器：跑完后这里就是节点的完整输出，
+                   用户在运行页直接看结果，不需要跳历史页。 -->
+              <view class="wfr-node__mdb">
+                <MarkdownView :source="showText(n)" :streaming="n._state === 'run'" />
+              </view>
             </view>
 
             <!-- 节点级错误框 -->
@@ -226,12 +232,15 @@
 
         <!-- 运行日志：全部来自真实收到的 SSE 事件 / 终态字段 -->
         <view v-if="logs.length" class="wfr-log">
+          <!-- 标题行与内容行共用同一套左右内边距（--wfr-log-pad），
+               结构上保证两列左边缘同起点；标题里的图标是首个子元素，
+               故图标左边缘 = 时间戳列左边缘，两行视觉上真正对齐。 -->
           <view class="wfr-log__h">
-            <WfIcon name="clock" :size="14" :stroke-width="2.1" />
+            <WfIcon name="clock" :size="16" :stroke-width="2" />
             <text class="wfr-log__t">运行日志</text>
             <text class="wfr-log__c">{{ logs.length }} 条</text>
             <view class="wfr-log__copy" @click="copyRaw(logPlainText(), '日志')">
-              <WfIcon name="copy" :size="12" :stroke-width="2" />
+              <WfIcon name="copy" :size="14" :stroke-width="2" />
               <text>复制</text>
             </view>
           </view>
@@ -264,7 +273,7 @@ import {
 import { takeWorkflowRunTarget } from '@/utils/workflowRunContext'
 import {
   nodeNameOf, nodeIconName, nodeIconGradient, fileDisplayName, openFile,
-  outputTypeLabel, previewOutput, parseInputSnapshot, durationParts, durationText
+  outputTypeLabel, previewOutput, parseInputSnapshot, parseNameMap, durationParts, durationText
 } from '@/utils/workflowView'
 import { copyRaw, copyPlain } from '@/utils/clipboard'
 import { safeBack } from '@/utils/pageTransition'
@@ -288,6 +297,13 @@ const runResult = ref(null)
 const runAlert = ref('')
 /** 输入快照：run 模式用本次收集的 inputs；detail 模式用后端 input_snapshot */
 const localInputs = ref(null)
+/**
+ * 输入文件的原始文件名（run 模式专用）：nodeId → 名称数组，与 localInputs 同序。
+ *
+ * COS object key 是 {uuid}.{ext}，从 URL 无法反推原名；原始名只在「上传那一刻」存在。
+ * 由列表页 setWorkflowRunTarget 一并带过来（可选字段，缺失则回落 UUID 名）。
+ */
+const inputFileNames = ref(null)
 const logs = ref([])
 const outputs = ref([])
 
@@ -377,13 +393,26 @@ const doneCount = computed(() => nodes.value.filter(n => n._state === ST.DONE).l
 const failIndex = computed(() => nodes.value.findIndex(n => n._state === ST.FAIL || n._state === ST.BLK))
 const runIndex = computed(() => nodes.value.findIndex(n => n._state === ST.RUN))
 
-/** 单文件/纯文本走同步接口：后端不推中间帧，只能整条链一起跑 */
+/** 降级（同步接口）模式标记：后端只在整轮跑完后一次性返回，期间无任何节点级信息 */
 const batchRun = ref(false)
-/** 同步模式下的墙钟耗时（供 batchRun 节点显示「已用」） */
-const wallMs = computed(() => {
-  void tick.value
-  return mode.value === 'run' && runningNow.value ? Date.now() - runStartedAt : 0
-})
+
+/**
+ * 节点级「已用耗时」：**只来自真实 SSE 帧**。
+ *
+ * node_start 帧到达时记 n._startedAt，心跳里累成 n._elapsed，
+ * node_done 帧再收口写入 n.costMs —— 全是后端推的事实，不是推算。
+ *
+ * （曾按「上游 costMs 累加」推算过节点起算时刻，那是猜测：
+ *   真实 n1 只跑 229ms，推算却让它一路计时到整轮结束，用户第三次反馈后已删除。
+ *   现在降级期间根本不显示节点计时，只显示总墙钟。）
+ */
+const nodeElapsed = (i) => {
+  const n = nodes.value[i]
+  if (!n) return 0
+  // 降级模式：没有任何节点级时刻可显示，返回 0 —— 由模板走「等待运行完成」
+  if (batchRun.value) return 0
+  return n._elapsed || 0
+}
 
 /** HUD 态：idle（未开始）/ run / ok / err */
 const hasFail = computed(() => nodes.value.some(n => n._state === ST.FAIL || n._state === ST.BLK))
@@ -418,10 +447,15 @@ const hudTitle = computed(() => ({
 
 const hudSub = computed(() => {
   if (hudState.value === 'run') {
-    // SSE 模式能定位到具体节点；同步模式没有中间帧，退化为「全部 N 个节点执行中」
-    if (runIndex.value < 0) return `全部 ${nodes.value.length} 个节点执行中`
-    const n = nodes.value[runIndex.value]
-    return `第 ${runIndex.value + 1} 步 · ${n ? n.name : ''}`
+    // SSE：node_start 帧指明此刻真正在跑的是哪个节点 → 报节点名（真实）
+    if (runIndex.value >= 0) {
+      const n = nodes.value[runIndex.value]
+      return `第 ${runIndex.value + 1} 步 · ${n ? n.name : ''}`
+    }
+    // 降级：没有任何节点级信息，不编「第 N 步」，如实说不知道跑到哪
+    return streamMode.value
+      ? '正在接收执行进度'
+      : '实时进度不可用 · 等待完成'
   }
   if (hudState.value === 'err') {
     const n = nodes.value[failIndex.value]
@@ -454,19 +488,54 @@ const progressPercent = computed(() => {
   return Math.min(100, Math.round(((doneCount.value + partial) / total) * 100))
 })
 
-/** 输入快照行：run 模式取本次收集的 inputs，detail 模式取后端 input_snapshot */
+/**
+ * 输入快照行。
+ *
+ * 两种模式数据源不同，文件名可信度也不同，绝不能用同一套逻辑糊弄：
+ *
+ * - run 模式（刚上传就运行）：入参是前端刚拿到的文件地址。
+ *   优先用「上传那一刻的原始文件名」——它由上传接口返回、上传到运行之间一直在手上，
+ *   是唯一真实原名。缺失时才回落到从 URL 反解（会得到 COS 的 uuid 名）。
+ * - detail 模式（历史回放）：优先用后端 inputFileNames（原始名已落库）；
+ *   老数据这一列是 null（改造之前跑的），回落到 inputSnapshot 从 URL 反解，
+ *   如实显示 uuid 名，不猜测。
+ */
 const snapRows = computed(() => {
   if (localInputs.value) {
+    const src = inputFileNames.value || {}
     return Object.keys(localInputs.value)
       .map((nodeId) => ({
         nodeId,
-        names: (localInputs.value[nodeId] || []).map(fileDisplayName).filter(Boolean)
+        names: (localInputs.value[nodeId] || [])
+          .map((v, i) => {
+            // 原始名与 inputs 同序，按下标对应；拿不到就回落到 URL 反解
+            const orig = (src[nodeId] || [])[i]
+            return orig || fileDisplayName(v)
+          })
+          .filter(Boolean)
       }))
       .filter(r => r.names.length)
+  }
+  // 历史回放：inputFileNames 是 {nodeId:[name]}，与 inputSnapshot 的 {nodeId:[url]} 同构，
+  // 按下标合并即可；老数据 inputFileNames 为空 → map 返回空 → 回落原有 URL 反解逻辑。
+  const stored = parseNameMap(runResult.value && runResult.value.inputFileNames)
+  if (stored && Object.keys(stored).length) {
+    return parseInputSnapshot(runResult.value && runResult.value.inputSnapshot, stored)
   }
   return parseInputSnapshot(runResult.value && runResult.value.inputSnapshot)
 })
 const inputFileCount = computed(() => snapRows.value.reduce((a, r) => a + r.names.length, 0))
+
+/**
+ * 输入文件显示的是否是 COS 的 uuid 名（拿不到原始文件名）。
+ * 此时在输入区给一句如实说明，避免用户以为是系统把文件名改坏了。
+ */
+const inputNameUnknown = computed(() => {
+  if (!localInputs.value) return false
+  return snapRows.value.some(r => r.names.some(isUuidName))
+})
+/** uuid 文件名形如 ebcf9cfd60dc404f8a91f9128104ec68.docx（32 位十六进制 + 扩展名） */
+const isUuidName = (name) => /^[0-9a-f]{32}\.[a-z0-9]+$/i.test(String(name || ''))
 
 /** 轨道/剖面连线状态（设计稿 linkState 语义） */
 const linkState = (i) => {
@@ -493,18 +562,31 @@ const runProgressOf = (n) => {
   return Math.min(92, base + Math.min(20, chunks * 4))
 }
 
-/** 节点展示文本：运行中用流式累积文本，完成后用 nodeResults.outputs */
+/**
+ * 节点展示文本：运行中用流式累积文本，完成后用完整输出。
+ *
+ * run 模式跑完后必须回落到 nodeResults[nid].outputs —— 不能只显示 meta 行的
+ * 一行摘要（firstLine），否则用户看不到完整结果、还得去历史页翻。
+ * startSync 已把 outputs 落进 n._text，这里做二次兜底：
+ * _text 为空但后端有 outputs（老数据 / 未来其他写入路径）时仍然渲染完整内容。
+ */
 const showText = (n) => {
-  if (mode.value === 'run') {
-    if (n._state === ST.RUN || n._state === ST.DONE) return n._text || ''
-    return ''
-  }
   const nr = (runResult.value && runResult.value.nodeResults) || {}
   const outs = (nr[n.nodeId] && nr[n.nodeId].outputs) || []
-  if (!outs.length) return ''
-  if (outs.length === 1) return outs[0] || ''
-  return outs.map((o, i) => `**输出 ${i + 1}**\n\n${o || ''}`).join('\n\n')
+  const joinOuts = () => {
+    if (!outs.length) return ''
+    if (outs.length === 1) return outs[0] || ''
+    return outs.map((o, i) => `**输出 ${i + 1}**\n\n${o || ''}`).join('\n\n')
+  }
+  if (mode.value === 'run') {
+    if (n._state === ST.RUN || n._state === ST.DONE) return n._text || joinOuts()
+    return ''
+  }
+  return joinOuts()
 }
+
+/** 输出是否短到无需滚动（短输出不设 max-height，避免出现「能滚但没什么可滚」的滚动条） */
+const isShortOutput = (n) => (showText(n) || '').length <= 260
 
 /** 节点输出摘要（成功节点 meta 行右侧） */
 const fillOutSummary = (n) => {
@@ -528,7 +610,15 @@ const outIcon = (o) => ({
   1: 'summary', 2: 'image', 3: 'video', 4: 'mic', 5: 'file'
 }[o.outputType] || 'file')
 
-const onSnapshotClick = (name) => {
+/** 点击输入行：run 模式按组内下标直接取 url；detail 模式按显示名回查快照里的路径 */
+const onSnapshotClick = (name, nodeId, idx) => {
+  if (localInputs.value && nodeId) {
+    const arr = (localInputs.value || {})[nodeId] || []
+    const v = arr[idx]
+    if (typeof v === 'string' && /^(https?:|\/)/.test(v)) { openFile(v); return }
+    uni.showToast({ title: '输入内容为文本，不可预览', icon: 'none' })
+    return
+  }
   const raw = snapshotUrlOf(name)
   if (raw) openFile(raw)
   else uni.showToast({ title: '输入内容为文本，不可预览', icon: 'none' })
@@ -631,6 +721,9 @@ const init = async () => {
       if (target.name) wfName.value = target.name
       if (target.description) wfDesc.value = target.description
       localInputs.value = target.inputs || {}
+      // ⚠️ key 必须与 workflow.vue setWorkflowRunTarget 的字段名、后端
+      // WorkflowRunRequest.inputFileNames 三处完全一致；不一致时静默失效（值恒为 null）。
+      inputFileNames.value = target.inputFileNames || null
       await loadWorkflow(target.workflowId)
       deriveStates()
       if (target.inputs) {
@@ -712,13 +805,47 @@ const stopTimer = () => {
 
 /* ==================== 运行（SSE / 同步）==================== */
 
-/** 文件数 > 1 → SSE 流式（边跑边展示）；单文件/纯文本 → 同步接口 */
-const shouldStream = (inputs) => {
-  const max = Math.max(0, ...Object.values(inputs || {}).map(a => (a || []).length))
-  return max > 1
-}
+/**
+ * 是否走 SSE。
+ *
+ * 现在恒为 true：**所有运行都走 /run/stream**，换取真实的节点级进度。
+ *
+ * 原因（用户原话「我要的就是节点级别的返回，不是全部完成之后返回」）：
+ *   POST /run 是同步阻塞的，后端跑完全部节点才一次性返回，
+ *   等待期间前端拿不到任何节点级信息 —— 不知道第一个节点何时结束、
+ *   不知道第二个节点何时开始，只能靠「假装第一个节点在跑」来画界面。
+ *   那不是进度，是猜测，比不显示更糟。
+ *
+ * 而 /run/stream 后端对**单文件同样成立**（已实测，见下）：
+ *   WorkflowEngine.executeWithProgress 按 fileTotal 循环，
+ *   fileTotal=1 时循环体只跑一次，但**每个节点仍会触发
+ *   onNodeStart / onNodeDone**，帧里带 nodeId 与 fileIndex=0。
+ *   实测单文件帧序列：
+ *     run_start → file_start(1) → node_start(n1) → node_done(n1)
+ *                → node_start(n2) → node_done(n2) → file_done → all_done
+ *
+ * 原来的 `文件数 > 1 才走 SSE` 只是一条**没有任何依据的猜测**
+ * （提交历史里没有任何注释或测试解释为什么单文件不能走），
+ * 代价却是单文件场景完全没有进度 —— 已删除。
+ *
+ * 同步路径 startSync 保留为**降级兜底**：SSE 建连失败时用，
+ * 且降级时绝不假装某节点在跑（见 startSync 内的说明）。
+ */
+const shouldStream = () => true
 
 let xhr = null
+/** 当前是否已走 SSE（决定降级文案与状态口径，避免降级时说谎） */
+const streamMode = ref(false)
+
+/**
+ * SSE 拿不到任何帧时的降级：转同步接口，并**如实告诉用户实时进度没了**。
+ * 降级后节点一律显示「等待运行完成」，只有总耗时在走 —— 不假装任何节点在跑。
+ */
+const fallbackToSync = (inputs, reason) => {
+  pushLog(`${reason}，正在等待完成`, 'err', { i: '✕' })
+  runAlert.value = '实时进度不可用，正在等待工作流完成'
+  startSync(inputs)
+}
 
 const startRun = () => {
   const inputs = localInputs.value || {}
@@ -728,17 +855,34 @@ const startRun = () => {
 }
 
 /**
- * 同步运行：后端只有一次性结果，没有中间帧。
- * 期间把所有节点标成「运行中」，跑完再按 nodeResults 落终态
- * （文案上写「等待执行结果」而非假装正在生成内容，避免展示不存在的流式效果）。
+ * 同步运行 —— 现在只作为 **SSE 不可用时的降级兜底**，正常路径不再走这里。
+ *
+ * 降级时的诚实口径（关键）：
+ *   同步接口期间**真的什么都不知道** —— 不知道哪个节点在跑、何时切换，
+ *   所以这里**不标任何节点为 run**：界面只显示总耗时（真实墙钟，HUD 已有），
+ *   节点全部保持 idle，显示「等待运行完成」。绝不猜一个节点在跑。
+ *
+ * （曾把「第一个依赖就绪的节点」标成 run 并按上游 costMs 推算耗时，
+ *   那仍是猜测：真实后端 n1 只跑了 229ms，推算却让它一直走到整轮结束。
+ *   用户第三次反馈后已删除该行为。）
  */
 const startSync = async (inputs) => {
   batchRun.value = true
-  nodes.value.forEach(n => { n._live = ST.RUN; n._startedAt = Date.now() })
+  streamMode.value = false
+  // 降级口径：不标任何节点为 run。同步接口期间没有任何节点级信息，
+  // 标谁都是编的。全部保持 idle → 走「等待运行完成」分支，只显示总墙钟。
+  nodes.value.forEach((n) => {
+    // 已有终态的节点保留其终态，不要被这轮覆盖成 idle（重跑场景）
+    if (n._state === ST.DONE || n._state === ST.FAIL || n._state === ST.BLK) return
+    n._live = ST.IDLE
+    n._startedAt = 0
+    n._elapsed = 0
+    n._text = ''
+  })
   deriveStates()
   startTimer()
   try {
-    const res = await workflowRunApi(workflowId.value, inputs)
+    const res = await workflowRunApi(workflowId.value, inputs, inputFileNames.value)
     runResult.value = res.data
     outputs.value = Array.isArray(res.data && res.data.outputs) ? res.data.outputs : []
     runAlert.value = (res.data && res.data.errorMsg) || ''
@@ -748,6 +892,10 @@ const startSync = async (inputs) => {
       n.costMs = (r && r.costMs) || 0
       n.errorMsg = (r && r.errorMsg) || ''
       n._startedAt = 0
+      // 同步接口不推 chunk，但 nodeResults[nid].outputs 里就是节点的完整输出，
+      // 落到 _text 才能被 showText() 渲染（否则跑完只剩一行摘要，用户得去历史页翻）。
+      const outs = (r && r.outputs) || []
+      n._text = outs.map((o) => (o == null ? '' : String(o))).join('\n\n')
       n._live = (!r) ? ST.IDLE : (r.status === 2 ? ST.DONE : ST.FAIL)
     })
     deriveStates()
@@ -772,6 +920,8 @@ const startSync = async (inputs) => {
  * 帧类型：run_start / file_start / node_start / chunk / node_done / file_done / all_done / error
  */
 const startStream = (inputs) => {
+  batchRun.value = false
+  streamMode.value = true
   const token = uni.getStorageSync('token')
   const url = BASE_URL + `/api/workflow/${workflowId.value}/run/stream`
 
@@ -783,8 +933,11 @@ const startStream = (inputs) => {
 
   let consumed = 0
   let buffer = ''
+  /** 是否已收到过任何 SSE 帧：用于区分「连不上（可降级）」与「流中断（不可重试）」 */
+  let receivedAnyFrame = false
 
   const handleFrame = (obj) => {
+    receivedAnyFrame = true
     const t = obj.type
     if (t === 'run_start') {
       pushLog(`runId=${obj.runId}`, 'run', { i: '' })
@@ -904,6 +1057,12 @@ const startStream = (inputs) => {
   xhr.onprogress = () => feed(xhr.responseText)
   xhr.onload = () => {
     if (xhr.status >= 400) {
+      // 建连/鉴权等在收到任何帧之前就失败 → 降级到同步接口。
+      // 已经推过 node_start 才失败说明流中断，重试会重复执行，故不自动重试。
+      if (!receivedAnyFrame && xhr.status !== 401 && xhr.status !== 403) {
+        fallbackToSync(inputs, `实时进度不可用（${xhr.status}）`)
+        return
+      }
       stopTimer()
       let msg = '请求失败（' + xhr.status + '）'
       try {
@@ -918,12 +1077,18 @@ const startStream = (inputs) => {
     stopTimer()
   }
   xhr.onerror = () => {
+    // 一个帧都没收到 = 连不上，降级；已经收到帧 = 传输中断，不重试（避免重复执行）
+    if (!receivedAnyFrame) {
+      fallbackToSync(inputs, '实时进度不可用')
+      return
+    }
     stopTimer()
     runAlert.value = '网络异常，运行中断'
     pushLog('网络异常，运行中断', 'err', { i: '✕' })
   }
   startTimer()
-  xhr.send(JSON.stringify({ inputs }))
+  // ⚠️ inputFileNames 字段名必须与后端 WorkflowRunRequest.inputFileNames 一致，否则静默失效
+  xhr.send(JSON.stringify({ inputs, inputFileNames: inputFileNames.value || null }))
 }
 
 /* ==================== 历史回放日志 ==================== */
@@ -992,22 +1157,20 @@ const buildDetailLogs = (data) => {
   background: #fff;
   border-bottom: 2rpx solid #F3F4F6;
 }
-/* 返回入口：30×30 命中区起步，这里给 112rpx×64rpx + 「返回」文字，
-   保证图标 + 文案双重可感知（原先只有 21px 纯图标，视觉上太弱易被忽略） */
+/* 返回入口：与其他页（history / prompt-list / history-detail）统一的纯图标圆形热区，
+   64rpx 直径 ≈ 32px，满足 30×30 最小点击区；去掉原先灰底胶囊 +「返回」文字 */
 .wfr-topbar__back {
   display: flex;
   align-items: center;
-  gap: 6rpx;
+  justify-content: center;
+  width: 64rpx;
   height: 64rpx;
-  padding: 0 20rpx 0 8rpx;
-  margin-left: -8rpx;
-  border-radius: 9999rpx;
+  margin-left: -12rpx;
+  border-radius: 50%;
   color: #111827;
-  background: #F3F4F6;
   flex-shrink: 0;
 }
-.wfr-topbar__back--tap { background: #E5E7EB; }
-.wfr-topbar__backt { font-size: 26rpx; font-weight: 500; color: #111827; }
+.wfr-topbar__back--tap { background: #F3F4F6; }
 .wfr-topbar__main { flex: 1; min-width: 0; }
 .wfr-topbar__title {
   display: block;
@@ -1188,6 +1351,14 @@ const buildDetailLogs = (data) => {
 .wfr-snap__h .wfr-pill { margin-left: auto; }
 .wfr-snap__grp { margin-top: 8rpx; }
 .wfr-snap__node { display: block; font-size: 21rpx; color: #9CA3AF; margin-bottom: 8rpx; }
+/* 原名不可得时的如实说明（Bug B）：不用占位符假装拿到了原名 */
+.wfr-snap__tip {
+  display: block;
+  margin-top: 12rpx;
+  font-size: 20rpx;
+  line-height: 32rpx;
+  color: #9CA3AF;
+}
 .wfr-snap__row {
   display: flex;
   align-items: center;
@@ -1349,6 +1520,24 @@ const buildDetailLogs = (data) => {
 .wfr-node__mdhead { display: flex; align-items: center; gap: 14rpx; margin-bottom: 12rpx; }
 .wfr-node__mdt { flex: 1; font-size: 21rpx; font-weight: 600; color: #9CA3AF; }
 
+/* 完整输出正文：可滚动查看，不只显示一行。
+   跑完后节点输出往往上千字（会议纪要实测 1028 字符），不设上限会把整页撑得很长，
+   用户在节点链里看不到后面的节点；设 max-height + overflow-y 让长文在卡内滚动。
+   标题条留在滚动区外，滚动时「输出 / 复制MD」始终可见。 */
+.wfr-node__mdb {
+  max-height: 560rpx;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+/* 短输出不必出现滚动条 */
+.wfr-node__md[data-short='1'] .wfr-node__mdb { max-height: none; overflow: visible; }
+/* 滚动到底部的提示渐隐，暗示「下面还有内容」 */
+.wfr-node__mdb::-webkit-scrollbar { width: 6rpx; }
+.wfr-node__mdb::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3rpx; }
+.wfr-node__mdb::-webkit-scrollbar-track { background: transparent; }
+
 /* 通用小按钮（设计稿 .btn-xs：52rpx 高、小圆角、轻描边） */
 .wfr-btn-xs {
   display: inline-flex;
@@ -1495,12 +1684,17 @@ const buildDetailLogs = (data) => {
   box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.06);
   border: 2rpx solid rgba(17, 24, 39, 0.04);
   overflow: hidden;
+  /* 标题行与内容行唯一的左右内边距来源。
+     之前两者各写一份 padding（20rpx 24rpx / 18rpx 24rpx），水平值相同但分散两处，
+     改一处忘另一处就会再次错位（用户已三次反馈「标题比内容靠右」）。
+     现在标题/内容都引用这一个变量，改一次两处同步，结构上杜绝复发。 */
+  --wfr-log-pad: 24rpx;
 }
 .wfr-log__h {
   display: flex;
   align-items: center;
   gap: 14rpx;
-  padding: 20rpx 24rpx;
+  padding: 20rpx var(--wfr-log-pad);
   border-bottom: 2rpx solid #F3F4F6;
   color: #111827;
 }
@@ -1512,7 +1706,7 @@ const buildDetailLogs = (data) => {
   font-family: "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
 }
 .wfr-log__box {
-  padding: 18rpx 24rpx;
+  padding: 18rpx var(--wfr-log-pad);
   background: #F9FAFB;
   font-family: "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
   font-size: 21rpx;
@@ -1521,14 +1715,25 @@ const buildDetailLogs = (data) => {
 /* 三列固定宽度：时间戳(10ch) / 图标(1.5em) / 消息(1fr)。
    之前用 flex + gap，消息里内嵌的「时间/图标前缀」宽度随内容变化，导致
    每行消息起始 x 不一致；改成 grid 后列起始位置由列宽唯一决定，严格对齐。 */
+/* 时间戳是定宽等宽字体的 8 个字符（HH:mm:ss），列宽用 ch（1ch = 该字体下「0」的宽度）
+   而不是 rpx 估算：rpx 是绝对像素，跟着字号/字体/设备宽度变，8 个等宽字符在 375px 屏上
+   需要约 100px，而 118rpx 只有约 59px，必然溢出被裁切（用户截图：10:13:22 贴左边被截断）。
+   ch 跟随字体实际宽度，改字号也不会再次溢出。末列 minmax(0,1fr) 防止 1fr 最小内容宽度
+   把时间戳列挤变形。 */
 .wfr-lg {
   display: grid;
-  grid-template-columns: 118rpx 36rpx 1fr;
+  grid-template-columns: 8ch 36rpx minmax(0, 1fr);
   align-items: baseline;
+  overflow: hidden;
 }
-.wfr-lg__t { color: #9CA3AF; font-variant-numeric: tabular-nums; }
+.wfr-lg__t {
+  color: #9CA3AF;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
 .wfr-lg__i { color: #9CA3AF; text-align: center; }
-.wfr-lg__m { color: #4B5563; word-break: break-all; }
+.wfr-lg__m { color: #4B5563; word-break: break-all; min-width: 0; }
 .wfr-lg--ok .wfr-lg__i, .wfr-lg--ok .wfr-lg__m { color: #047857; }
 .wfr-lg--run .wfr-lg__i, .wfr-lg--run .wfr-lg__m { color: #3B82F6; }
 .wfr-lg--err .wfr-lg__i, .wfr-lg--err .wfr-lg__m { color: #DC2626; }

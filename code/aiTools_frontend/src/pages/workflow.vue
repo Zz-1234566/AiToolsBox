@@ -8,15 +8,18 @@
       </view>
     </view>
 
-    <!-- 列表 -->
-    <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
-    <view v-else-if="workflows.length === 0" class="redesign-empty">
+    <!-- 列表：loading 期间**不再卸载列表**，只盖一层遮罩（方案丙）。
+         原来 `v-if="loading"` 把整份列表卸载 → 文档高度从 2021px 塌到 814px，
+         此时最大滚动只有 124px，restoreScroll 里的 pageScrollTo(1330)
+         会被浏览器钳到当时的可滚动上限，于是「恢复」永远停在很靠上的位置。
+         保留列表节点 = 恢复期间文档高度不变，滚动位置与时机解耦。 -->
+    <view v-if="workflows.length === 0 && !loading" class="redesign-empty">
       <view class="redesign-empty__icon"><text class="redesign-empty__emoji">🔗</text></view>
       <text class="redesign-empty__text">还没有创建工作流</text>
       <view class="wf-create" @click="goCreate"><text>去创建</text></view>
     </view>
 
-    <block v-else>
+    <block v-if="workflows.length > 0">
       <view v-for="wf in workflows" :key="wf.workflowId" class="wf-card">
         <view class="wf-card__top">
           <view class="tool-avatar" :class="'tool-avatar--' + firstIcon(wf)">
@@ -55,6 +58,11 @@
         </view>
       </view>
     </block>
+
+    <!-- 加载遮罩：只盖不卸载，保证列表节点（及其文档高度）在刷新期间始终存在 -->
+    <view v-if="loading" class="wf-loading-mask">
+      <text class="wf-loading-mask__text">加载中…</text>
+    </view>
 
     <!-- ============ 运行弹窗：填源节点输入 ============ -->
     <view v-if="runVisible" class="mask" @click="runVisible = false">
@@ -161,8 +169,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { ref, reactive, computed, nextTick } from 'vue'
+import { onShow, onHide, onUnload, onPageScroll } from '@dcloudio/uni-app'
 import { toolListApi } from '@/api/prompt'
 import { uploadFile } from '@/api/request'
 import {
@@ -219,9 +227,81 @@ const loadList = async () => {
   }
 }
 
+/* ==================== 滚动位置记忆（返回后恢复） ====================
+ * 背景：本页列表较长，用户滚到中间某个工作流 → 点「运行/编辑」跳走 → 返回时页面回顶部，
+ *      得重新滚回去，体验很糟。
+ * 方案选择（为什么不加 <scroll-view>）：
+ *   本页没有 sticky 头部、没有下拉刷新、弹层是 position:fixed，
+ *   技术上包一层 <scroll-view> 也能做，但必须给固定高度（如 100vh），
+ *   而固定高度容器在 H5 下会与浏览器原生滚动/返回栈打架，且嵌套
+ *   sheet 里的 <scroll-view class="sheet__body"> 需要额外处理滚动穿透，
+ *   收益不抵风险。改用 uni-app 官方 onPageScroll + uni.pageScrollTo，
+ *   保持原生页面滚动，零结构改动。
+ */
+
+/** 离开本页时记住的滚动位置（px）。仅对 navigateTo 出去的页面生效，返回时恢复。 */
+let savedScrollTop = 0
+/** 本次离开是不是「跳到二级页」（true）还是「切 tab / 退到后台」（false）。只有前者才恢复。 */
+let shouldRestore = false
+
+/** 记录当前滚动位置。onPageScroll 高频触发，这里只做一次赋值，无副作用。 */
+onPageScroll((e) => {
+  savedScrollTop = e.scrollTop || 0
+})
+
+/**
+ * 离开本页前打标记 + 记位置。
+ * onHide 在 navigateTo 跳二级页和切后台时都会触发，用当前页栈深度区分：
+ * 深度 > 1 说明是 push 了一个新页（本页被盖住，返回后会走 onShow）→ 值得恢复；
+ * 深度 === 1 说明是切 tab 走了，用户回来期望看到列表顶部 → 不恢复。
+ */
+const markLeave = () => {
+  const stack = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  shouldRestore = stack.length > 1
+  if (!shouldRestore) savedScrollTop = 0
+}
+
+onHide(markLeave)
+onUnload(() => {
+  // 页面被销毁（少见）：清标记，避免下次进来误恢复
+  shouldRestore = false
+})
+
+/**
+ * 恢复滚动位置。
+ *
+ * 现在列表在 loading 期间不会被卸载（方案丙），文档高度在返回全程保持，
+ * 所以这里不再依赖「等多久」这种脆弱时序；仍保留一次 nextTick 让 uni 的
+ * 异步渲染落定，避免极端情况下（首帧尚未插入）pageScrollTo 打空。
+ */
+const restoreScroll = async () => {
+  const top = savedScrollTop
+  if (!top) return
+  await nextTick()
+  if (typeof uni !== 'undefined' && uni.pageScrollTo) {
+    uni.pageScrollTo({ scrollTop: top, duration: 0 })
+  }
+}
+
+/**
+ * 列表数据是否可能已变更（新建/编辑/删除工作流后置 true）。
+ * onShow 只在「确实可能变了」时才重拉（方案甲）：
+ * 从运行页 / 详情页返回时数据没变，没必要重拉，也就不用进 loading 态，
+ * 更不会有列表被短暂替换导致的观感抖动。
+ */
+let listDirty = true
+
 onShow(async () => {
+  // 记住「本次进入是否需要恢复」，在下面 loadList 之前先取，避免异步过程里被覆盖
+  const needRestore = shouldRestore
+  shouldRestore = false
+
   if (!tools.value.length) await loadTools()
-  await loadList()
+  // 首次进入必定要拉；之后只有脏了才拉
+  if (listDirty || !workflows.value.length) {
+    await loadList()
+    listDirty = false
+  }
   // 从运行页返回时（该跑完了），历史弹层若还开着要重拉，否则看不到刚产生的记录
   if (runsVisible.value && runTarget.value) {
     try {
@@ -229,10 +309,20 @@ onShow(async () => {
       runs.value = (res && res.data) || []
     } catch (e) { /* ignore */ }
   }
-})
 
-const goCreate = () => uni.navigateTo({ url: '/pages/workflow-edit' })
-const goEdit = (wf) => uni.navigateTo({ url: `/pages/workflow-edit?workflowId=${wf.workflowId}` })
+  // 列表就绪后再恢复滚动；切 tab 进来（needRestore=false）保持顶部
+  if (needRestore) await restoreScroll()
+});
+
+const goCreate = () => {
+  // 创建页返回时列表可能多了一条 → 置脏，下一次 onShow 必定重拉
+  listDirty = true
+  uni.navigateTo({ url: '/pages/workflow-edit' })
+}
+const goEdit = (wf) => {
+  listDirty = true
+  uni.navigateTo({ url: `/pages/workflow-edit?workflowId=${wf.workflowId}` })
+}
 
 const remove = (wf) => {
   uni.showModal({
@@ -243,7 +333,9 @@ const remove = (wf) => {
       try {
         await workflowDeleteApi(wf.workflowId)
         uni.showToast({ title: '已删除', icon: 'success' })
+        listDirty = true
         await loadList()
+        listDirty = false
       } catch (e) { /* ignore */ }
     }
   })
@@ -337,6 +429,8 @@ const uploadFiles = async (n, list) => {
  */
 const doRun = () => {
   const inputs = {}
+  /** 原始文件名：运行页「输入快照」要显示用户认得的原名，而不是上传后的 URL/UUID */
+  const inputFileNames = {}
   for (const n of sourceNodes.value) {
     const v = runInputs[n.nodeId]
     if (!v) continue
@@ -345,6 +439,8 @@ const doRun = () => {
     } else if (v.files && v.files.length) {
       // 兼容 {name,url} 与纯 url 字符串
       inputs[n.nodeId] = v.files.map(f => (typeof f === 'string' ? f : (f.url || f.fileUrl || '')))
+      // 与 inputs 同序同长：后端按下标把原始名对齐回这条输入
+      inputFileNames[n.nodeId] = v.files.map(f => (typeof f === 'string' ? fileDisplayName(f) : (f.name || fileDisplayName(f.url || f.fileUrl || ''))))
     }
   }
   if (!Object.keys(inputs).length) {
@@ -355,9 +451,15 @@ const doRun = () => {
     workflowId: runTarget.value.workflowId,
     name: runTarget.value.name,
     description: runTarget.value.description,
-    inputs
+    inputs,
+    // ⚠️ 字段名必须与后端 WorkflowRunRequest.inputFileNames 严格一致。
+    // 不一致时 Jackson 会「静默忽略」未知字段：不报错，但该值永远是 null，
+    // 表现为历史回放里文件名一直是 COS 的 uuid 名，且没有任何错误提示。
+    inputFileNames
   })
   runVisible.value = false
+  // 运行页不修改工作流定义本身（只有运行记录变了，列表卡片不展示记录数），
+  // 因此这里**不置脏**：返回时跳过重拉，滚动恢复不被任何 loading 态打断。
   uni.navigateTo({ url: `/pages/workflow-run?mode=run&workflowId=${runTarget.value.workflowId}` })
 }
 
@@ -465,7 +567,25 @@ const runFirstErr = (r) => {
   min-height: 100vh;
   background: #F9FAFB;
   padding-bottom: 40rpx;
+  /* 遮罩定位基准：让 wf-loading-mask 能覆盖整页 */
+  position: relative;
 }
+
+/* 加载遮罩（方案丙）：绝对定位覆盖，不参与文档流，
+   因此「盖住列表」不会改变文档高度 —— 滚动恢复不再受刷新时机影响。 */
+.wf-loading-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(249, 250, 251, 0.72);
+}
+.wf-loading-mask__text { font-size: 26rpx; color: var(--text-tertiary, #9CA3AF); }
 
 .wf-head {
   display: flex;

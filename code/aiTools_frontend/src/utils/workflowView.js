@@ -164,23 +164,48 @@ export const previewOutput = (o) => {
 /* ==================== 输入快照 ==================== */
 
 /**
+ * inputFileNames 是 JSON 字符串，形如 {"n1":["原始名.docx"]}。
+ * 解析成 { nodeId: [name] } 供 parseInputSnapshot 按下标取；非法/为空一律返回 null（触发回落）。
+ */
+export const parseNameMap = (raw) => {
+  if (!raw) return null
+  let obj = raw
+  if (typeof raw === 'string') {
+    try { obj = JSON.parse(raw) } catch (e) { return null }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null
+  return obj
+}
+
+/**
  * inputSnapshot 是 JSON 字符串，形如 {"n1":["路径1","路径2"]}；解析后只保留文件名供展示。
  * 转成数组 [{ nodeId, names }]，模板 v-for 用 nodeId 作 key 更稳（对象遍历 key 不保证稳定）。
+ *
+ * @param {Object} [nameMap] 后端 inputFileNames 解析结果（{nodeId:[原始名]}）。
+ *        与 raw 同构按下标对应：有原始名就用原始名，没有才回落到从 URL 反解的 uuid 名。
+ *        不传/为空 → 完全走旧的 URL 反解逻辑（老数据兼容）。
  */
-export const parseInputSnapshot = (raw) => {
+export const parseInputSnapshot = (raw, nameMap) => {
   if (!raw) return []
   let obj = raw
   if (typeof raw === 'string') {
     try { obj = JSON.parse(raw) } catch (e) { return [] }
   }
   if (!obj || typeof obj !== 'object') return []
+  const names0 = nameMap || null
   const rows = []
   Object.keys(obj).forEach((nodeId) => {
     const v = obj[nodeId]
     // 兼容字符串与数组两种形态
     const arr = Array.isArray(v) ? v : (v == null ? [] : [v])
+    const origList = (names0 && Array.isArray(names0[nodeId])) ? names0[nodeId] : null
     const names = arr
-      .map((x) => (typeof x === 'string' ? fileDisplayName(x) : fileDisplayName(x && (x.name || x.fileName || x.url))))
+      .map((x, i) => {
+        // 原始名优先（不下标即乱序）；该项为空/非数组时回落到 URL 反解
+        const orig = origList ? origList[i] : null
+        if (orig) return orig
+        return (typeof x === 'string' ? fileDisplayName(x) : fileDisplayName(x && (x.name || x.fileName || x.url)))
+      })
       .filter(Boolean)
     if (names.length) rows.push({ nodeId, names })
   })
