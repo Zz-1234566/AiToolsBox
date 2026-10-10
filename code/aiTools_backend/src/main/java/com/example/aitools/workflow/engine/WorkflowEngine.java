@@ -60,6 +60,20 @@ public class WorkflowEngine {
         return input.length() <= max ? input : input.substring(0, max);
     }
 
+    /**
+     * 取某节点原始文件名数组的第 i 项；取不到（数组为空 / 越界 / 该项为空白）时返回 null。
+     * <p>
+     * 返回 null 而不是空串，是为了让调用方能区分「有名字」与「没名字」，
+     * 从而决定是写原始名还是回落到写 input 本身。
+     */
+    private String firstNameAt(List<String> names, int i) {
+        if (names == null || i < 0 || i >= names.size()) {
+            return null;
+        }
+        String n = names.get(i);
+        return (n != null && !n.isBlank()) ? n : null;
+    }
+
     /** 节点级结果状态（复用 WorkflowRunStatusEnum 的编码：2成功 / 4失败） */
     private static final int NODE_SUCCESS = 2;
     private static final int NODE_FAILED = 4;
@@ -79,6 +93,16 @@ public class WorkflowEngine {
 
     public ExecutionResult execute(WorkflowValidator.Plan plan, Map<String, List<String>> sourceInputs,
                                    Long userId, String runId) {
+        return execute(plan, sourceInputs, userId, runId, null);
+    }
+
+    /**
+     * 执行入口（带源节点输入文件的原始文件名）。
+     *
+     * @param inputFileNames nodeId → 原始文件名数组，与 sourceInputs 同序；可为 null（老数据/老前端）
+     */
+    public ExecutionResult execute(WorkflowValidator.Plan plan, Map<String, List<String>> sourceInputs,
+                                   Long userId, String runId, Map<String, List<String>> inputFileNames) {
         long start = System.currentTimeMillis();
 
         Map<String, List<String>> outputsByNode = new HashMap<>(); // 已成功节点的输出
@@ -115,7 +139,7 @@ public class WorkflowEngine {
                     }
                     String nodeId = node.getNodeId();
                     try {
-                        futures.add(Map.entry(nodeId, pool.submit(() -> runNode(node, sourceInputs, outputsByNode, userId, runId))));
+                        futures.add(Map.entry(nodeId, pool.submit(() -> runNode(node, sourceInputs, outputsByNode, userId, runId, inputFileNames))));
                     } catch (Exception e) {
                         // 提交失败（线程池饱和/关闭）：同样要记为失败，不能丢
                         log.error("[workflow] 节点提交失败 nodeId={}", nodeId, e);
@@ -211,6 +235,19 @@ public class WorkflowEngine {
                                                Map<String, List<String>> sourceInputs,
                                                ProgressListener listener,
                                                Long userId, String runId) {
+        return executeWithProgress(plan, sourceInputs, listener, userId, runId, null);
+    }
+
+    /**
+     * 流式执行（带工具历史写入 + 源节点输入文件原始名）。
+     *
+     * @param inputFileNames nodeId → 原始文件名数组，与 sourceInputs 同序；可为 null（老数据/老前端）
+     */
+    public ExecutionResult executeWithProgress(WorkflowValidator.Plan plan,
+                                               Map<String, List<String>> sourceInputs,
+                                               ProgressListener listener,
+                                               Long userId, String runId,
+                                               Map<String, List<String>> inputFileNames) {
         long start = System.currentTimeMillis();
 
         // 汇总容器：nodeId -> WorkflowNodeResult（outputs 按文件顺序累加）
@@ -282,6 +319,8 @@ public class WorkflowEngine {
                     // - 源节点：取 sourceInputs 的第 fi 项（每个文件对应一个输入）
                     // - 非源节点：outputsByNode 在文件循环内只存「当前文件」的输出，故取索引 0
                     String input = inputForFile(node, fi, sourceInputs, outputsByNode);
+                    // 同上：node_start 必须早于任何「不执行」的判定，
+                    // 否则「缺少可用输入」分支同样会发出无 start 的 done。
                     if (listener != null) listener.onNodeStart(nodeId, node.getNodeRef(), fi, fileTotal);
 
                     if (input == null || input.isBlank()) {
@@ -298,9 +337,15 @@ public class WorkflowEngine {
                     Long historyId = null;
                     if (userId != null) {
                         try {
+                            // 源节点写原始文件名（fi 与 inputFileNames[nodeId] 同序）；
+                            // 非源节点 input 是上游文本产物，套名字不对，故传 null 回落到写 input 本身
+                            boolean isSrc = (node.getDeps() == null || node.getDeps().isEmpty());
+                            String origName = (isSrc && inputFileNames != null)
+                                    ? firstNameAt(inputFileNames.get(nodeId), fi) : null;
+                            String historyInput = (origName != null) ? origName : truncateForHistory(input);
                             historyId = historyService.createWorkflowNodeHistory(userId,
                                     workflowToolId(node.getNodeRef()), null, node.getNodeRef(),
-                                    truncateForHistory(input), runId, nodeId,
+                                    historyInput, runId, nodeId,
                                     node.getName() != null ? node.getName() : node.getNodeRef());
                         } catch (Exception he) {
                             log.warn("[workflow] 写工具历史失败 nodeId={}", nodeId, he);
@@ -385,7 +430,8 @@ public class WorkflowEngine {
     private LevelTask runNode(WorkflowNode node,
                               Map<String, List<String>> sourceInputs,
                               Map<String, List<String>> outputsByNode,
-                              Long userId, String runId) {
+                              Long userId, String runId,
+                              Map<String, List<String>> inputFileNames) {
         WorkflowNodeResult r = new WorkflowNodeResult();
         String nodeId = node.getNodeId();
         long start = System.currentTimeMillis();
@@ -396,8 +442,13 @@ public class WorkflowEngine {
             }
             r.setStatus(NODE_SUCCESS);
             r.setInputs(inputs);
+            // 原始名只在源节点成立：非源节点的输入是上游文本产物，
+            // 按 nodeId 取到的名字与 inputs 无对应关系，乱套比不套更糟（故传 null）。
+            List<String> names = (node.getDeps() == null || node.getDeps().isEmpty())
+                    ? (inputFileNames == null ? null : inputFileNames.get(node.getNodeId()))
+                    : null;
             List<String> outputs = nodeExecutor.execute(node.getNodeRef(), inputs, node.getParams(),
-                    userId, runId, node.getNodeId(), node.getName());
+                    userId, runId, node.getNodeId(), node.getName(), names);
             r.setOutputs(outputs);
             r.setCostMs((int) (System.currentTimeMillis() - start));
             return new LevelTask(nodeId, r);

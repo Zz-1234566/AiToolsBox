@@ -74,6 +74,25 @@ public class NodeExecutor {
      */
     public List<String> execute(String toolCode, List<String> inputs, Map<String, String> params,
                                 Long userId, String runId, String nodeId, String nodeName) {
+        return execute(toolCode, inputs, params, userId, runId, nodeId, nodeName, null);
+    }
+
+    /**
+     * 执行节点（带源节点输入文件的原始文件名）。
+     * <p>
+     * <b>为什么要这一层</b>：文件节点拿到的 input 是 COS 签名地址，
+     * object key 形如 {uuid}.{ext}，写进历史就是一条 32 位十六进度的 uuid 名，
+     * 用户在「工具使用历史」里根本认不出自己传的是哪个文件。
+     * 原始名只在「上传那一刻」存在于前端，由 WorkflowRunRequest.inputFileNames 旁路带进来，
+     * 此处按数组下标与 inputs 对应（源节点二者同序同长），
+     * 写历史时用原始名代替 URL。取不到就<b>原样写 input</b>（URL），不编造。
+     *
+     * @param inputNames 与 inputs 同序的原始文件名数组；为 null / 长度不够时回落到写 input 本身。
+     *                   仅源节点有值；下游节点的输入是上游文本产物，不适用。
+     */
+    public List<String> execute(String toolCode, List<String> inputs, Map<String, String> params,
+                                Long userId, String runId, String nodeId, String nodeName,
+                                List<String> inputNames) {
         if (inputs == null || inputs.isEmpty()) {
             throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点缺少输入内容，请检查上游节点配置");
         }
@@ -85,8 +104,12 @@ public class NodeExecutor {
             String input = inputs.get(i);
             Long historyId = null;
             if (userId != null) {
+                // 优先写原始文件名；拿不到（老数据 / 非源节点 / 下标越界）就写 input 本身
+                String originalName = (inputNames != null && i < inputNames.size()) ? inputNames.get(i) : null;
+                String historyInput = (originalName != null && !originalName.isBlank())
+                        ? originalName : truncateForHistory(input);
                 historyId = historyService.createWorkflowNodeHistory(userId, tool.getId(), null,
-                        toolCode, truncateForHistory(input), runId, nodeId,
+                        toolCode, historyInput, runId, nodeId,
                         nodeName != null ? nodeName : tool.getToolName());
             }
             long start = System.currentTimeMillis();

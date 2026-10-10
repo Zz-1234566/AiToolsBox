@@ -49,6 +49,14 @@ public class WorkflowRunVO {
     private String inputSnapshot;
 
     /**
+     * 源节点输入文件的原始文件名（JSON 字符串：{nodeId: [name]}）。
+     * <p>
+     * 与 {@link #inputSnapshot} 分工：后者存 URL（复现执行用），本字段存原始文件名（展示用）。
+     * 老数据为 null，前端据此回落到从 URL 反解出 uuid 名。
+     */
+    private String inputFileNames;
+
+    /**
      * 触发方式：manual 手动运行（当前唯一）/ auto / schedule。
      * <p>
      * 单独存字段而非固定写死，是为将来支持定时触发与被其他工作流调用时

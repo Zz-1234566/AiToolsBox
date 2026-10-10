@@ -35,6 +35,14 @@ public class WorkflowRun implements Serializable {
     /** 运行时输入快照 JSON：{nodeId:{text|files[]}} */
     private String inputSnapshot;
 
+    /**
+     * 源节点输入文件的原始文件名（JSON：{nodeId: [name]}）；input_snapshot 只存 URL。
+     * <p>
+     * 为什么单列一列：COS object key 形如 {uuid}.{ext}，从 URL 无法反推原名；
+     * 原始名只在「上传那一刻」存在于前端，由请求的 inputFileNames 旁路字段带进来。
+     */
+    private String inputFileNames;
+
     private Integer successCount;
 
     private Integer failCount;

@@ -165,13 +165,14 @@ public class WorkflowServiceImpl implements WorkflowService {
         run.setMaxDepth(plan.depth());
         run.setDuration(0);
         run.setInputSnapshot(writeJson(sourceInputs));
+        run.setInputFileNames(writeFileNamesJson(sourceFileNames(request)));
         workflowRunMapper.insert(run);
 
         // 执行
         WorkflowEngine.ExecutionResult er;
         String fatal = null;
         try {
-            er = workflowEngine.execute(plan, sourceInputs, userId, run.getRunId());
+            er = workflowEngine.execute(plan, sourceInputs, userId, run.getRunId(), sourceFileNames(request));
         } catch (Exception e) {
             log.error("[workflow] 运行异常 workflowId={}", workflowId, e);
             // 脱敏：原始异常 message 可能含内部细节（如节点输入路径/上游地址），只进日志
@@ -230,6 +231,7 @@ public class WorkflowServiceImpl implements WorkflowService {
         run.setMaxDepth(plan.depth());
         run.setDuration(0);
         run.setInputSnapshot(writeJson(sourceInputs));
+        run.setInputFileNames(writeFileNamesJson(sourceFileNames(request)));
         workflowRunMapper.insert(run);
 
         // 3) 异步执行 + 实时推送
@@ -299,7 +301,7 @@ public class WorkflowServiceImpl implements WorkflowService {
                                 sendEvent(emitter, Map.of("type", "file_done",
                                         "fileIndex", fileIndex, "fileTotal", fileTotal, "ok", ok));
                             }
-                        }, userId, run.getRunId());
+                        }, userId, run.getRunId(), sourceFileNames(request));
 
                 // 4) 落库终态
                 run.setStatus(er.status);
@@ -459,6 +461,7 @@ public class WorkflowServiceImpl implements WorkflowService {
         vo.setCreateTime(r.getCreateTime() == null ? null : r.getCreateTime().format(FMT));
         vo.setFinishedAt(r.getFinishedAt() == null ? null : r.getFinishedAt().format(FMT));
         vo.setInputSnapshot(r.getInputSnapshot());
+        vo.setInputFileNames(r.getInputFileNames());
         vo.setTriggerType(TRIGGER_MANUAL);
         vo.setTriggerTypeLabel("手动运行");
         if (workflowOutputService != null) {
@@ -576,6 +579,29 @@ public class WorkflowServiceImpl implements WorkflowService {
             log.error("节点结构解析失败", e);
             throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "工作流节点数据有误，请检查后重试");
         }
+    }
+
+    /**
+     * 取本次请求带的「源节点输入文件原始名」。
+     * <p>
+     * 老数据/老前端不传该字段时返回 null（不是空 Map）：
+     * 空 Map 会被序列化成 "{}" 落库，让「没传」和「传了但是空」在库里无法区分。
+     *
+     * @return nodeId → 文件名数组；未传时为 null
+     */
+    private Map<String, List<String>> sourceFileNames(WorkflowRunRequest request) {
+        if (request == null) {
+            return null;
+        }
+        Map<String, List<String>> names = request.getInputFileNames();
+        return (names == null || names.isEmpty()) ? null : names;
+    }
+
+    /**
+     * 原始文件名序列化成 JSON 落库；未传时返回 null（该列留空，前端回落到从 URL 反解）。
+     */
+    private String writeFileNamesJson(Map<String, List<String>> fileNames) {
+        return fileNames == null ? null : writeJson(fileNames);
     }
 
     private String writeJson(Object o) {

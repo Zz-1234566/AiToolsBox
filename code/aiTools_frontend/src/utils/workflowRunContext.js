@@ -15,7 +15,7 @@ let pending = null
 
 /**
  * 暂存本次运行的入参
- * @param {Object} payload { workflowId, name, description, inputs, fileNames }
+ * @param {Object} payload { workflowId, name, description, inputs, inputFileNames }
  */
 export function setWorkflowRunTarget(payload) {
   pending = payload
