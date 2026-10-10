@@ -20,22 +20,6 @@
       </view>
     </section>
 
-    <!-- 步骤指示器（居左对齐） -->
-    <view class="steps">
-      <view class="step" :class="{ 'step--active': stepIndex === 0 }">
-        <view class="step__num">1</view>
-        <text class="step__label">{{ stepsArr[0] }}</text>
-      </view>
-      <view class="step" :class="{ 'step--active': stepIndex === 1 }">
-        <view class="step__num">2</view>
-        <text class="step__label">{{ stepsArr[1] }}</text>
-      </view>
-      <view class="step" :class="{ 'step--active': stepIndex === 2 }">
-        <view class="step__num">3</view>
-        <text class="step__label">{{ stepsArr[2] }}</text>
-      </view>
-    </view>
-
     <!-- ============ 工具特化 UI（按 toolId 分发） ============ -->
 
     <!-- 工作总结 -->
@@ -428,34 +412,6 @@
 
     <view class="safe-area-bottom"></view>
 
-    <!-- ===== 工具内嵌历史记录面板 ===== -->
-    <view class="history-panel" :class="{ 'is-open': historyPanelOpen }">
-      <view class="history-panel__header" @click="toggleHistoryPanel">
-        <svg viewBox="0 0 24 24" class="history-panel__icon"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
-        <text class="history-panel__title">{{ historyPanelOpen ? '收起历史记录' : '查看历史记录' + (historyList.length ? ' (' + historyList.length + ')' : '') }}</text>
-        <svg viewBox="0 0 24 24" class="history-panel__chevron"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z" v-if="!historyPanelOpen"/><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" v-else/></svg>
-      </view>
-      <view v-if="historyPanelOpen" class="history-panel__body">
-        <view v-if="historyLoading" class="history-panel__loading">
-          <text>加载中…</text>
-        </view>
-        <view v-else-if="historyList.length === 0" class="history-panel__empty">
-          <text>暂无历史记录</text>
-        </view>
-        <view v-else class="history-panel__list">
-          <view v-for="item in historyList" :key="item.id" class="history-item" @click="applyHistory(item)">
-            <view class="history-item__left">
-              <text class="history-item__status" :class="item.status === 1 ? 'is-ok' : 'is-fail'">{{ item.status === 1 ? '成功' : '失败' }}</text>
-              <text class="history-item__input">{{ (item.inputContent || '（无输入）').slice(0, 60) }}{{ (item.inputContent || '').length > 60 ? '…' : '' }}</text>
-            </view>
-            <view class="history-item__right">
-              <text class="history-item__time">{{ formatHistoryTime(item.createTime) }}</text>
-              <svg viewBox="0 0 24 24" class="history-item__chev"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-            </view>
-          </view>
-        </view>
-      </view>
-    </view>
   </scroll-view>
 
   <!-- 底部按钮 -->
@@ -521,10 +477,8 @@ const showPromptPicker = ref(false) // 是否显示选择弹窗
 const currentTab = ref('system')    // 弹窗当前 tab：system / user / ai
 
 // ===== 工具内嵌历史记录（按 aiCode 过滤）=====
-const historyPanelOpen = ref(false)  // 历史面板是否展开
-const historyList = ref([])          // 当前工具的历史列表（HistoryVO[]）
-const historyLoading = ref(false)    // 拉历史时的 loading 状态
-const HISTORY_DEFAULT_LIMIT = 10    // 拉取条数上限（与后端一致）
+// 历史列表/面板已迁移到 /pages/history 与 history-detail 详情页，本页只保留
+// applyHistoryById：供 history-detail「再次使用」入口回填当前工具输入。
 const aiRequirement = ref('')        // AI 生成 tab 的需求输入
 const aiGeneratedText = ref('')      // AI 生成的提示词预览
 const aiLoading = ref(false)         // AI 生成中（防重复点）
@@ -557,19 +511,6 @@ const toolInfo = computed(() => {
     emoji: meta.emoji || '📄'
   }
 })
-
-const stepsArr = computed(() => {
-  const meta = TOOL_META[toolId.value]
-  const steps = (meta && meta.steps) || ['步骤 1', '步骤 2', '步骤 3']
-  // 加工层工具只接受文本输入，步骤条里再写「上传…」会与实际交互矛盾，
-  // 按是否纯文本工具把第一步的「上传」措辞改成「输入」。
-  if (isTextOnlyTool.value) {
-    return steps.map((s, i) => (i === 0 ? s.replace(/^上传/, '输入') : s))
-  }
-  return steps
-})
-
-const stepIndex = ref(0)
 
 const bottomActionText = computed(() => {
   const meta = TOOL_META[toolId.value]
@@ -1125,37 +1066,6 @@ const applyHistoryById = async (historyId) => {
   }
 }
 
-// ===== 历史记录（按当前 toolId 拉后端） =====
-// 打开/折叠历史面板：首次打开时拉一次，后续切换走缓存
-const toggleHistoryPanel = async () => {
-  historyPanelOpen.value = !historyPanelOpen.value
-  if (historyPanelOpen.value && historyList.value.length === 0 && !historyLoading.value) {
-    await loadHistory()
-  }
-}
-const loadHistory = async () => {
-  if (!toolId.value) return
-  historyLoading.value = true
-  try {
-    const res = await historyListByToolApi(toolId.value, HISTORY_DEFAULT_LIMIT)
-    const list = (res && res.data) || []
-    historyList.value = Array.isArray(list) ? list : []
-  } catch (e) {
-    console.error('loadHistory error:', e)
-    uni.showToast({ title: '加载历史失败', icon: 'none' })
-    historyList.value = []
-  } finally {
-    historyLoading.value = false
-  }
-}
-// 格式化历史时间：把 '2026-09-28T10:00:00' 切成 '09-28 10:00'
-const formatHistoryTime = (s) => {
-  if (!s) return ''
-  // 兼容 'YYYY-MM-DDTHH:mm:ss' 与 'YYYY-MM-DD HH:mm:ss'
-  const t = String(s).replace('T', ' ').slice(0, 16)
-  // 只取月-日 时:分，去掉年份缩短显示
-  return t.slice(5) || t
-}
 // 说明：自研的 parseInline / markdownToRichTextNodes（markdown → rich-text 节点数组）已删除，
 // App 端改由 MarkdownView 内部使用 mp-html 渲染同一份 markdown-it HTML。
 // 复制能力已统一到 utils/clipboard.js 的 copyRaw / copyPlain（见文件顶部 import）。
@@ -1173,7 +1083,6 @@ const applyHistory = (item) => {
       || toolId.value === 'ai-file-reader') {
     resultContent.value = output
     uni.showToast({ title: '已展示历史结果，文件请重新上传', icon: 'none', duration: 2000 })
-    historyPanelOpen.value = false
     return
   }
   // 文本类：回填 input + 提示词（用户当时 textarea 的原值，让点生成时是"原参数重发"）
@@ -1191,7 +1100,6 @@ const applyHistory = (item) => {
           meetingJsonResult.value = parsed
           meetingMarkdownText.value = ''
           resultContent.value = ''
-          historyPanelOpen.value = false
           uni.showToast({ title: '已回填，请点生成重新发送', icon: 'none', duration: 2000 })
           return
         }
@@ -1207,7 +1115,6 @@ const applyHistory = (item) => {
     // work-summary / weekly-report
     resultContent.value = output
   }
-  historyPanelOpen.value = false
   uni.showToast({ title: '已回填，请点生成重新发送', icon: 'none', duration: 2000 })
 }
 
@@ -2542,59 +2449,6 @@ svg {
 .tool-icon--code { background: linear-gradient(135deg, #5EEAD4 0%, #14B8A6 100%); }
 .tool-icon--meeting { background: linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%); }
 
-.steps {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  width: 100%;
-  padding: 0 32rpx 32rpx;
-  box-sizing: border-box;
-}
-.step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8rpx;
-  flex: 1;
-  position: relative;
-}
-.step:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  top: 24rpx;
-  left: calc(50% + 28rpx);
-  width: calc(100% - 56rpx);
-  height: 1px;
-  background: var(--divider-color, #E5E7EB);
-}
-.step__num {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  background: var(--bg-page, #F3F4F6);
-  color: var(--text-tertiary, #9CA3AF);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24rpx;
-  font-weight: 600;
-  border: 1rpx solid var(--border-color, #E5E7EB);
-}
-.step--active .step__num {
-  background: var(--brand-primary, #3B82F6);
-  color: #FFFFFF;
-  border-color: var(--brand-primary, #3B82F6);
-}
-.step__label {
-  font-size: 22rpx;
-  color: var(--text-tertiary, #9CA3AF);
-  white-space: nowrap;
-}
-.step--active .step__label {
-  color: var(--brand-primary, #3B82F6);
-  font-weight: 500;
-}
-
 /* 上传卡 */
 .upload-card {
   margin: 24rpx 32rpx;
@@ -3860,116 +3714,6 @@ svg {
   flex-shrink: 0;
 }
 .task-item__delete svg { width: 32rpx; height: 32rpx; fill: currentColor; }
-
-/* ===== 历史记录面板（工具详情页内嵌） ===== */
-.history-panel {
-  margin: 24rpx $spacing-md 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  overflow: hidden;
-  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
-}
-.history-panel__header {
-  display: flex;
-  align-items: center;
-  padding: 24rpx 32rpx;
-  gap: 16rpx;
-}
-.history-panel__icon {
-  width: 36rpx;
-  height: 36rpx;
-  fill: var(--color-primary, #3B82F6);
-  flex-shrink: 0;
-}
-.history-panel__title {
-  flex: 1;
-  font-size: 28rpx;
-  color: var(--text-primary, #111827);
-  font-weight: 500;
-}
-.history-panel__chevron {
-  width: 36rpx;
-  height: 36rpx;
-  fill: var(--text-secondary, #6B7280);
-  flex-shrink: 0;
-  transition: transform 0.2s;
-}
-.history-panel.is-open .history-panel__chevron {
-  transform: rotate(0deg);
-}
-.history-panel__body {
-  border-top: 1rpx solid var(--border-color, #E5E7EB);
-  padding: 8rpx 0;
-}
-.history-panel__loading,
-.history-panel__empty {
-  padding: 48rpx 0;
-  text-align: center;
-  color: var(--text-secondary, #6B7280);
-  font-size: 26rpx;
-}
-.history-panel__list {
-  display: flex;
-  flex-direction: column;
-}
-.history-item {
-  display: flex;
-  align-items: center;
-  padding: 24rpx 32rpx;
-  border-bottom: 1rpx solid var(--border-color-light, #F3F4F6);
-  transition: background-color 0.15s;
-}
-.history-item:last-child {
-  border-bottom: none;
-}
-.history-item:active {
-  background: var(--bg-hover, rgba(59,130,246,0.04));
-}
-.history-item__left {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-  overflow: hidden;
-}
-.history-item__status {
-  font-size: 22rpx;
-  font-weight: 500;
-  padding: 2rpx 12rpx;
-  border-radius: 8rpx;
-  align-self: flex-start;
-}
-.history-item__status.is-ok {
-  color: #059669;
-  background: rgba(16,185,129,0.1);
-}
-.history-item__status.is-fail {
-  color: #DC2626;
-  background: rgba(239,68,68,0.1);
-}
-.history-item__input {
-  font-size: 26rpx;
-  color: var(--text-primary, #111827);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.history-item__right {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  margin-left: 16rpx;
-}
-.history-item__time {
-  font-size: 22rpx;
-  color: var(--text-secondary, #6B7280);
-  white-space: nowrap;
-}
-.history-item__chev {
-  width: 32rpx;
-  height: 32rpx;
-  fill: var(--text-secondary, #6B7280);
-}
 
 /* 底部按钮 */
 .bottom-action {
