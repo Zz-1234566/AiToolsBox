@@ -153,31 +153,14 @@
       </view>
     </block>
 
-    <!-- 会议纪要：双输入 + 会议信息 + 存在问题 + 示例效果 + 下周计划 -->
+    <!-- 会议纪要：纯文本输入（录音转写已解耦为独立工具/节点，本页不再提供上传入口） -->
     <block v-if="toolId === 'meeting-minutes' || toolId === 'mm'">
-      <view class="input-grid">
-        <view class="input-card" @click="onUploadRecording">
-          <view class="input-card__icon">
-            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-          </view>
-          <text class="input-card__label">上传录音</text>
-          <text class="input-card__sub">支持 MP3、WAV 等</text>
-        </view>
-        <view class="input-card" @click="focusMeetingContent">
-          <view class="input-card__icon">
-            <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12z"/></svg>
-          </view>
-          <text class="input-card__label">输入会议内容</text>
-          <text class="input-card__sub">{{ inputText ? inputText.length + ' 字' : '点击下方输入或粘贴文字' }}</text>
-        </view>
-      </view>
-
-      <!-- 会议内容（与下方提示词展示框同款 textarea，转写成功后自动填入） -->
+      <!-- 会议内容：加工层工具只吃文本，录音/文档请先用【录音转写】/【文档提取】准备好 -->
       <view class="prompt-card">
         <view class="prompt-card__header">
           <text class="prompt-card__label">会议内容</text>
         </view>
-        <textarea class="prompt-card__textarea" v-model="inputText" ref="meetingContentRef" placeholder="请输入或粘贴会议内容；上传录音后 AI 会自动转写并填入此处…" :maxlength="5000"></textarea>
+        <textarea class="prompt-card__textarea" v-model="inputText" ref="meetingContentRef" placeholder="请输入或粘贴会议内容（可先用【录音转写】/【文档提取】工具准备好文字）…" :maxlength="5000"></textarea>
         <text class="prompt-card__counter">{{ inputText.length }}/5000</text>
       </view>
 
@@ -503,7 +486,7 @@ import { safeBack } from '@/utils/pageTransition'
 import { requireLogin } from '@/utils/auth'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
-import { uploadFileApi, batchUpload, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, transcribeMeeting, idPhotoBgChange } from '@/api/ai.js'
+import { uploadFileApi, batchUpload, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, idPhotoBgChange } from '@/api/ai.js'
 import { historyListByToolApi } from '@/api/history.js'
 import { streamRequest, streamUpload } from '../api/stream'
 import { formatAiResult } from '@/utils/format'
@@ -577,7 +560,13 @@ const toolInfo = computed(() => {
 
 const stepsArr = computed(() => {
   const meta = TOOL_META[toolId.value]
-  return (meta && meta.steps) || ['步骤 1', '步骤 2', '步骤 3']
+  const steps = (meta && meta.steps) || ['步骤 1', '步骤 2', '步骤 3']
+  // 加工层工具只接受文本输入，步骤条里再写「上传…」会与实际交互矛盾，
+  // 按是否纯文本工具把第一步的「上传」措辞改成「输入」。
+  if (isTextOnlyTool.value) {
+    return steps.map((s, i) => (i === 0 ? s.replace(/^上传/, '输入') : s))
+  }
+  return steps
 })
 
 const stepIndex = ref(0)
@@ -752,131 +741,9 @@ const resetMeetingScroll = () => {
 // 纯文本转义 / H5 渲染 / App 节点转换原先都在这里，现已全部收敛到
 // src/components/MarkdownView.vue（内部复用 src/utils/markdown 管线）
 const mmPlanText = ref('')
-// H5 端用隐藏 input 选文件，返回 base64 dataURL 数组（支持多选）
-const pickAudioByInput = () => {
-  return new Promise((resolve, reject) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'audio/*'
-    // 多选：可一次选中多个录音（按住 Ctrl / Command，或重复点选累加）
-    input.multiple = true
-    input.style.display = 'none'
-    input.onchange = async (e) => {
-      const files = Array.from((e.target && e.target.files) || [])
-      if (document.body.contains(input)) document.body.removeChild(input)
-      if (!files.length) return resolve([])
-      try {
-        const results = await Promise.all(files.map((file) => new Promise((res, rej) => {
-          const reader = new FileReader()
-          reader.onload = () => res({ name: file.name, dataUrl: reader.result })
-          reader.onerror = () => rej(new Error('读取文件失败'))
-          reader.readAsDataURL(file)
-        })))
-        resolve(results)
-      } catch (err) {
-        reject(err)
-      }
-    }
-    document.body.appendChild(input)
-    input.click()
-  })
-}
 
-// 上传录音（支持多选）→ 后端 ASR 逐个转写 → 分别拼接进会议内容输入框
-const isTranscribing = ref(false)
-const onUploadRecording = async () => {
-  try {
-    // 兼容 H5 + App：
-    //   H5 端用原生 <input type=file>（uni.chooseMessageFile 仅微信小程序支持）
-    //   App 端用 uni.chooseMedia（mediaType:audio）
-    // 多选：选中 N 个录音 → 逐个调用 ASR → 每段结果单独拼进输入框
-    let picked = []   // [{ name, path }]
-    // #ifdef H5
-    picked = await pickAudioByInput()
-    // #endif
-    // #ifndef H5
-    const chooseRes = await uni.chooseMedia({
-      count: 10,                       // 最多 10 个录音
-      mediaType: ['audio'],
-      sourceType: ['album', 'file']
-    })
-    const tempFiles = (chooseRes && (chooseRes.tempFiles
-      || (chooseRes[1] && chooseRes[1].tempFiles))) || []
-    picked = tempFiles.map((f, i) => ({
-      name: f.name || ('录音' + (i + 1)),
-      path: f.tempFilePath || f.path
-    })).filter(x => !!x.path)
-    // #endif
-    if (!picked.length) {
-      uni.showToast({ title: '未选择文件', icon: 'none' })
-      return
-    }
-
-    isTranscribing.value = true
-    uni.showLoading({ title: picked.length > 1 ? ('AI 转写中 0/' + picked.length) : 'AI 转写中...' })
-
-    const texts = []
-    const failures = []
-    for (let i = 0; i < picked.length; i++) {
-      const item = picked[i]
-      const filePath = item.path || item.dataUrl
-      if (picked.length > 1) {
-        uni.showLoading({ title: 'AI 转写中 ' + (i + 1) + '/' + picked.length })
-      }
-      try {
-        const res = await transcribeMeeting(filePath)
-        const text = res && res.data && res.data.text
-        if (text && String(text).trim()) {
-          texts.push(String(text).trim())
-        } else {
-          failures.push(item.name || ('第' + (i + 1) + '个'))
-        }
-      } catch (e) {
-        failures.push(item.name || ('第' + (i + 1) + '个'))
-        console.error('录音转写失败:', item.name, e)
-      }
-    }
-    uni.hideLoading()
-
-    if (texts.length) {
-      // 每段转写结果单独拼接（换行分隔，空两行），追加到已有内容之后
-      const joined = texts.join(String.fromCharCode(10, 10))
-      const oldText = inputText.value
-      inputText.value = oldText ? oldText + String.fromCharCode(10, 10) + joined : joined
-      if (failures.length) {
-        uni.showToast({ title: '成功 ' + texts.length + ' 个，失败 ' + failures.length + ' 个', icon: 'none', duration: 3000 })
-      } else {
-        uni.showToast({ title: '转写完成' + (texts.length > 1 ? '（' + texts.length + ' 个）' : ''), icon: 'success' })
-      }
-    } else {
-      uni.showToast({ title: '转写失败，请重试', icon: 'none' })
-    }
-  } catch (e) {
-    uni.hideLoading()
-    console.error('录音转写失败:', e)
-    // 优先展示后端返回的 msg（ResultCode.message 或 BusinessException）
-    const serverMsg = e && e.data && e.data.msg
-    const errMsg = (serverMsg || (e && e.errMsg) || (e && e.message) || '录音转写失败').toString()
-    uni.showToast({ title: errMsg.length > 18 ? errMsg.slice(0, 18) + '…' : errMsg, icon: 'none', duration: 3000 })
-  } finally {
-    isTranscribing.value = false
-  }
-}
-// 点击"输入会议内容"卡 → 滚动聚焦到下方 textarea
+// 会议内容输入框引用（模板 ref）
 const meetingContentRef = ref(null)
-const focusMeetingContent = () => {
-  // #ifdef H5
-  const el = document.querySelector('.prompt-card__textarea')
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  // #endif
-  // #ifndef H5
-  uni.pageScrollTo({ selector: '.prompt-card__textarea', duration: 300 })
-  // #endif
-  setTimeout(() => {
-    const ref = meetingContentRef.value
-    if (ref && ref.focus) ref.focus()
-  }, 350)
-}
 const addMmItem = (kind) => {
   const map = { problem: mmProblemText, plan: mmPlanText }
   const labels = { problem: '存在问题', plan: '下周计划' }
@@ -1088,6 +955,23 @@ const isBatchTool = computed(() => !!toolInfo.value.fileRule)
 
 // 纯转换工具（文档转文本 / 录音转写）：单文件上传，无提示词（提示词后端内置或纯解析）
 const isPureConvert = computed(() => !!toolInfo.value.pureConvert)
+
+/**
+ * 「纯文本加工工具」：tools.js 里 inputTypes 只有 ['text'] 的那一批
+ * （工作总结 / 重点提取 / 周报生成 / 会议纪要）。
+ *
+ * 存在的意义：这些工具**只做文本加工**，输入统一由【文档提取】/【录音转写】
+ * 这类解析层工具产出 —— 这正是「把工具拆细以便工作流组合」的架构意图。
+ * 所以它们的页面上不允许出现任何上传入口（录音/文件/图片）与输入方式切换器：
+ * 只有一种输入方式时，切换器没有意义，上传入口则会让用户以为本工具能吃文件。
+ *
+ * 判定完全由数据驱动（读 tools.js 的 inputTypes），新增同类工具自动生效，
+ * 不用再往模板里硬编码白名单。
+ */
+const isTextOnlyTool = computed(() => {
+  const types = toolInfo.value.inputTypes
+  return Array.isArray(types) && types.length > 0 && types.every(t => t === 'text')
+})
 
 // 纯转换工具选中的单个文件（{ name, file } —— file 为 H5 File 对象，App 端为 null 走路径）
 const pureConvertFile = ref(null)
