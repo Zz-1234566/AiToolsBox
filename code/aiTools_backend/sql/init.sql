@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS `sys_aitools_history_detail` (
   `input_content` TEXT COMMENT '输入内容',
   `output_content` TEXT COMMENT '输出内容',
   `error_msg` VARCHAR(500) DEFAULT NULL COMMENT '错误信息（失败时）',
+  `prompt_format` TEXT COMMENT '用户当时在格式提示词 textarea 里的内容（resolve 前）',
+  `prompt_generate` TEXT COMMENT '用户当时在生成提示词 textarea 里的内容（resolve 前）',
   `dr` TINYINT DEFAULT 0 COMMENT '逻辑删除：0正常 1删除',
   PRIMARY KEY (`id`),
   KEY `idx_history_id` (`history_id`)
@@ -123,6 +125,8 @@ CREATE TABLE IF NOT EXISTS `sys_aitools_history_detail` (
 
 -- 升级记录（历史，新装环境无需执行）：
 -- ALTER TABLE `sys_aitools_history_detail` ADD COLUMN `error_msg` VARCHAR(500) DEFAULT NULL COMMENT '错误信息（失败时）' AFTER `output_content`;
+-- ALTER TABLE `sys_aitools_history_detail` ADD COLUMN `prompt_format` TEXT COMMENT '用户当时在格式提示词 textarea 里的内容（resolve 前）' AFTER `error_msg`;
+-- ALTER TABLE `sys_aitools_history_detail` ADD COLUMN `prompt_generate` TEXT COMMENT '用户当时在生成提示词 textarea 里的内容（resolve 前）' AFTER `prompt_format`;
 
 -- -------------------------------------------
 -- 7. AI 工具使用历史文件表
