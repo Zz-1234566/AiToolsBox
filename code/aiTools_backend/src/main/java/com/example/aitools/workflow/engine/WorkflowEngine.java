@@ -269,6 +269,11 @@ public class WorkflowEngine {
                         agg.setStatus(NODE_FAILED);
                         if (agg.getErrorMsg() == null) agg.setErrorMsg("上游节点失败，本节点未执行");
                         fileOk = false;
+                        // 帧对称：未被执行的节点也必须先发 node_start 再发 node_done。
+                        // 否则前端只收到一个「凭空出现的 done」（没有对应 start），
+                        // node_start 与 node_done 数量不等，客户端无法配对
+                        // （实测：1 个 start 对 2 个 done）。
+                        if (listener != null) listener.onNodeStart(nodeId, node.getNodeRef(), fi, fileTotal);
                         if (listener != null) listener.onNodeDone(nodeId, fi, false, null, "上游节点失败，本节点未执行");
                         continue;
                     }
