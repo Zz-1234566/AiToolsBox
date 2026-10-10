@@ -52,7 +52,7 @@ cos:
   # 默认头像在桶内的 key 路径；URL 由 bucket + region 拼出
   default-avatar-key: ${DEFAULT_AVATAR_KEY:avatar/defaultAvatar.png}
   # 私有文件（file/{userId}/）签名 URL 有效期（秒）。到期后链接 403，前端需重新调接口。
-  signed-url-ttl-seconds: ${COS_SIGNED_URL_TTL:300}
+  signed-url-ttl-seconds: ${COS_SIGNED_URL_TTL:3600}
 
 
 # 腾讯云 OCR（ai-ocr 工具用）。密钥默认复用 cos.*，留空即用 COS 密钥
@@ -133,3 +133,10 @@ compress:
   audio-bitrates: 64k,48k,32k,24k,16k
   audio-sample-rate: 16000
   audio-channels: 1
+
+# 人像分割（证件照换背景色 / 图片去背景，u2netp.onnx 离线推理）
+segmentation:
+  enabled: true
+  model-path: classpath:models/u2netp.onnx
+  input-size: 320
+  max-image-pixels: 40000000
