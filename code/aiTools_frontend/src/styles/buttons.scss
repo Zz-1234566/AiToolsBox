@@ -1,0 +1,118 @@
+/* =========================================================
+   按钮规范（design system / buttons）
+   SCSS mixin + 语义类，不用 Vue 组件。
+
+   为什么是 mixin 而不是组件：
+   uni-app 要同时发 H5 / App / 小程序，按钮在这些端上都是原生 view，
+   组件化会带来 props 透传、事件代理、多端标签名（view/button）的额外成本，
+   而样式层混合是零运行时代价、编译期就固化好的。
+   代价（样式要各页 @import）用「只有一份定义」来抵消。
+
+   核心约束：btn-base 强制 flex + align-items + justify-content。
+   「按钮文字不居中」这类问题以前是每写一个新按钮就可能复发一次，
+   现在它由编译期保证——漏不掉 justify-content，因为根本不用手写。
+
+   用法：
+     @import '@/styles/buttons.scss';
+     .my-btn { @include btn(xs, secondary); }
+   页面里只写「尺寸 + variant」，视觉基线（居中/字号/圆角/按压态）全部继承。
+   ========================================================= */
+
+/* ---------- 尺寸档位 ----------
+   单位 rpx（750rpx = 屏宽），与 redesign.scss 保持同一套换算习惯。
+   高度即行高基准，文字永远垂直居中，不受中文字体行高差异影响。 */
+$btn-sizes: (
+  xs: (h: 52rpx,  fs: 23rpx, pad: 20rpx, radius: 8rpx,  gap: 8rpx),
+  sm: (h: 64rpx,  fs: 25rpx, pad: 24rpx, radius: 12rpx, gap: 10rpx),
+  md: (h: 80rpx,  fs: 28rpx, pad: 32rpx, radius: 16rpx, gap: 12rpx)
+);
+
+/* ---------- 主色（对齐 redesign.scss / workflow-run 的既有用色） ---------- */
+$btn-primary:        #3B82F6;
+$btn-primary-active: #2563EB;
+$btn-danger:         #EF4444;
+$btn-danger-active:  #DC2626;
+
+/* ---------- 基类：所有按钮都必须经过这里 ----------
+   居中是这个文件存在的首要理由，注释写清楚以免后人「优化」掉。 */
+@mixin btn-base {
+  display: flex;
+  align-items: center;
+      /* ↓↓ 按钮文字不居中的根因：以前每个按钮各自写样式，谁漏了谁就不居中。
+             收进基类后编译期保证，不可能再漏。 */
+  justify-content: center;
+  box-sizing: border-box;
+  border: none;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/**
+ * 按钮主体：@include btn($size, $variant)
+ * @param $size    xs | sm | md
+ * @param $variant primary | secondary | ghost | danger
+ */
+@mixin btn($size: sm, $variant: secondary) {
+  $s: map-get($btn-sizes, $size);
+
+  @include btn-base;
+
+  height: map-get($s, h);
+  padding: 0 map-get($s, pad);
+  font-size: map-get($s, fs);
+  font-weight: 600;
+  line-height: 1;
+  border-radius: map-get($s, radius);
+
+  /* 图标与文字的间距。多端 flex gap 支持不一，但本项目三端基线均可；
+     若后续要支持更老的 WebView，用 margin 兜底即可，不必改调用点。 */
+  gap: map-get($s, gap);
+
+  @if $variant == primary {
+    background: $btn-primary;
+    color: #fff;
+    &:active { background: $btn-primary-active; }
+  } @else if $variant == secondary {
+    background: #fff;
+    color: #4B5563;
+    border: 1rpx solid #E5E7EB;
+    &:active { background: #F3F4F6; }
+  } @else if $variant == ghost {
+    background: transparent;
+    color: $btn-primary;
+    &:active { background: rgba(59, 130, 246, 0.08); }
+  } @else if $variant == danger {
+    background: $btn-danger;
+    color: #fff;
+    &:active { background: $btn-danger-active; }
+  } @else {
+    @error "btn(): 未知的 variant `#{$variant}`，可选 primary / secondary / ghost / danger";
+  }
+}
+
+/* =========================================================
+   语义类：直接 class 引用的入口
+   类名沿用各页已有命名，迁移时只换样式定义、不动模板 class，
+   这样「未替换的按钮视觉不变」，可以一页一页渐进迁移。
+   ========================================================= */
+
+/* 通用小按钮（设计稿 .btn-xs） */
+.btn-xs {
+  @include btn(xs, secondary);
+  flex-shrink: 0;
+}
+
+/* 卡片内主操作按钮 */
+.btn-act {
+  @include btn(sm, primary);
+  flex: 1;
+}
+
+/* 行内文字按钮（日志「复制」、错误框「复制报错」等） */
+.btn-ghost {
+  @include btn(xs, ghost);
+  flex-shrink: 0;
+}

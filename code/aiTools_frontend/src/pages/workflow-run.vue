@@ -1127,6 +1127,7 @@ const buildDetailLogs = (data) => {
 </script>
 
 <style lang="scss" scoped>
+@import '@/styles/buttons.scss';
 @import '@/styles/redesign.scss';
 @import '@/styles/animations.scss';
 
@@ -1538,22 +1539,12 @@ const buildDetailLogs = (data) => {
 .wfr-node__mdb::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3rpx; }
 .wfr-node__mdb::-webkit-scrollbar-track { background: transparent; }
 
-/* 通用小按钮（设计稿 .btn-xs：52rpx 高、小圆角、轻描边） */
+/* 通用小按钮（设计稿 .btn-xs）：尺寸/居中/按压态统一走 buttons.scss 的 btn mixin，
+   这里只补本页特有的一点——同排有个 flex:1 的标题，缩窄屏幕时按钮不能被压扁。 */
 .wfr-btn-xs {
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  height: 52rpx;
-  padding: 0 20rpx;
-  font-size: 23rpx;
-  font-weight: 600;
-  color: #4B5563;
-  background: #fff;
-  border: 1rpx solid #E5E7EB;
-  border-radius: 8rpx;
+  @include btn(xs, secondary);
   flex-shrink: 0;
 }
-.wfr-btn-xs:active { background: #F3F4F6; }
 
 /* 节点错误框 */
 .wfr-nerr {
@@ -1580,18 +1571,10 @@ const buildDetailLogs = (data) => {
   font-family: "SF Mono", "Cascadia Mono", "Roboto Mono", monospace;
 }
 .wfr-nerr__a {
+  @include btn(xs, secondary);
+  /* 唯一本页特有：报错框里的按钮描边偏红，和它所在的错误语义一致 */
+  border-color: rgba(239, 68, 68, 0.22);
   margin-top: 16rpx;
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  height: 52rpx;
-  padding: 0 20rpx;
-  font-size: 23rpx;
-  font-weight: 600;
-  color: #4B5563;
-  background: #fff;
-  border: 1rpx solid rgba(239, 68, 68, 0.22);
-  border-radius: 8rpx;
 }
 
 /* 轨道连线：done 绿 / flow 蓝色彗星 / fail 红 / blk 虚线 */
@@ -1662,19 +1645,14 @@ const buildDetailLogs = (data) => {
 }
 .wfr-outc__s { font-size: 22rpx; color: #9CA3AF; flex-shrink: 0; }
 .wfr-outc__acts { display: flex; gap: 16rpx; margin-top: 20rpx; }
+/* 产物卡操作按钮：等宽平分（flex:1），视觉基线走 btn mixin */
 .wfr-act {
+  @include btn(md, primary);
   flex: 1;
-  height: 76rpx;
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
-  font-size: 26rpx;
-  font-weight: 600;
 }
-.wfr-act--p { background: #3B82F6; color: #fff; }
-.wfr-act--p:active { background: #2563EB; }
+/* 模板里的 wfr-act--p 保留为语义标记（primary 变体已由上面的 mixin 给出），
+   这里只兜底，不重复定义配色，避免两处定义漂移。 */
+.wfr-act--p { color: #fff; }
 
 /* ===== 运行日志 ===== */
 .wfr-log {
@@ -1740,18 +1718,12 @@ const buildDetailLogs = (data) => {
 
 /* 日志区「复制」小按钮（设计稿 .btn-xs：小圆角、轻量描边） */
 .wfr-log__copy {
+  @include btn(xs, ghost);
+  /* 本页特有：日志标题行里「N 条」把它推到最右，且要更轻的底色 */
   margin-left: 16rpx;
-  display: inline-flex;
-  align-items: center;
-  gap: 8rpx;
-  height: 44rpx;
-  padding: 0 16rpx;
-  border-radius: 8rpx;
   background: #F9FAFB;
   border: 1rpx solid #E5E7EB;
-  font-size: 21rpx;
   color: #4B5563;
-  flex-shrink: 0;
 }
 .wfr-log__copy:active { background: #F3F4F6; }
 </style>
