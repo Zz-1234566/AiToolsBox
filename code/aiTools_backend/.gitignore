@@ -50,3 +50,7 @@ uploads/
 
 ### Local env (contains secrets) ###
 .env
+
+### SQL 仅 init.sql 入库（唯一完整建库入口）；其余为本地迁移/修补脚本 ###
+sql/*
+!sql/init.sql
