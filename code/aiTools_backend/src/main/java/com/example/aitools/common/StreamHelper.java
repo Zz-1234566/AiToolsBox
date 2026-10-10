@@ -5,6 +5,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
 
 /**
@@ -41,29 +42,59 @@ public final class StreamHelper {
             }
         });
         emitter.onError(t -> log.warn("SSE emitter error: {}", t == null ? "unknown" : t.getMessage()));
-        executor.execute(() -> {
-            try {
-                onChunk.run(emitter);
-                emitter.complete();
-            } catch (Exception e) {
-                log.error("SSE stream error", e);
+        try {
+            executor.execute(() -> {
                 try {
-                    // 关键：先发一帧用户可读的错误信息，再正常结束。
-                    // 若直接 completeWithError，Spring 会异常中断 async request，
-                    // 前端拿不到任何原因（HTTP 状态不可预测/空 body），只能显示"网络错误"。
-                    sendErrorFrame(emitter, userMessageOf(e));
+                    onChunk.run(emitter);
                     emitter.complete();
-                } catch (Exception ex) {
-                    log.warn("SSE error frame send failed, fallback to completeWithError", ex);
+                } catch (Exception e) {
+                    log.error("SSE stream error", e);
                     try {
-                        emitter.completeWithError(e);
-                    } catch (Exception ignore) {
-                        log.warn("SSE completeWithError failed (emitter already closed)", ignore);
+                        // 关键：先发一帧用户可读的错误信息，再正常结束。
+                        // 若直接 completeWithError，Spring 会异常中断 async request，
+                        // 前端拿不到任何原因（HTTP 状态不可预测/空 body），只能显示"网络错误"。
+                        sendErrorFrame(emitter, userMessageOf(e));
+                        emitter.complete();
+                    } catch (Exception ex) {
+                        log.warn("SSE error frame send failed, fallback to completeWithError", ex);
+                        try {
+                            emitter.completeWithError(e);
+                        } catch (Exception ignore) {
+                            log.warn("SSE completeWithError failed (emitter already closed)", ignore);
+                        }
                     }
                 }
-            }
-        });
+            });
+        } catch (RejectedExecutionException e) {
+            // 线程池饱和（AbortPolicy）：任务根本没开始，emitter 还开着，
+            // 必须显式回一帧错误再 complete，否则前端只能看到流被静默掐断（白屏/无任何提示），
+            // 请求线程也会一直挂着等这个 emitter 超时。
+            log.error("SSE task rejected, stream pool saturated: {}", POOL_SATURATED_MESSAGE, e);
+            completeWithBusyNotice(emitter);
+            return emitter;
+        }
         return emitter;
+    }
+
+    /** 线程池饱和时给用户看的原因：短句、不含 ']'（见 sendErrorFrame 的 marker 约束） */
+    private static final String POOL_SATURATED_MESSAGE = "当前服务繁忙，请稍后重试";
+
+    /**
+     * 池饱和时收尾：发一帧用户可读的错误 + 正常 complete。
+     * <p>complete 失败也不能抛出——此时请求线程必须尽快返回，不能被 emitter 拖住。
+     */
+    private static void completeWithBusyNotice(SseEmitter emitter) {
+        try {
+            sendErrorFrame(emitter, POOL_SATURATED_MESSAGE);
+            emitter.complete();
+        } catch (Exception e) {
+            log.warn("SSE busy-notice send failed, fallback to completeWithError", e);
+            try {
+                emitter.complete();
+            } catch (Exception ignore) {
+                log.warn("SSE complete failed (emitter already closed)", ignore);
+            }
+        }
     }
 
     /**

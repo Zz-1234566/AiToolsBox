@@ -193,6 +193,7 @@ public class UserServiceImpl implements UserService {
         }
         user.setPassword(BCrypt.hashpw(newPassword, BCrypt.gensalt()));
         userMapper.updateById(user);
+        revokeTokensIssuedBeforeNow(userId);
         log.info("User password changed: userId={}", userId);
     }
 
@@ -255,7 +256,22 @@ public class UserServiceImpl implements UserService {
         // 更新密码
         user.setPassword(BCrypt.hashpw(request.getNewPassword(), BCrypt.gensalt()));
         userMapper.updateById(user);
+        // 重置密码等价于改密：同样要吊销已签发的 token，否则密码泄露后旧 token 仍可用 7 天
+        revokeTokensIssuedBeforeNow(user.getId());
         log.info("User password reset: account={}", request.getAccount());
+    }
+
+    /**
+     * 吊销该用户在「当前时刻」及之前签发的全部 token（改密 / 重置密码后调用）。
+     * <p>
+     * 用「失效时间点」而非逐个 jti 拉黑：用户可能同时在手机/电脑/平板登录，
+     * 逐个吊销需要枚举全部活跃 token，而 Redis 里并没有维护这份集合。
+     * 声明时间点后，改密前的存量 token 天然（iat 早于该时刻）全部失效，无需迁移。
+     * <p>
+     * 单位必须是**秒**（与 JWT {@code iat} claim 同单位），用毫秒会导致比较恒不成立。
+     */
+    private void revokeTokensIssuedBeforeNow(Long userId) {
+        tokenBlacklistService.invalidateAllBefore(userId, System.currentTimeMillis() / 1000L);
     }
 
     /**

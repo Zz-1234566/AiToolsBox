@@ -21,15 +21,18 @@ import com.example.aitools.workflow.vo.WorkflowRunVO;
 import com.example.aitools.workflow.vo.WorkflowVO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.aitools.config.ExecutorConfig;
 import com.example.aitools.service.ToolOutputService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 工作流服务实现。
@@ -52,6 +55,7 @@ public class WorkflowServiceImpl implements WorkflowService {
     private final WorkflowEngine workflowEngine;
     private final ObjectMapper objectMapper;
     /** SSE 流式任务线程池（与工具流式接口共用） */
+    @Qualifier(ExecutorConfig.STREAM_EXECUTOR)
     private final java.util.concurrent.Executor streamExecutor;
 
     // ==================== 保存 ====================
@@ -235,7 +239,8 @@ public class WorkflowServiceImpl implements WorkflowService {
         workflowRunMapper.insert(run);
 
         // 3) 异步执行 + 实时推送
-        streamExecutor.execute(() -> {
+        try {
+            streamExecutor.execute(() -> {
             try {
                 sendEvent(emitter, Map.of("type", "run_start", "runId", run.getRunId()));
 
@@ -341,7 +346,27 @@ public class WorkflowServiceImpl implements WorkflowService {
                     log.warn("[workflow] 推送错误帧失败（连接可能已关闭）", ex);
                 }
             }
-        });
+            });
+        } catch (RejectedExecutionException e) {
+            // 线程池饱和：任务未开始，但运行记录已建（RUNNING），必须在此收尾，
+            // 否则前端/列表里永远等不到终态。同时回一帧明确错误，别让前端白屏挂到超时。
+            log.error("[workflow] 流式任务被拒（线程池饱和）workflowId={} userId={}", workflowId, userId, e);
+            try {
+                run.setStatus(WorkflowRunStatusEnum.FAILED.getCode());
+                run.setErrorMsg(ResultCode.SERVICE_UNAVAILABLE.getMessage());
+                run.setFinishedAt(LocalDateTime.now());
+                workflowRunMapper.updateById(run);
+            } catch (Exception ex) {
+                log.error("[workflow] 池饱和失败态落库异常 runId={}", run.getRunId(), ex);
+            }
+            try {
+                sendEvent(emitter, Map.of("type", "error",
+                        "message", ResultCode.SERVICE_UNAVAILABLE.getMessage()));
+                emitter.complete();
+            } catch (Exception ex) {
+                log.warn("[workflow] 池饱和错误帧推送失败（连接可能已关闭）", ex);
+            }
+        }
     }
 
     /** 发送一帧 SSE；失败只记日志，不中断主流程（客户端可能已断开） */

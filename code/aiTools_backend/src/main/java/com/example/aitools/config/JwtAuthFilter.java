@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Date;
 
 /**
  * JWT 鉴权 Filter：每个请求解析一次 Authorization 头，校验通过把 userId 塞进 request attribute。
@@ -52,6 +53,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         if (jti != null && tokenBlacklistService.isBlacklisted(jti)) {
                             log.debug("Token blacklisted: jti={}", jti);
                             // token 已被吊销：不设 attribute，依赖调用方 authUtil 抛 401
+                        } else if (isStaleAfterPasswordChange(claims)) {
+                            // 改密/重置密码后：该时刻及之前签发的 token 全部作废（多设备同时失效）
+                            // 不设 attribute → AuthInterceptor 直接 401
                         } else {
                             Object userIdObj = claims.get("userId");
                             if (userIdObj != null) {
@@ -69,5 +73,30 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         chain.doFilter(request, response);
+    }
+
+    /**
+     * 改密 / 重置密码后的 token 全量失效校验。
+     * <p>
+     * 语义：Redis 里记录「该用户从 {@code invalidBefore} 秒起签发的 token 才有效」，
+     * 与 jti 黑名单并存（黑名单吊销单个、本方法吊销该时间点之前的全部）。
+     * <p>
+     * <b>边界处理</b>：失效判定规则（{@code iat <= invalidBefore}、取不到 iat 按失效处理）
+     * 统一收敛在 {@link TokenBlacklistService#isInvalidated}，此处只做取值与日志。
+     */
+    private boolean isStaleAfterPasswordChange(Claims claims) {
+        Object userIdObj = claims.get("userId");
+        if (userIdObj == null) {
+            return false;
+        }
+        Long userId = Long.valueOf(userIdObj.toString());
+        // iat 是 epoch 秒（JWT 规范单位），与 Redis 里记录的失效时间点同单位
+        Date issuedAt = claims.getIssuedAt();
+        long issuedAtSeconds = issuedAt == null ? -1L : issuedAt.getTime() / 1000L;
+        if (tokenBlacklistService.isInvalidated(userId, issuedAtSeconds)) {
+            log.info("Token invalidated by password change: userId={}, iat={}s", userId, issuedAtSeconds);
+            return true;
+        }
+        return false;
     }
 }

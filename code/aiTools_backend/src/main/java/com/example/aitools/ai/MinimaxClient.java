@@ -88,6 +88,7 @@ public class MinimaxClient {
             conn.setRequestProperty("Authorization", "Bearer " + visionConfig.getApiKey());
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setDoOutput(true);
+            applyTimeout(conn);
             conn.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
 
             int code = conn.getResponseCode();
@@ -190,6 +191,21 @@ public class MinimaxClient {
         }
     }
 
+    /**
+     * 给 chat/completions 连接设置连接 / 读取超时。
+     * <p>
+     * 关键：{@code HttpURLConnection} 默认超时为 0（无限）。AI 端半开连接
+     * （TCP 未断开但不再发数据）时会永久阻塞，逐个占满 batchExecutor 线程，
+     * 最终 AI 功能整体不可用，且不抛异常、不打日志。
+     * <p>
+     * 超时值取自 {@link AiVisionConfig}（{@code ai.minimax.*-timeout-seconds}），
+     * 与 {@code chatAudio} 同为配置驱动，不硬编码。
+     */
+    private void applyTimeout(java.net.HttpURLConnection conn) {
+        conn.setConnectTimeout(Math.max(visionConfig.getConnectTimeoutSeconds(), 1) * 1000);
+        conn.setReadTimeout(Math.max(visionConfig.getReadTimeoutSeconds(), 1) * 1000);
+    }
+
     /** 写 multipart 文本字段 */
     private void writeFormField(ByteArrayOutputStream buf, String boundary, String name, String value) throws IOException {
         buf.write(("--" + boundary + "\r\n"
@@ -267,6 +283,7 @@ public class MinimaxClient {
             conn.setRequestProperty("Authorization", "Bearer " + visionConfig.getApiKey());
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setDoOutput(true);
+            applyTimeout(conn);
             conn.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
 
             int code = conn.getResponseCode();
@@ -288,6 +305,12 @@ public class MinimaxClient {
             JsonNode message = choices.get(0).get("message");
             return message.get("content").asText();
 
+        } catch (java.net.SocketTimeoutException e) {
+            // 超时单独分支：明确告知是超时而非通用失败，便于区分「AI 慢」和「AI 挂了」。
+            // 仍包成 RuntimeException，与既有失败路径保持一致，由调用方按文件粒度兜底。
+            log.error("MiniMax M3 调用超时（connect={}s, read={}s）",
+                    visionConfig.getConnectTimeoutSeconds(), visionConfig.getReadTimeoutSeconds(), e);
+            throw new RuntimeException("AI 服务响应超时，请稍后重试", e);
         } catch (IOException e) {
             log.error("MiniMax M3 调用异常", e);
             throw new RuntimeException("AI 服务调用失败，请稍后重试", e);

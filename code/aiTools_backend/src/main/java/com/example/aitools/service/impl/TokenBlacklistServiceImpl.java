@@ -18,6 +18,12 @@ public class TokenBlacklistServiceImpl implements TokenBlacklistService {
 
     private static final String KEY_PREFIX = "aitoolbox:token:blacklist:";
 
+    /** 全量吊销时间点前缀：aitoolbox:token:invalidBefore:{userId} */
+    private static final String INVALID_BEFORE_PREFIX = "aitoolbox:token:invalidBefore:";
+
+    /** 失效时间点 TTL（天），与 jwt.expiration（7 天）对齐：超过该时长的 token 本就过期，标记无意义 */
+    private static final long INVALID_BEFORE_TTL_DAYS = 7L;
+
     private final StringRedisTemplate redisTemplate;
 
     @Override
@@ -47,5 +53,58 @@ public class TokenBlacklistServiceImpl implements TokenBlacklistService {
             log.warn("Redis unavailable for blacklist check, failing open: jti={}", jti, e);
             return false;
         }
+    }
+
+    @Override
+    public void invalidateAllBefore(Long userId, long beforeEpochSecond) {
+        if (userId == null) {
+            return;
+        }
+        try {
+            // TTL 与 JWT 有效期对齐即可：过期后不可能再有过期的 token 通过校验
+            redisTemplate.opsForValue().set(INVALID_BEFORE_PREFIX + userId,
+                    String.valueOf(beforeEpochSecond), INVALID_BEFORE_TTL_DAYS, TimeUnit.DAYS);
+            log.info("All tokens before {}s invalidated for userId={}", beforeEpochSecond, userId);
+        } catch (Exception e) {
+            // 写失败 = 改密后旧 token 仍可用（安全降级），必须留日志告警
+            log.error("Failed to invalidate tokens for userId={}", userId, e);
+        }
+    }
+
+    @Override
+    public long getInvalidBefore(Long userId) {
+        if (userId == null) {
+            return 0L;
+        }
+        try {
+            String raw = redisTemplate.opsForValue().get(INVALID_BEFORE_PREFIX + userId);
+            if (raw == null || raw.isBlank()) {
+                return 0L;
+            }
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            log.warn("Corrupted invalidBefore value, treating as no restriction: userId={}", userId);
+            return 0L;
+        } catch (Exception e) {
+            // 与 isBlacklisted 一致：fail-open，避免 Redis 抖动导致全体用户 401
+            log.warn("Redis unavailable for invalidBefore check, failing open: userId={}", userId, e);
+            return 0L;
+        }
+    }
+
+    @Override
+    public boolean isInvalidated(Long userId, long issuedAtSeconds) {
+        long invalidBefore = getInvalidBefore(userId);
+        if (invalidBefore <= 0) {
+            // 从未改密：无此限制
+            return false;
+        }
+        if (issuedAtSeconds < 0) {
+            // 取不到 iat：fail-closed，不能因为解析不出签发时间就放行
+            log.debug("Token without iat treated as invalidated: userId={}", userId);
+            return true;
+        }
+        // <= 而非 <：iat 单位为秒，同一秒内签发的旧 token 必须一并作废
+        return issuedAtSeconds <= invalidBefore;
     }
 }

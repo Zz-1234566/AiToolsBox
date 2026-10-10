@@ -34,6 +34,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 @RestController
 @RequestMapping("/api/ai-office")
@@ -238,7 +239,8 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         }
 
         // 3) 异步跑批（service 内每文件完即 appendItem，全部跑完 Controller 调 completeBatch）
-        batchExecutor.execute(() -> {
+        try {
+            batchExecutor.execute(() -> {
             try {
                 batchTaskService.markRunning(batchId);
                 com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiDocumentSummaryBatchStream(
@@ -254,7 +256,14 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
                     log.error("[B2] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
                 }
             }
-        });
+            });
+        } catch (RejectedExecutionException e) {
+            // 线程池饱和：任务未启动，但 batchId 已经建出来了，不置失败前端会一直轮询等终态
+            log.error("[B2] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
+            safeFailBatch(batchId, files.size());
+            throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
+                    ResultCode.SERVICE_UNAVAILABLE.getMessage());
+        }
 
         BatchUploadResponse resp = new BatchUploadResponse();
         resp.setBatchId(batchId);
@@ -306,7 +315,8 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
             throw e;  /* P2-B4 */
         }
 
-        batchExecutor.execute(() -> {
+        try {
+            batchExecutor.execute(() -> {
             try {
                 batchTaskService.markRunning(batchId);
                 com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiOcrBatchStream(
@@ -322,7 +332,14 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
                     log.error("[B2] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
                 }
             }
-        });
+            });
+        } catch (RejectedExecutionException e) {
+            // 线程池饱和：任务未启动，但 batchId 已经建出来了，不置失败前端会一直轮询等终态
+            log.error("[OCR-B2] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
+            safeFailBatch(batchId, files.size());
+            throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
+                    ResultCode.SERVICE_UNAVAILABLE.getMessage());
+        }
 
         BatchUploadResponse resp = new BatchUploadResponse();
         resp.setBatchId(batchId);
@@ -360,7 +377,20 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         SseEmitter emitter = new SseEmitter(60000L);
         // P0 用户反馈：这是 SSE 补发端点（断线重连后补 result_summary），应走 streamExecutor
         // 业务含义：SSE 流式输出，与批量任务"执行处理"是两件事
-        streamExecutor.execute(() -> batchTaskService.subscribeProgress(task, emitter));
+        try {
+            streamExecutor.execute(() -> batchTaskService.subscribeProgress(task, emitter));
+        } catch (RejectedExecutionException e) {
+            // 池饱和：补发没跑起来。emitter 已建好，必须显式收尾，否则前端等满 60s 超时才知道断了
+            log.error("[B2-SSE] 补发任务被拒（线程池饱和）batchId={}", batchId, e);
+            try {
+                emitter.send(SseEmitter.event().data(
+                        "{\"type\":\"error\",\"message\":\"服务繁忙，请稍后重试\"}"));
+                emitter.complete();
+            } catch (Exception ex) {
+                log.warn("[B2-SSE] 池饱和错误帧推送失败 batchId={}", batchId, ex);
+                emitter.complete();
+            }
+        }
         return emitter;
     }
 

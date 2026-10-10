@@ -10,10 +10,12 @@ import com.example.aitools.exception.BusinessException;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
 import com.example.aitools.service.TranscribeService;
+import com.example.aitools.config.ExecutorConfig;
 import com.example.aitools.utils.AuthUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 /**
  * 录音转文本 Controller
@@ -38,9 +41,17 @@ public class TranscribeController {
     private final BatchTaskService batchTaskService;
     private final AuthUtil authUtil;
 
-    /** 批量任务执行线程池（单线程串行，避免触发上游 ASR 限流） */
-    private final java.util.concurrent.ExecutorService batchExecutor =
-            java.util.concurrent.Executors.newSingleThreadExecutor();
+    /**
+     * 批量转写任务线程池。
+     * 原为 Controller 私有 {@code Executors.newSingleThreadExecutor()}：
+     * 队列无界，池满时无限排队，且每任务持有文件字节数组；
+     * 并发上传时足以把堆打满，且完全绕开 ExecutorConfig 的容量保护与停机等待。
+     *
+     * 改用统一的 batchExecutor（与 OCR 批处理、文件解读同池）：
+     * 队列有界 + AbortPolicy，饱和时由本类显式转成"服务繁忙"，不再静默堆积。
+     */
+    @Qualifier(ExecutorConfig.BATCH_EXECUTOR)
+    private final ExecutorService batchExecutor;
 
     /**
      * 单文件录音转写。
