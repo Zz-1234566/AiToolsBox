@@ -3,11 +3,13 @@ package com.example.aitools.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.example.aitools.common.Constants;
+import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.HistoryFileDTO;
 import com.example.aitools.entity.AiTool;
 import com.example.aitools.entity.History;
 import com.example.aitools.entity.HistoryDetail;
 import com.example.aitools.entity.HistoryFile;
+import com.example.aitools.exception.BusinessException;
 import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.mapper.HistoryDetailMapper;
 import com.example.aitools.mapper.HistoryFileMapper;
@@ -336,7 +338,19 @@ public class HistoryServiceImpl implements HistoryService {
 
     @Override
     public void delete(Long id, Long userId) {
-        // 校验归属并逻辑删除主表
+        // 先校验归属再删子表：子表（detail/file）没有 user_id 字段，仅靠 history_id 关联。
+        // 若直接按 history_id 删子表，越权用户传别人的 history id 会把对方的明细/文件删掉，
+        // 而主表因带 user_id 条件未命中 —— 造成"别人记录正文丢失、主表却还在"的数据不一致。
+        History exist = historyMapper.selectById(id);
+        if (exist == null
+                || !userId.equals(exist.getUserId())
+                || exist.getDr() == null
+                || exist.getDr().intValue() != Constants.DR_NORMAL) {
+            // 不区分"不存在"与"无权"，避免通过错误信息探测他人历史 id 是否存在
+            throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "历史记录不存在或无权操作");
+        }
+
+        // 校验通过，逻辑删除主表
         LambdaUpdateWrapper<History> historyWrapper = new LambdaUpdateWrapper<>();
         historyWrapper.eq(History::getId, id)
                 .eq(History::getUserId, userId)

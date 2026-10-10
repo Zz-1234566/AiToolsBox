@@ -20,22 +20,29 @@ public class HistoryController {
     private final AuthUtil authUtil;
 
     /**
-     * 查询指定用户在指定工具的历史记录（默认 Constants.HISTORY_LIST_DEFAULT_LIMIT 条）
-     * @param userId  用户 id（账号，必填）
+     * 查询当前登录用户在指定工具下的历史记录（默认 Constants.HISTORY_LIST_DEFAULT_LIMIT 条）
+     * <p>
+     * 安全：查询范围<b>一律以登录态为准</b>，不接受前端传入的 userId，
+     * 否则登录用户传别人的 userId 即可越权读取他人历史（含输入/输出原文与文件）。
+     *
+     * @param userId  <b>已忽略，仅为兼容前端保留</b>，真实用户 id 取自登录态
      * @param aiCode  可选，按工具编码过滤（如 work-summary / meeting-minutes）
-     * @param limit   可选，返回条数上限（1 <= limit <= 50，默认 Constants.HISTORY_LIST_DEFAULT_LIMIT）
+     * @param limit   可选，返回条数上限（1 &lt;= limit &lt;= 50，默认 Constants.HISTORY_LIST_DEFAULT_LIMIT）
      * @param offset  可选，跳过条数（从 0 开始），供前端滚动加载更多使用；默认 0
      */
     @GetMapping("/list")
     public Result<List<HistoryVO>> list(
-            @RequestParam Long userId,
+            @RequestParam(required = false) Long userId,
             @RequestParam(required = false) String aiCode,
             @RequestParam(required = false) Integer limit,
-            @RequestParam(required = false) Integer offset) {
+            @RequestParam(required = false) Integer offset,
+            HttpServletRequest request) {
+        // 覆盖而非校验：直接丢弃前端传值，登录态缺失时 AuthUtil 抛 401
+        Long currentUserId = authUtil.getUserIdFromRequest(request);
         int n = (limit == null || limit <= 0) ? Constants.HISTORY_LIST_DEFAULT_LIMIT
                 : Math.min(limit, 50); // 硬上限 50 防滥用
         int off = (offset == null || offset < 0) ? 0 : offset;
-        return Result.success(historyService.listRecent(userId, aiCode, n, off));
+        return Result.success(historyService.listRecent(currentUserId, aiCode, n, off));
     }
 
     /**
