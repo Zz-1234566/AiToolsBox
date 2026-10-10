@@ -25,6 +25,8 @@ public class CosConfig {
     private String bucket;
 
     /** 默认头像在桶内的 key 路径（如 avatar/defaultAvatar.png），URL 由 bucket + region 拼出 */
+    // 必须是桶里真实存在的对象名：写错（历史上 env 里误成 defaultAvator.png，缺 r）
+    // 会让新注册用户的默认头像指向 404，前端 <image> 破图且无 @error 兜底。
     private String defaultAvatarKey = "avatar/defaultAvatar.png";
 
     /**

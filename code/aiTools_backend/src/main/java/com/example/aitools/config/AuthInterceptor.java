@@ -49,6 +49,15 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 公开的本地静态资源（工具产物）：放行
+        // 必须先归一化再判断：静态资源映射会在服务端把 ../ 折叠掉，
+        // 而 requestURI 保留了原始的 ../，直接用原始串做前缀匹配会被
+        // /uploads/tool-output/../file/1/x.png 这类穿越请求绕过，
+        // 导致 file/ 下的私有文件被无 token 读走。
+        if (isPublicLocalPath(path)) {
+            return true;
+        }
+
         // 校验 attribute：JwtAuthFilter 已解析 token 并写入 userId
         Object userIdAttr = request.getAttribute(Constants.REQ_ATTR_USER_ID);
         if (userIdAttr instanceof Long) {
@@ -59,6 +68,48 @@ public class AuthInterceptor implements HandlerInterceptor {
         log.debug("AuthInterceptor blocked: path={}, hasUserIdAttr={}", path, userIdAttr != null);
         writeUnauthorized(response, path);
         return false;
+    }
+
+    /**
+     * 是否本地存储模式下的公开静态资源（tool-output/ / avatar/ / ai-image/ / ai-bg/）。
+     * <p>
+     * 先把 URI 归一化（折叠 {@code .} / {@code ../}、解码 %xx）再做前缀匹配，
+     * 与静态资源映射解析出的真实文件路径保持同一套语义，
+     * 避免 {@code /uploads/avatar/../file/1/x.png} 这类穿越请求
+     * 先被前缀放行、再由静态映射读到 file/ 下的私有文件。
+     */
+    private boolean isPublicLocalPath(String path) {
+        if (path == null) {
+            return false;
+        }
+        String normalized = normalize(path);
+        if (normalized == null) {
+            return false;
+        }
+        for (String prefix : Constants.PUBLIC_LOCAL_PATH_PREFIXES) {
+            // 每个公开前缀都以 / 结尾，startsWith 不会误伤 /uploads/avatarxxx
+            if (normalized.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 归一化 URI；解码或折叠异常时返回 null（按不公开处理） */
+    private String normalize(String path) {
+        try {
+            String decoded = java.net.URLDecoder.decode(path, StandardCharsets.UTF_8);
+            // 统一分隔符，避免 %5c 之类把 ../ 伪装成 ..\
+            String unified = decoded.replace('\\', '/');
+            java.nio.file.Path resolved = java.nio.file.Paths.get(unified).normalize();
+            String s = resolved.toString().replace('\\', '/');
+            if (!s.startsWith("/")) {
+                s = "/" + s;
+            }
+            return s;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void writeUnauthorized(HttpServletResponse response, String path) throws Exception {

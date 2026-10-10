@@ -91,8 +91,42 @@ public class Constants {
     /** 工具产物存储前缀（全局工具产物文件，与用户上传区隔离，便于生命周期管理） */
     public static final String TOOL_OUTPUT_PREFIX = "tool-output";
 
+    /** 头像存储前缀（用户头像，COS 下公开读，前端 <image src> 直接引用） */
+    public static final String AVATAR_PREFIX = "avatar";
+
+    /** AI 生成图片存储前缀（COS 下公开读） */
+    public static final String AI_IMAGE_PREFIX = "ai-image";
+
+    /** AI 去背景图片存储前缀（COS 下公开读） */
+    public static final String AI_BG_PREFIX = "ai-bg";
+
     /** 本地存储静态资源访问前缀 */
     public static final String LOCAL_STATIC_PATH_PREFIX = "/uploads/";
+
+    /**
+     * 本地存储模式下无需登录即可访问的静态资源前缀（每项均已含 {@link #LOCAL_STATIC_PATH_PREFIX}）。
+     * <p>
+     * 收录依据 = {@code FileStorageService#isPrivatePrefix} 的反面：这些前缀在 COS 实现里
+     * 会走 {@code setObjectAcl(PublicRead)}，拿到直链即可访问（工具产物语义是「链接可分享」，
+     * 头像 / AI 图则是前端 {@code <image src>} 直接引用，浏览器不会带 Authorization 头）。
+     * 本地存储把它们落在同一个 /uploads/ 下，语义必须一致，否则本地模式一律 401、
+     * 前端出现破图，两种存储模式行为不一致。
+     * <p>
+     * 刻意<b>不</b>放行 {@code /uploads/file/}：用户上传的原始文件是私有的，
+     * COS 下靠签名 URL 访问，本地模式保持要求登录态。
+     * <p>
+     * ⚠️ 必须配合 AuthInterceptor 对<b>归一化后</b>的路径做前缀匹配使用：
+     * 拦截器按原始 requestURI 匹配、静态映射按归一化后的真实路径取文件，
+     * 两者时机不同，只有归一化后再判断才不会被 {@code ../} 穿越绕过。
+     * ⚠️ 每项必须以 {@code /} 结尾，否则 {@code startsWith} 会误伤
+     * {@code /uploads/avatarxxx} 这类同前缀的其它目录。
+     */
+    public static final java.util.Set<String> PUBLIC_LOCAL_PATH_PREFIXES = java.util.Set.of(
+            LOCAL_STATIC_PATH_PREFIX + TOOL_OUTPUT_PREFIX + "/",
+            LOCAL_STATIC_PATH_PREFIX + AVATAR_PREFIX + "/",
+            LOCAL_STATIC_PATH_PREFIX + AI_IMAGE_PREFIX + "/",
+            LOCAL_STATIC_PATH_PREFIX + AI_BG_PREFIX + "/"
+    );
 
     // ==================== AI 内容长度（喂模型 / 落库） ====================
 
