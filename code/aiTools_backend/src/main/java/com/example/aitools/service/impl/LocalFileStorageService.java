@@ -64,7 +64,15 @@ public class LocalFileStorageService implements FileStorageService {
         log.info("File stored locally: {} -> {}", originalFilename, storedName);
         // 返回相对路径，由 Controller 拼装完整访问地址
         String urlPath = prefixPath.isEmpty() ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
-        return new FileUploadResponse(fileId, urlPath, originalFilename, null);
+        // cosKey 存「去掉 /uploads/ 前缀后的相对路径」，与 COS 实现的 buildKey 规则一致
+        // （如 tool-output/xxx.png），不能存 urlPath：
+        //   urlPath 带 /uploads/ 前缀，经 toObjectKey() 只会被剥掉开头斜杠，
+        //   还原成 uploads/tool-output/xxx.png（多出一段 uploads），
+        //   再经 signUrl() 拼回就变成 /uploads/uploads/xxx 的双重前缀。
+        // 调用方 ToolOutputServiceImpl 只认 cosKey（不认 fileUrl），此处传 null 会导致
+        // sys_tool_output 的 file_url / cos_key 双 NULL，响应 fileUrl 也为 null。
+        String objectKey = prefixPath.isEmpty() ? storedName : prefixPath + "/" + storedName;
+        return new FileUploadResponse(fileId, urlPath, originalFilename, objectKey);
     }
 
     /**
@@ -98,7 +106,12 @@ public class LocalFileStorageService implements FileStorageService {
         log.info("Workflow output stored locally: {} -> {} ({} bytes)", name, storedName, content.length);
         String urlPath = prefixPath.isEmpty()
                 ? "/uploads/" + storedName : "/uploads/" + prefixPath + "/" + storedName;
-        return new FileUploadResponse(fileId, urlPath, name, null);
+        // cosKey 存「去掉 /uploads/ 前缀后的相对路径」，与 COS 实现的 buildKey 规则一致
+        // （如 tool-output/xxx.png），理由同 store(MultipartFile, ...) 重载：
+        // 存 urlPath 会让 toObjectKey()/signUrl() 拼出 /uploads/uploads/xxx 双重前缀，
+        // 且 ToolOutputServiceImpl 只取 cosKey，传 null 会导致产物双 NULL。
+        String objectKey = prefixPath.isEmpty() ? storedName : prefixPath + "/" + storedName;
+        return new FileUploadResponse(fileId, urlPath, name, objectKey);
     }
 
     /**
