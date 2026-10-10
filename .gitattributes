@@ -1,0 +1,16 @@
+# 统一行尾：仓库内以 LF 存储，检出到工作区时转成 CRLF（Windows）
+# 避免跨机器协作时产生整文件的假 diff
+* text=auto eol=crlf
+
+# 二进制文件不做行尾转换
+*.onnx binary
+*.mp3 binary
+*.mp4 binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.docx binary
+*.xlsx binary
+*.zip binary
