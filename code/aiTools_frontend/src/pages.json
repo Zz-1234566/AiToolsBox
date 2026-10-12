@@ -22,7 +22,8 @@
     { "path": "pages/prompt-list", "style": { "navigationBarTitleText": "我的提示词", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/tool-custom", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/tool-processing", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
-    { "path": "pages/my-models", "style": { "navigationBarTitleText": "我的 AI 模型", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } }
+    { "path": "pages/my-models", "style": { "navigationBarTitleText": "我的 AI 模型", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/image-bg-changer", "style": { "navigationBarTitleText": "图片换背景图", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",
