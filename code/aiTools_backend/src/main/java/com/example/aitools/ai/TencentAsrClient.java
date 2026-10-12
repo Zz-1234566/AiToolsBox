@@ -60,7 +60,19 @@ public class TencentAsrClient {
      * @throws BusinessException 未启用 / 缺 AppId / 压缩后仍超限 / 识别失败 / 超时
      */
     public String transcribe(byte[] audioBytes, String filename) {
-        if (!isEnabled()) {
+        return transcribe(audioBytes, filename, null);
+    }
+
+    /**
+     * 提交录音文件识别任务并同步等待结果（带凭据覆盖）。
+     * <p>
+     * 腾讯云凭据格式：{@code ResolvedCredential.keyResolverKey()} = {@code "secretId|secretKey|appId"}
+     * （用 {@code |} 分隔；与 {@code sys_ai_model.api_key} 种子一致）。
+     *
+     * @param cred 凭据（可为 null —— 走 .env 兜底）
+     */
+    public String transcribe(byte[] audioBytes, String filename, ResolvedCredential cred) {
+        if (!isEnabled() && cred == null) {
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(), "腾讯云语音识别未启用");
         }
         if (audioBytes == null || audioBytes.length == 0) {
@@ -85,7 +97,7 @@ public class TencentAsrClient {
         }
 
         try {
-            AsrClient client = buildClient();
+            AsrClient client = buildClient(cred);
             long taskId = createTask(client, audioBytes, filename);
             return awaitResult(client, taskId, filename);
         } catch (BusinessException e) {
@@ -109,10 +121,30 @@ public class TencentAsrClient {
     }
 
     private AsrClient buildClient() {
-        // 密钥优先级：TencentAsrConfig 自己的 > CosConfig 复用（与 OcrServiceImpl 一致）
-        String secretId = firstNonBlank(tencentAsrConfig.getSecretId(), cosConfig.getSecretId());
-        String secretKey = firstNonBlank(tencentAsrConfig.getSecretKey(), cosConfig.getSecretKey());
-        String region = firstNonBlank(tencentAsrConfig.getRegion(), cosConfig.getRegion());
+        return buildClient(null);
+    }
+
+    /**
+     * 构建腾讯云 AsrClient。
+     * <p>
+     * 优先用 cred（用户/系统表里加密解出的 key，格式 secretId|secretKey|appId）；
+     * 兜底走 .env → COS 复用。
+     */
+    private AsrClient buildClient(ResolvedCredential cred) {
+        String secretId;
+        String secretKey;
+        String region;
+        if (cred != null && cred.keyResolverKey() != null && !cred.keyResolverKey().isBlank()) {
+            String[] parts = cred.keyResolverKey().split("\\|", -1);
+            secretId = parts.length > 0 ? parts[0] : null;
+            secretKey = parts.length > 1 ? parts[1] : null;
+            region = firstNonBlank(tencentAsrConfig.getRegion(), cosConfig.getRegion());
+        } else {
+            // 密钥优先级：TencentAsrConfig 自己的 > CosConfig 复用（与 OcrServiceImpl 一致）
+            secretId = firstNonBlank(tencentAsrConfig.getSecretId(), cosConfig.getSecretId());
+            secretKey = firstNonBlank(tencentAsrConfig.getSecretKey(), cosConfig.getSecretKey());
+            region = firstNonBlank(tencentAsrConfig.getRegion(), cosConfig.getRegion());
+        }
         return new AsrClient(new Credential(secretId, secretKey), region);
     }
 

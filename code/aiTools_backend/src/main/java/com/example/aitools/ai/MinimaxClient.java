@@ -35,7 +35,11 @@ public class MinimaxClient {
      * @return AI 解读文本
      */
     public String chatImage(String userPrompt, byte[] imageBytes) {
-        return chatImages(userPrompt, List.of(imageBytes));
+        return chatImage(userPrompt, imageBytes, null);
+    }
+
+    public String chatImage(String userPrompt, byte[] imageBytes, ResolvedCredential cred) {
+        return chatImages(userPrompt, List.of(imageBytes), cred);
     }
 
     /**
@@ -45,6 +49,10 @@ public class MinimaxClient {
      * @return AI 解读文本
      */
     public String chatImages(String userPrompt, List<byte[]> imageBytesList) {
+        return chatImages(userPrompt, imageBytesList, null);
+    }
+
+    public String chatImages(String userPrompt, List<byte[]> imageBytesList, ResolvedCredential cred) {
         try {
             List<Map<String, Object>> contentBlocks = new ArrayList<>();
 
@@ -68,7 +76,7 @@ public class MinimaxClient {
             }
 
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", visionConfig.getModel());
+            requestBody.put("model", cred != null && cred.apiModel() != null ? cred.apiModel() : visionConfig.getModel());
             requestBody.put("stream", false);
             requestBody.put("thinking", Map.of("type", "disabled"));
 
@@ -81,11 +89,14 @@ public class MinimaxClient {
 
             String json = objectMapper.writeValueAsString(requestBody);
 
+            String apiKey = cred != null && cred.keyResolverKey() != null ? cred.keyResolverKey() : visionConfig.getApiKey();
+            String url = cred != null && cred.apiUrl() != null ? cred.apiUrl() : visionConfig.getApiUrl();
+
             // 调用
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                    new java.net.URL(visionConfig.getApiUrl()).openConnection();
+                    new java.net.URL(url).openConnection();
             conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + visionConfig.getApiKey());
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setDoOutput(true);
             applyTimeout(conn);
@@ -131,6 +142,10 @@ public class MinimaxClient {
      * @return 识别出的文本
      */
     public String chatAudio(String systemPrompt, byte[] audioBytes, String mimeType) {
+        return chatAudio(systemPrompt, audioBytes, mimeType, null);
+    }
+
+    public String chatAudio(String systemPrompt, byte[] audioBytes, String mimeType, ResolvedCredential cred) {
         if (audioBytes == null || audioBytes.length == 0) {
             throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频内容为空");
         }
@@ -151,10 +166,18 @@ public class MinimaxClient {
             buf.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
             byte[] body = buf.toByteArray();
 
-            String apiKey = (asrConfig.getApiKey() == null || asrConfig.getApiKey().isBlank())
-                    ? visionConfig.getApiKey() : asrConfig.getApiKey();
+            String apiKey;
+            String url;
+            if (cred != null && cred.keyResolverKey() != null) {
+                apiKey = cred.keyResolverKey();
+                url = cred.apiUrl() != null ? cred.apiUrl() : asrConfig.getApiUrl();
+            } else {
+                apiKey = (asrConfig.getApiKey() == null || asrConfig.getApiKey().isBlank())
+                        ? visionConfig.getApiKey() : asrConfig.getApiKey();
+                url = asrConfig.getApiUrl();
+            }
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                    new java.net.URL(asrConfig.getApiUrl()).openConnection();
+                    new java.net.URL(url).openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
@@ -256,9 +279,13 @@ public class MinimaxClient {
      * 纯文本对话（复用同一模型）
      */
     public String chatText(String systemPrompt, String userPrompt) {
+        return chatText(systemPrompt, userPrompt, null);
+    }
+
+    public String chatText(String systemPrompt, String userPrompt, ResolvedCredential cred) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", visionConfig.getModel());
+            requestBody.put("model", cred != null && cred.apiModel() != null ? cred.apiModel() : visionConfig.getModel());
             requestBody.put("stream", false);
             requestBody.put("thinking", Map.of("type", "disabled"));
 
@@ -277,10 +304,13 @@ public class MinimaxClient {
 
             String json = objectMapper.writeValueAsString(requestBody);
 
+            String apiKey = cred != null && cred.keyResolverKey() != null ? cred.keyResolverKey() : visionConfig.getApiKey();
+            String url = cred != null && cred.apiUrl() != null ? cred.apiUrl() : visionConfig.getApiUrl();
+
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                    new java.net.URL(visionConfig.getApiUrl()).openConnection();
+                    new java.net.URL(url).openConnection();
             conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + visionConfig.getApiKey());
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setDoOutput(true);
             applyTimeout(conn);

@@ -64,7 +64,7 @@ public class AiOfficeToolController {
                                                   HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         String result = aiOfficeToolService.aiWorkSummary(userId, dto.getContent(),
-                dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId());
+                dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId(), dto.getApiKey());
         return Result.success("生成成功", new AiWorkSummaryVO(result));
     }
 
@@ -78,6 +78,7 @@ public class AiOfficeToolController {
         return StreamHelper.stream(streamExecutor, emitter ->
                 aiOfficeToolService.aiWorkSummaryStream(userId, dto.getContent(),
                         dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId(),
+                        dto.getApiKey(),
                         StreamHelper.asChunkConsumer(emitter)));
     }
 
@@ -336,6 +337,81 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         } catch (RejectedExecutionException e) {
             // 线程池饱和：任务未启动，但 batchId 已经建出来了，不置失败前端会一直轮询等终态
             log.error("[OCR-B2] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
+            safeFailBatch(batchId, files.size());
+            throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
+                    ResultCode.SERVICE_UNAVAILABLE.getMessage());
+        }
+
+        BatchUploadResponse resp = new BatchUploadResponse();
+        resp.setBatchId(batchId);
+        resp.setFileCount(files.size());
+        return Result.success("任务已创建", resp);
+    }
+
+    /**
+     * 批量 AI 文件解读（1-10 个文件，MiniMax M3 多模态）：立即建任务 + 异步处理 + 立即返回 batchId
+     * <p>原 AiFileReaderController 已合并至此；前端 /tool-custom.vue 继续调此 URL。
+     */
+    @PostMapping(value = "/ai-file-reader/batch-upload", produces = "application/json;charset=UTF-8")
+    public Result<BatchUploadResponse> aiFileReaderBatchUpload(@RequestParam("files") List<MultipartFile> files,
+                                          @RequestParam(value = "prompt", required = false) String prompt,
+                                          HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        if (files == null || files.isEmpty()) {
+            throw new com.example.aitools.exception.BusinessException("请至少上传 1 个文件");
+        }
+        if (files.size() > Constants.BATCH_MAX_FILE_COUNT) {
+            throw new com.example.aitools.exception.BusinessException(
+                    "单次最多上传 " + Constants.BATCH_MAX_FILE_COUNT + " 个文件");
+        }
+        long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
+        if (totalSize > Constants.BATCH_MAX_TOTAL_SIZE) {
+            throw new com.example.aitools.exception.BusinessException(
+                    "批量文件总大小超过 " + (Constants.BATCH_MAX_TOTAL_SIZE / 1024 / 1024) + "MB");
+        }
+
+        String batchId = batchTaskService.createTask(userId, "ai-file-reader", files.size());
+        log.info("[B2-FILE] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
+
+        // 同步阶段先把每个 MultipartFile 读到 byte[]（避开 Tomcat 异步线程跑批时临时文件已被清理）
+        java.util.List<BatchFilePayload> payloads;
+        try {
+            payloads = files.stream().map(f -> {
+                try {
+                    return BatchFilePayload.from(f);
+                } catch (java.io.IOException e) {
+                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
+                }
+            }).toList();
+        } catch (BusinessException e) {
+            // 读文件失败：刚建的任务必须置为失败，否则永久停留在 PENDING，
+            // 前端若已拿到 batchId 会一直轮询等不到终态，且任务表堆积孤儿数据
+            log.error("[B2-FILE] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
+            safeFailBatch(batchId, files.size());
+            throw e;
+        }
+
+        try {
+            batchExecutor.execute(() -> {
+            try {
+                batchTaskService.markRunning(batchId);
+                com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiFileReaderBatchStream(
+                        userId, payloads, prompt, batchId);
+                batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
+                log.info("[B2-FILE] 完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
+            } catch (Exception e) {
+                log.error("[B2-FILE] 异常 batchId={}", batchId, e);
+                try {
+                    batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
+                } catch (Exception ignore) {
+                    // 不再静默吞，至少 log 出来便于排查（best-effort completeBatch，失败也不能让上层 catch 再抛）
+                    log.error("[B2-FILE] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
+                }
+            }
+            });
+        } catch (RejectedExecutionException e) {
+            // 线程池饱和：任务未启动，但 batchId 已经建出来了，不置失败前端会一直轮询等终态
+            log.error("[B2-FILE] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
             safeFailBatch(batchId, files.size());
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
                     ResultCode.SERVICE_UNAVAILABLE.getMessage());

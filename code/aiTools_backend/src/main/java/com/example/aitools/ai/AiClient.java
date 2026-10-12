@@ -22,6 +22,8 @@ import java.util.function.Consumer;
 /**
  * 文本模型 API 客户端（OpenAI 兼容接口），用于办公类 AI 工具。
  * 默认走 MiniMax 文本模型，可由 application*.yml 中 ai.minimax-text.* 切换。
+ * <p>
+ * 支持 BYOK：调用方传入 {@link ResolvedCredential}（如 user-default）可覆盖 .env 默认 key/url/model。
  */
 @Slf4j
 @Component
@@ -48,6 +50,20 @@ public class AiClient {
      * @return AI 返回的文本内容
      */
     public String chat(String systemPrompt, String userPrompt) {
+        return chat(systemPrompt, userPrompt, null);
+    }
+
+    /**
+     * 调用文本模型对话接口（带凭据覆盖，BYOK 透传）。
+     * <p>
+     * {@code cred != null} 时优先使用其中的 key / model / url（override 模式）；
+     * 仍可填 null 走 .env 兜底。
+     *
+     * @param systemPrompt 系统提示词
+     * @param userPrompt   用户提示词
+     * @param cred         凭据（可为 null —— 走 .env 兜底）
+     */
+    public String chat(String systemPrompt, String userPrompt, ResolvedCredential cred) {
         try {
             RestTemplate restTemplate = aiRestTemplate;
 
@@ -55,7 +71,7 @@ public class AiClient {
             // thinking.type=disabled：官方推荐做法，禁用思考以减少 token 消耗与流式首字延迟；
             // 视觉客户端 MinimaxClient 同样处理，保持一致。
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", aiConfig.getModel());
+            requestBody.put("model", cred != null && cred.apiModel() != null ? cred.apiModel() : aiConfig.getModel());
             requestBody.put("stream", false);
             requestBody.put("thinking", Map.of("type", "disabled"));
 
@@ -75,12 +91,14 @@ public class AiClient {
             // 构建请求头
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(aiConfig.getApiKey());
+            String apiKey = cred != null && cred.keyResolverKey() != null ? cred.keyResolverKey() : aiConfig.getApiKey();
+            headers.setBearerAuth(apiKey);
 
             HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(requestBody), headers);
 
+            String url = cred != null && cred.apiUrl() != null ? cred.apiUrl() : aiConfig.getApiUrl();
             ResponseEntity<String> response = restTemplate.exchange(
-                    aiConfig.getApiUrl(), HttpMethod.POST, entity, String.class);
+                    url, HttpMethod.POST, entity, String.class);
 
             // 解析响应
             JsonNode root = objectMapper.readTree(response.getBody());
@@ -105,6 +123,15 @@ public class AiClient {
      * @param onChunk 收到内容块时的回调
      */
     public void chatStream(String systemPrompt, String userPrompt, Consumer<String> onChunk) {
+        chatStream(systemPrompt, userPrompt, onChunk, null);
+    }
+
+    /**
+     * 流式调用文本模型（带凭据覆盖）。
+     *
+     * @param cred 凭据（可为 null —— 走 .env 兜底）
+     */
+    public void chatStream(String systemPrompt, String userPrompt, Consumer<String> onChunk, ResolvedCredential cred) {
         try {
             RestTemplate restTemplate = aiRestTemplate;
             // 统计实际推送到前端的 chunk 数（lambda 内需可写，故用数组）
@@ -113,7 +140,7 @@ public class AiClient {
             // 构建请求体（OpenAI 兼容格式，stream=true）。
             // thinking.type=disabled：官方推荐做法，禁用思考以减少 token 消耗与流式首字延迟。
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", aiConfig.getModel());
+            requestBody.put("model", cred != null && cred.apiModel() != null ? cred.apiModel() : aiConfig.getModel());
             requestBody.put("stream", true);
             requestBody.put("thinking", Map.of("type", "disabled"));
 
@@ -133,12 +160,15 @@ public class AiClient {
             // 构建请求头
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(aiConfig.getApiKey());
+            String apiKey = cred != null && cred.keyResolverKey() != null ? cred.keyResolverKey() : aiConfig.getApiKey();
+            headers.setBearerAuth(apiKey);
+
+            String url = cred != null && cred.apiUrl() != null ? cred.apiUrl() : aiConfig.getApiUrl();
 
             // execute(url, method, requestCallback, responseExtractor)：
             // 在 RequestCallback 中把序列化后的请求体写入输出流（确保 body 真正发送），
             // 在 ResponseExtractor 中逐行读取 SSE 流并回调 onChunk
-            restTemplate.execute(aiConfig.getApiUrl(), HttpMethod.POST,
+            restTemplate.execute(url, HttpMethod.POST,
                     request -> {
                         request.getHeaders().putAll(headers);
                         request.getHeaders().setContentType(MediaType.APPLICATION_JSON);

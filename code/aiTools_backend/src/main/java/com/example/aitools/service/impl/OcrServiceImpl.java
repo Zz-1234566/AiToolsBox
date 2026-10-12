@@ -209,12 +209,17 @@ public class OcrServiceImpl implements OcrService {
 
     @Override
     public String recognizeText(MultipartFile file) {
+        return recognizeText(file, null);
+    }
+
+    @Override
+    public String recognizeText(MultipartFile file, com.example.aitools.ai.ResolvedCredential cred) {
         // 改用 getSize() < 0 判断（避免 H5 fetch 提交 multipart 时 Spring getSize()=0 的边界误判）
         if (file == null || file.getSize() < 0) {
             throw new BusinessException(ResultCode.OCR_UNSUPPORTED.getCode(), "请上传图片文件");
         }
         try {
-            return doOcr(file.getBytes(), file.getOriginalFilename());
+            return doOcr(file.getBytes(), file.getOriginalFilename(), cred);
         } catch (Exception e) {
             log.error("OCR 识别失败", e);
             throw new BusinessException(ResultCode.OCR_FAILED.getCode(), ResultCode.OCR_FAILED.getMessage());
@@ -223,33 +228,54 @@ public class OcrServiceImpl implements OcrService {
 
     @Override
     public String recognizeBytes(byte[] imageBytes, String originalFilename) {
+        return recognizeBytes(imageBytes, originalFilename, null);
+    }
+
+    @Override
+    public String recognizeBytes(byte[] imageBytes, String originalFilename, com.example.aitools.ai.ResolvedCredential cred) {
         // 字节流重载：批量任务中文件已在内存，避开 MultipartFile 临时文件被清理问题
         if (imageBytes == null || imageBytes.length == 0) {
             throw new BusinessException(ResultCode.OCR_UNSUPPORTED.getCode(), "请上传图片文件");
         }
-        return doOcr(imageBytes, originalFilename);
+        return doOcr(imageBytes, originalFilename, cred);
     }
 
     /**
      * 核心 OCR 调用：仅支持图片（PNG/JPG/JPEG/BMP）；PDF 拒绝并提示改用 doc-keypoint-extract
      */
     private String doOcr(byte[] bytes, String originalFilename) {
-        if (!ocrConfig.getEnabled()) {
+        return doOcr(bytes, originalFilename, null);
+    }
+
+    private String doOcr(byte[] bytes, String originalFilename, com.example.aitools.ai.ResolvedCredential cred) {
+        if (!ocrConfig.getEnabled() && cred == null) {
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(), "识别能力未启用，请联系管理员");
         }
         // 注意：这里不再拒绝 pdf —— 扫描件 PDF 由 recognizePdfPages 先渲染成图片再进本方法，
         // 传进来的始终是图片字节。若外部直接传 PDF 字节，腾讯云会返回格式错误。
         try {
-            // 密钥优先级：OcrConfig 自己的 > CosConfig 复用
-            String secretId = ocrConfig.getSecretId() != null && !ocrConfig.getSecretId().isBlank()
-                    ? ocrConfig.getSecretId() : cosConfig.getSecretId();
-            String secretKey = ocrConfig.getSecretKey() != null && !ocrConfig.getSecretKey().isBlank()
-                    ? ocrConfig.getSecretKey() : cosConfig.getSecretKey();
-            String region = ocrConfig.getRegion() != null && !ocrConfig.getRegion().isBlank()
-                    ? ocrConfig.getRegion() : cosConfig.getRegion();
+            String secretId;
+            String secretKey;
+            String region;
+            if (cred != null && cred.keyResolverKey() != null && !cred.keyResolverKey().isBlank()) {
+                // ResolvedCredential.keyResolverKey() = "secretId|secretKey"
+                String[] parts = cred.keyResolverKey().split("\\|", -1);
+                secretId = parts.length > 0 ? parts[0] : null;
+                secretKey = parts.length > 1 ? parts[1] : null;
+                region = ocrConfig.getRegion() != null && !ocrConfig.getRegion().isBlank()
+                        ? ocrConfig.getRegion() : cosConfig.getRegion();
+            } else {
+                // 密钥优先级：OcrConfig 自己的 > CosConfig 复用
+                secretId = ocrConfig.getSecretId() != null && !ocrConfig.getSecretId().isBlank()
+                        ? ocrConfig.getSecretId() : cosConfig.getSecretId();
+                secretKey = ocrConfig.getSecretKey() != null && !ocrConfig.getSecretKey().isBlank()
+                        ? ocrConfig.getSecretKey() : cosConfig.getSecretKey();
+                region = ocrConfig.getRegion() != null && !ocrConfig.getRegion().isBlank()
+                        ? ocrConfig.getRegion() : cosConfig.getRegion();
+            }
 
-            Credential cred = new Credential(secretId, secretKey);
-            OcrClient client = new OcrClient(cred, region);
+            Credential credObj = new Credential(secretId, secretKey);
+            OcrClient client = new OcrClient(credObj, region);
 
             GeneralAccurateOCRRequest req = new GeneralAccurateOCRRequest();
             req.setImageBase64(Base64.getEncoder().encodeToString(bytes));

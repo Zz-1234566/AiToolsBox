@@ -70,6 +70,22 @@ verify-code:
   resend-seconds: 60         # 重发间隔（秒）
   length: 6                  # 验证码位数
 
+# ── AI 模型 API Key 加解密密钥（v1.2026-10-12 起启用）──
+# 用于 AES-256-GCM 加解密 sys_ai_model / sys_user_ai_model 表里的 API Key。
+# 长度必须 32 字节（AES-256），传 Base64 编码字符串。
+# 启动时若未配置 → fail-fast 拒绝启动。
+#
+# 生成方式（任选其一）：
+#   openssl rand -base64 32
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+#
+# 注意：与 JWT_SECRET 一样，【仅】通过环境变量注入；不要写入 application*.yml 文件本身。
+# - Windows PowerShell:  $env:AITOOLS_API_MODEL_KEY="<base64>"
+# - Linux / Mac:        export AITOOLS_API_MODEL_KEY="<base64>"
+aitools:
+  crypto:
+    sys-ai-model-key: ${SYS_AI_MODEL_KEY:}
+
 # MiniMax 文本模型配置（办公类工具使用，OpenAI 兼容协议）
 ai:
   minimax-text:

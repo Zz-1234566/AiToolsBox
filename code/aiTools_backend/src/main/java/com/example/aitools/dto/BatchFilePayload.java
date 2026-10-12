@@ -21,6 +21,13 @@ import java.io.InputStream;
 @AllArgsConstructor
 public class BatchFilePayload {
 
+    /** 兼容旧调用点（2 参）—— 仅作向后兼容，不接受 apiKey */
+    public BatchFilePayload(byte[] content, String originalFilename) {
+        this.content = content;
+        this.originalFilename = originalFilename;
+        this.apiKey = null;
+    }
+
     /** 文件字节（已读到内存，临时文件被 Tomcat 删也无所谓） */
     private byte[] content;
 
@@ -28,18 +35,31 @@ public class BatchFilePayload {
     private String originalFilename;
 
     /**
+     * 可选：批量场景下若想所有文件共用一个 BYOK key，由 Controller 一次性传入；
+     * 单文件则忽略，留给 service 层走 resolver 走默认。
+     */
+    private String apiKey;
+
+    /**
      * 工厂方法：把 MultipartFile 转成内存载体（这里同步读 bytes，必须在 controller 同步返回前完成）
      */
     public static BatchFilePayload from(MultipartFile file) throws IOException {
+        return from(file, null);
+    }
+
+    /**
+     * 工厂方法（带 BYOK key）
+     */
+    public static BatchFilePayload from(MultipartFile file, String apiKey) throws IOException {
         if (file == null) {
-            return new BatchFilePayload(new byte[0], "未命名");
+            return new BatchFilePayload(new byte[0], "未命名", apiKey);
         }
         byte[] bytes = (file.isEmpty() && file.getSize() == 0) ? new byte[0] : file.getBytes();
         String name = file.getOriginalFilename();
         if (name == null || name.isBlank()) {
             name = "未命名";
         }
-        return new BatchFilePayload(bytes, name);
+        return new BatchFilePayload(bytes, name, apiKey);
     }
 
     /**

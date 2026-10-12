@@ -2,6 +2,7 @@ package com.example.aitools.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.ai.AiClient;
+import com.example.aitools.ai.ResolvedCredential;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.BatchFilePayload;
@@ -14,6 +15,7 @@ import com.example.aitools.service.AiFileReaderService;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.service.BatchTaskService;
+import com.example.aitools.service.ModelCredentialResolver;
 import com.example.aitools.service.TranscribeService;
 import com.example.aitools.dto.TranscribeResponse;
 import com.example.aitools.service.HistoryService;
@@ -65,17 +67,37 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private final BatchTaskService batchTaskService;
     private final AiFileReaderService aiFileReaderService;
     private final TranscribeService transcribeService;
+    private final ModelCredentialResolver credentialResolver;
+
+    /** 解析文本类凭据(capability=text)。便捷封装，业务层少传一个参数。 */
+    private ResolvedCredential resolveTextCred(Long userId, String apiKey) {
+        return credentialResolver.resolve(userId, "text", apiKey);
+    }
+
+    /** 解析多模态凭据(capability=vision) */
+    private ResolvedCredential resolveVisionCred(Long userId, String apiKey) {
+        return credentialResolver.resolve(userId, "vision", apiKey);
+    }
+
+    /** 解析 OCR 凭据(capability=ocr) */
+    private ResolvedCredential resolveOcrCred(Long userId, String apiKey) {
+        return credentialResolver.resolve(userId, "ocr", apiKey);
+    }
 
     /**
      * 工作总结
      */
     @Override
     public String aiWorkSummary(Long userId, String content, String promptFormat, String promptGenerate, Long promptId) {
+        return aiWorkSummary(userId, content, promptFormat, promptGenerate, promptId, null);
+    }
+
+    @Override
+    public String aiWorkSummary(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey) {
         long start = System.currentTimeMillis();
-        // 查询工作总结工具 ID（按 tool_code = work-summary）
         Long toolId = findToolIdByCode(TOOL_CODE_WORK_SUMMARY);
         try {
-            String result = aiTextProcess(TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId);
+            String result = aiTextProcess(TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey));
             long duration = System.currentTimeMillis() - start;
             historyService.record(userId, toolId, null, TOOL_CODE_WORK_SUMMARY, content, result, 1, (int) duration);
             return result;
@@ -90,7 +112,12 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
      */
     @Override
     public String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, onChunk);
+        return aiWorkSummaryStream(userId, content, promptFormat, promptGenerate, promptId, null, onChunk);
+    }
+
+    @Override
+    public String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
+        return aiTextProcessStream(userId, TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
     }
 
     /**
@@ -103,8 +130,14 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiDocKeypointTextStream(Long userId, String content, String promptFormat,
                                           String promptGenerate, Long promptId, Consumer<String> onChunk) {
+        return aiDocKeypointTextStream(userId, content, promptFormat, promptGenerate, promptId, null, onChunk);
+    }
+
+    @Override
+    public String aiDocKeypointTextStream(Long userId, String content, String promptFormat,
+                                          String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
         return aiTextProcessStream(userId, TOOL_CODE_DOC_SUMMARY, content,
-                promptFormat, promptGenerate, promptId, onChunk);
+                promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
     }
 
     /**
@@ -112,7 +145,12 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
      */
     @Override
     public String aiWeeklyReportStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_WEEKLY_REPORT, content, promptFormat, promptGenerate, promptId, onChunk);
+        return aiWeeklyReportStream(userId, content, promptFormat, promptGenerate, promptId, null, onChunk);
+    }
+
+    @Override
+    public String aiWeeklyReportStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
+        return aiTextProcessStream(userId, TOOL_CODE_WEEKLY_REPORT, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
     }
 
     /**
@@ -120,7 +158,12 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
      */
     @Override
     public String aiMeetingMinutesStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_MEETING_MINUTES, content, promptFormat, promptGenerate, promptId, onChunk);
+        return aiMeetingMinutesStream(userId, content, promptFormat, promptGenerate, promptId, null, onChunk);
+    }
+
+    @Override
+    public String aiMeetingMinutesStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
+        return aiTextProcessStream(userId, TOOL_CODE_MEETING_MINUTES, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
     }
 
     /**
@@ -167,6 +210,11 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
      */
     @Override
     public String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
+        return aiOcrStream(userId, file, promptFormat, promptGenerate, promptId, null, onChunk);
+    }
+
+    @Override
+    public String aiOcrStream(Long userId, MultipartFile file, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
         // 图片拦截
         if (file == null || file.isEmpty() || file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
             throw ErrorFactory.of(ResultCode.OCR_UNSUPPORTED, "请上传图片文件");
@@ -175,14 +223,14 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
         long start = System.currentTimeMillis();
         Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
         String fileName = file.getOriginalFilename();
-        // 走通用方法：先 OCR 出文字作为 content，再走 aiTextProcessStream 流式输出
+        // OCR 与文本是两个独立 capability，统一用一个混合 key：OCR 优先 user_ocr，文本 user_text
+        // 本次实现：只覆盖文本侧凭据；OCR key 仍走系统配置（避免两条线 key 不同时的复杂度）
         String ocrText = ocrService.recognizeText(file);
         if (ocrText == null || ocrText.isBlank()) {
             throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
         }
-        // 输入用 OCR 结果 + 文件名作为占位，便于历史回溯
         String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
-        return aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId, onChunk);
+        return aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
     }
 
     /**
@@ -369,12 +417,16 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
      * 通用文本处理（非流式）：凑齐 1 个 format + 1 个 generate 后调用 AI（不校验，由带 userId 的入口方法负责）
      */
     private String aiTextProcess(String toolCode, String content, String promptFormat, String promptGenerate, Long promptId) {
+        return aiTextProcess(toolCode, content, promptFormat, promptGenerate, promptId, null);
+    }
+
+    private String aiTextProcess(String toolCode, String content, String promptFormat, String promptGenerate, Long promptId, ResolvedCredential cred) {
         String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, toolCode);
         String generatePrompt = resolvePrompt(promptGenerate, promptId, PROMPT_USE_GENERATE, toolCode);
         validatePrompts(formatPrompt, generatePrompt);
         String systemPrompt = buildSystemPrompt(formatPrompt, content);
         String userPrompt = buildUserPrompt(generatePrompt, content);
-        return aiClient.chat(systemPrompt, userPrompt);
+        return aiClient.chat(systemPrompt, userPrompt, cred);
     }
 
     /**
@@ -383,6 +435,11 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
      */
     private String aiTextProcessStream(Long userId, String toolCode, String content,
             String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk) {
+        return aiTextProcessStream(userId, toolCode, content, promptFormat, promptGenerate, promptId, null, onChunk);
+    }
+
+    private String aiTextProcessStream(Long userId, String toolCode, String content,
+            String promptFormat, String promptGenerate, Long promptId, ResolvedCredential cred, Consumer<String> onChunk) {
         long start = System.currentTimeMillis();
         Long toolId = findToolIdByCode(toolCode);
         // 写历史时把用户当时 textarea 的原值也带过去（用于历史面板回填"原参数重发"）
@@ -397,7 +454,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             aiClient.chatStream(systemPrompt, userPrompt, chunk -> {
                 sb.append(chunk);
                 onChunk.accept(chunk);
-            });
+            }, cred);
             long duration = System.currentTimeMillis() - start;
             historyService.completeHistory(historyId, sb.toString(), (int) duration);
             return sb.toString();

@@ -17,12 +17,22 @@ public interface OcrService {
     String recognizeText(MultipartFile file);
 
     /**
+     * 识别图片中的文字（带 BYOK 凭据覆盖）
+     */
+    String recognizeText(MultipartFile file, com.example.aitools.ai.ResolvedCredential cred);
+
+    /**
      * 识别图片中的文字（字节流重载，用于批量任务中文件已在内存的场景，避开 MultipartFile 临时文件被清理问题）
      * @param imageBytes 图片字节
      * @param originalFilename 原始文件名（保留扩展名，腾讯云 PDF 接口识别需要）
      * @return 识别出的全部文字（按行拼接）
      */
     String recognizeBytes(byte[] imageBytes, String originalFilename);
+
+    /**
+     * 字节流重载 + 凭据覆盖
+     */
+    String recognizeBytes(byte[] imageBytes, String originalFilename, com.example.aitools.ai.ResolvedCredential cred);
 
     /**
      * 识别扫描型 PDF 中的文字：逐页渲染成图片后送腾讯云 OCR，再按页拼接。
