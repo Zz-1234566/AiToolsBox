@@ -26,6 +26,10 @@
 
     <!-- 设置列表（账号设置 / 关于） -->
     <section class="me-list">
+      <view class="me-item" @click="goToMyModels">
+        <text class="me-item__label">我的 AI 模型</text>
+        <text class="me-item__chev">›</text>
+      </view>
       <view class="me-item" @click="goToSettings">
         <text class="me-item__icon">⚙️</text>
         <text class="me-item__label">账号设置</text>
@@ -75,6 +79,10 @@ const goToHistory = () => {
 }
 const goToSettings = () => go('/pages/settings')
 const goToAbout = () => go('/pages/about')
+const goToMyModels = () => {
+  if (!isLoggedIn()) return go('/pages/login')
+  go('/pages/my-models')
+}
 
 onShow(() => {
   loadUserInfo()

@@ -20,6 +20,14 @@
       </view>
     </section>
 
+    <!-- ============ AI 模型选择（按 toolId 过滤 capability） ============ -->
+    <AiModelSelector
+      v-if="toolId"
+      :tool-id="toolId"
+      v-model="selectedAiModel"
+      @change="onAiModelChange"
+    />
+
     <!-- ============ 工具特化 UI（按 toolId 分发） ============ -->
 
     <!-- 工作总结 -->
@@ -452,8 +460,16 @@ import MarkdownView from '@/components/MarkdownView.vue'
 import { promptListApi, systemPromptListApi, generatePromptApi, promptAddApi } from '@/api/prompt'
 import { getTool, validate } from '@/config/tools'
 import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
+import AiModelSelector from '@/components/AiModelSelector.vue'
 
 const toolId = ref('')
+
+// 当前选中的 AI 模型（来自 AiModelSelector 双向绑定）
+const selectedAiModel = ref(null)
+const onAiModelChange = (m) => {
+  // 用户切换模型时，console 留个底，前端不再校验 capability（已在 selector 内部过滤）
+  if (m) console.log('[tool-common] ai model selected:', m.modelCode, 'cap=', m.capability)
+}
 const currentInputType = ref('text')
 const inputText = ref('')
 const fileName = ref('')
@@ -1390,7 +1406,9 @@ const runTextStream = (url) => {
     streamRequest({ url, data: {
       content: inputText.value,
       promptFormat: promptFormatText.value,
-      promptGenerate: promptGenerateText.value
+      promptGenerate: promptGenerateText.value,
+      // 透传用户选中的 AI 模型（按 toolId 过滤 capability）。后端会再次校验。
+      modelCode: selectedAiModel.value?.modelCode,
     }, onChunk, onDone, onError })
   })
 }

@@ -33,6 +33,7 @@ export const nodeIconPath = (icon) => {
  */
 export const STROKE_ICONS = {
   back: ['M15 18l-6-6 6-6'],
+  'chevron-down': ['M6 9l6 6 6-6'],
   check: ['M20 6.5L9.5 17 4 11.5'],
   close: ['M18 6L6 18M6 6l12 12'],
   alert: ['M12 3a9 9 0 100 18 9 9 0 100-18', 'M12 7.4v5.4', 'M12 15.5v.9'],
