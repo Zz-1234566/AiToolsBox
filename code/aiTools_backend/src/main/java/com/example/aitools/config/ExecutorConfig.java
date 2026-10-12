@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
@@ -37,7 +37,7 @@ public class ExecutorConfig {
     public static final String BATCH_EXECUTOR = "batchExecutor";
 
     @Bean(name = STREAM_EXECUTOR)
-    public Executor streamExecutor() {
+    public ExecutorService streamExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(8);
         executor.setMaxPoolSize(32);
@@ -50,11 +50,11 @@ public class ExecutorConfig {
         executor.setAwaitTerminationSeconds(30);
         executor.initialize();
         log.info("SSE stream executor initialized: core=8, max=32, queue=100");
-        return executor;
+        return executor.getThreadPoolExecutor();
     }
 
     @Bean(name = BATCH_EXECUTOR)
-    public Executor batchExecutor() {
+    public ExecutorService batchExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(4);
         executor.setMaxPoolSize(16);
@@ -66,6 +66,6 @@ public class ExecutorConfig {
         executor.setAwaitTerminationSeconds(60);
         executor.initialize();
         log.info("Batch task executor initialized: core=4, max=16, queue=50");
-        return executor;
+        return executor.getThreadPoolExecutor();
     }
 }
