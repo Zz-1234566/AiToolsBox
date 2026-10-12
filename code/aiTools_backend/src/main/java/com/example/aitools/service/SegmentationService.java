@@ -33,4 +33,30 @@ public interface SegmentationService {
      *                                                    图片像素数超限、推理失败
      */
     SegmentResult removeBackground(byte[] imageBytes, String backgroundColor);
+
+    /**
+     * 去背景，输出<b>透明 PNG（TYPE_INT_ARGB）</b>，不做底色合成。
+     * <p>
+     * 给 {@code image-bg-changer}（fg + 用户上传背景图）合成路径使用。
+     *
+     * @param imageBytes 原始图片字节
+     * @return 透明 PNG 字节 + 宽高信息
+     */
+    SegmentResult removeBackgroundTransparent(byte[] imageBytes);
+
+    /**
+     * 换背景图：fg 去背景（透明 PNG）+ 叠到用户上传的 bg 之上，输出 JPG。
+     * <p>
+     * 复合尺寸取 fg / bg 宽高的较大值；fg 透明区域透出 bg。
+     *
+     * @param foregroundImage 人像前景（任意格式）
+     * @param backgroundImage 背景图（任意格式）
+     * @return JPG 字节 + 宽高
+     */
+    SegmentResult changeBackground(byte[] foregroundImage, byte[] backgroundImage);
+
+    /**
+     * 换背景色：直接复用 {@link #removeBackground(byte[], String)}，是 changeBackground 的纯色快捷版。
+     */
+    SegmentResult changeBackground(byte[] foregroundImage, String backgroundColor);
 }

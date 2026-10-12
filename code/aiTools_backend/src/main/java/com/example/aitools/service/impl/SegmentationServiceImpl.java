@@ -122,6 +122,84 @@ public class SegmentationServiceImpl implements SegmentationService {
         return new SegmentResult(output, width, height, OUTPUT_MIME);
     }
 
+    @Override
+    public SegmentResult removeBackgroundTransparent(byte[] imageBytes) {
+        // 1) 前置校验：总开关 + 入参
+        if (!Boolean.TRUE.equals(segmentationConfig.getEnabled())) {
+            throw ErrorFactory.of(ResultCode.SEGMENT_MODEL_UNAVAILABLE);
+        }
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请先选择要处理的图片");
+        }
+
+        BufferedImage source = decodeWithPixelLimit(imageBytes);
+        int width = source.getWidth();
+        int height = source.getHeight();
+
+        // 2) 预处理 → 推理 → 透明合成
+        int inputSize = segmentationConfig.getInputSize();
+        BufferedImage resized = resize(source, inputSize, inputSize);
+        float[] input = toInputTensor(resized, inputSize);
+        int[] mask = predictMask(input, inputSize);
+        byte[] output = compositeTransparent(source, mask, inputSize);
+
+        return new SegmentResult(output, width, height, OUTPUT_MIME);
+    }
+
+    @Override
+    public SegmentResult changeBackground(byte[] foregroundImage, byte[] backgroundImage) {
+        if (foregroundImage == null || foregroundImage.length == 0) {
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请上传要处理的图片");
+        }
+        if (backgroundImage == null || backgroundImage.length == 0) {
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请上传背景图");
+        }
+
+        // 1) 前景去背景 → 透明 PNG
+        SegmentResult fg = removeBackgroundTransparent(foregroundImage);
+        BufferedImage fgImg = bytesToImage(fg.getImageBytes());
+        // 2) 背景图解码（不做去背景）
+        BufferedImage bgImg = decodeWithPixelLimit(backgroundImage);
+
+        // 3) 合成：取 fg / bg 宽高的较大值，bg 拉伸铺底 + fg 等比缩放居中
+        int W = Math.max(fgImg.getWidth(), bgImg.getWidth());
+        int H = Math.max(fgImg.getHeight(), bgImg.getHeight());
+
+        BufferedImage out = new BufferedImage(W, H, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = out.createGraphics();
+        try {
+            // 背景：拉伸铺满
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(bgImg, 0, 0, W, H, null);
+            // 前景：等比缩放居中
+            int fw = fgImg.getWidth();
+            int fh = fgImg.getHeight();
+            double scale = Math.min((double) W / fw, (double) H / fh);
+            int dw = (int) Math.round(fw * scale);
+            int dh = (int) Math.round(fh * scale);
+            int dx = (W - dw) / 2;
+            int dy = (H - dh) / 2;
+            g.drawImage(fgImg, dx, dy, dw, dh, null);
+        } finally {
+            g.dispose();
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(out, "jpg", baos);
+        } catch (IOException e) {
+            log.error("[image-bg-changer] 合成 JPG 编码失败", e);
+            throw ErrorFactory.of(ResultCode.IMAGE_TOOL_FAILED);
+        }
+        return new SegmentResult(baos.toByteArray(), W, H, "image/jpeg");
+    }
+
+    @Override
+    public SegmentResult changeBackground(byte[] foregroundImage, String backgroundColor) {
+        // 复用证件照换色的纯色合成（与 id-photo-bg-change 同款输出：TYPE_INT_RGB PNG）
+        return removeBackground(foregroundImage, backgroundColor);
+    }
+
     // ==================== 解码 ====================
 
     /**
@@ -416,6 +494,62 @@ public class SegmentationServiceImpl implements SegmentationService {
      * @param color     底色
      * @return PNG 字节
      */
+    private byte[] compositeTransparent(BufferedImage source, int[] mask, int maskSize) {
+        int width = source.getWidth();
+        int height = source.getHeight();
+
+        BufferedImage out = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        int[] rowBuf = new int[width];
+
+        for (int y = 0; y < height; y++) {
+            source.getRGB(0, y, width, 1, rowBuf, 0, width);
+
+            float fy = (y + 0.5f) * maskSize / height - 0.5f;
+            int y0 = clamp((int) Math.floor(fy), 0, maskSize - 1);
+            int y1 = Math.min(y0 + 1, maskSize - 1);
+            float wy = fy - y0;
+
+            for (int x = 0; x < width; x++) {
+                float fx = (x + 0.5f) * maskSize / width - 0.5f;
+                int x0 = clamp((int) Math.floor(fx), 0, maskSize - 1);
+                int x1 = Math.min(x0 + 1, maskSize - 1);
+                float wx = fx - x0;
+
+                float alpha = bilerp(mask, maskSize, x0, y0, x1, y1, wx, wy) / 255f;
+                int srcArgb = rowBuf[x];
+                alpha *= ((srcArgb >>> 24) & 0xFF) / 255f;
+
+                int sr = (srcArgb >> 16) & 0xFF;
+                int sg = (srcArgb >> 8) & 0xFF;
+                int sb = srcArgb & 0xFF;
+                int aOut = clamp255(alpha * 255f);
+                rowBuf[x] = (aOut << 24) | (sr << 16) | (sg << 8) | sb;
+            }
+            out.setRGB(0, y, width, 1, rowBuf, 0, width);
+        }
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(out, "png", baos);
+        } catch (IOException e) {
+            log.error("[segment] 透明 PNG 编码失败", e);
+            throw ErrorFactory.of(ResultCode.IMAGE_TOOL_FAILED);
+        }
+        return baos.toByteArray();
+    }
+
+    /**
+     * 字节流 → BufferedImage（PNG 解码）。仅本类内部复用，避免重复 try-catch。
+     */
+    private BufferedImage bytesToImage(byte[] bytes) {
+        try {
+            return ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+        } catch (IOException e) {
+            log.error("[segment] 透明 PNG 解码失败", e);
+            throw ErrorFactory.of(ResultCode.IMAGE_TOOL_FAILED);
+        }
+    }
+
     private byte[] composite(BufferedImage source, int[] mask, int maskSize, BackgroundColorEnum color) {
         int width = source.getWidth();
         int height = source.getHeight();
