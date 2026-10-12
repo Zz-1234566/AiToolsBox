@@ -19,12 +19,22 @@ public interface AiOfficeToolService {
     String aiWorkSummary(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey);
 
     /**
+     * BYOK + 用户选定 modelCode 版工作总结。
+     * 优先用 modelCode 在 sys_user_ai_model 中查（不再走 isDefault 默认），找不到 → BusinessException。
+     * @param modelCode 可选；null/空走默认三级回退
+     */
+    String aiWorkSummary(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, String modelCode);
+
+    /**
      * 流式工作总结（SSE），内部统一管理历史记录
      */
     String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, Consumer<String> onChunk);
 
     /** BYOK 版流式工作总结 */
     String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk);
+
+    /** BYOK + 用户选定 modelCode 版流式工作总结 */
+    String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, String modelCode, Consumer<String> onChunk);
 
     /**
      * 流式周报生成（SSE），内部统一管理历史记录

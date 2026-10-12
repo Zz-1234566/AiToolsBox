@@ -70,7 +70,11 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private final ModelCredentialResolver credentialResolver;
 
     /** 解析文本类凭据(capability=text)。便捷封装，业务层少传一个参数。 */
-    private ResolvedCredential resolveTextCred(Long userId, String apiKey) {
+    private ResolvedCredential resolveTextCred(Long userId, String apiKey, String modelCode) {
+        if (modelCode != null && !modelCode.isBlank()) {
+            // 用户显式选定了 modelCode：按 modelCode 精确查用户 BYOK 记录（不再走 isDefault）
+            return credentialResolver.resolveByModelCode(userId, modelCode, apiKey);
+        }
         return credentialResolver.resolve(userId, "text", apiKey);
     }
 
@@ -94,10 +98,19 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
     @Override
     public String aiWorkSummary(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey) {
+        return aiWorkSummary(userId, content, promptFormat, promptGenerate, promptId, apiKey, null);
+    }
+
+    /**
+     * 工作总结（带 modelCode：前端下拉选中的具体模型）。
+     * 优先用 modelCode 解析用户 BYOK；modelCode 为空时走默认三级回退。
+     */
+    @Override
+    public String aiWorkSummary(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, String modelCode) {
         long start = System.currentTimeMillis();
         Long toolId = findToolIdByCode(TOOL_CODE_WORK_SUMMARY);
         try {
-            String result = aiTextProcess(TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey));
+            String result = aiTextProcess(TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, modelCode));
             long duration = System.currentTimeMillis() - start;
             historyService.record(userId, toolId, null, TOOL_CODE_WORK_SUMMARY, content, result, 1, (int) duration);
             return result;
@@ -117,7 +130,12 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
     @Override
     public String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
+        return aiWorkSummaryStream(userId, content, promptFormat, promptGenerate, promptId, apiKey, null, onChunk);
+    }
+
+    @Override
+    public String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, String modelCode, Consumer<String> onChunk) {
+        return aiTextProcessStream(userId, TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, modelCode), onChunk);
     }
 
     /**
@@ -137,7 +155,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     public String aiDocKeypointTextStream(Long userId, String content, String promptFormat,
                                           String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
         return aiTextProcessStream(userId, TOOL_CODE_DOC_SUMMARY, content,
-                promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
+                promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
     /**
@@ -150,7 +168,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
     @Override
     public String aiWeeklyReportStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_WEEKLY_REPORT, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
+        return aiTextProcessStream(userId, TOOL_CODE_WEEKLY_REPORT, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
     /**
@@ -163,7 +181,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
     @Override
     public String aiMeetingMinutesStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_MEETING_MINUTES, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
+        return aiTextProcessStream(userId, TOOL_CODE_MEETING_MINUTES, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
     /**
@@ -230,7 +248,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
         }
         String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
-        return aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey), onChunk);
+        return aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
     /**

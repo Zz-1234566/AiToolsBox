@@ -26,4 +26,11 @@ public class AiWorkSummaryDTO {
      * <p>仅请求体使用，<b>不会</b>回传给前端。
      */
     private String apiKey;
+
+    /**
+     * 用户选定的 AI 模型编码（来自 /api/user-ai-model/list）。
+     * 可选；不传走 Resolver 默认（用户默认 / 系统默认）。
+     * <p>后端会校验该 modelCode 的 capability 与工具所需的 capability 匹配，不匹配 → 4001。
+     */
+    private String modelCode;
 }

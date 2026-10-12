@@ -14,6 +14,7 @@ import com.example.aitools.exception.BusinessException;
 import com.example.aitools.handler.HandlerFactory;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
+import com.example.aitools.service.ModelCredentialResolver;
 import com.example.aitools.utils.AuthUtil;
 import com.example.aitools.vo.AiWorkSummaryVO;
 import com.example.aitools.vo.BatchStatusVO;
@@ -46,6 +47,7 @@ public class AiOfficeToolController {
     private final AuthUtil authUtil;
     private final BatchTaskService batchTaskService;
     private final HandlerFactory handlerFactory;
+    private final ModelCredentialResolver modelCredentialResolver;
 
 
     /** SSE 流式任务线程池（核心 8 / 最大 32 / 队列 100） */
@@ -63,8 +65,11 @@ public class AiOfficeToolController {
     public Result<AiWorkSummaryVO> aiWorkSummary(@Valid @RequestBody AiWorkSummaryDTO dto,
                                                   HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
+        // P1-BYOK：防御性校验用户选中的 modelCode 是否匹配该工具所需的 capability（text）
+        modelCredentialResolver.requireCapability(dto.getModelCode(), "text");
         String result = aiOfficeToolService.aiWorkSummary(userId, dto.getContent(),
-                dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId(), dto.getApiKey());
+                dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId(),
+                dto.getApiKey(), dto.getModelCode());
         return Result.success("生成成功", new AiWorkSummaryVO(result));
     }
 
@@ -75,10 +80,13 @@ public class AiOfficeToolController {
     public SseEmitter workSummaryStream(@Valid @RequestBody AiWorkSummaryDTO dto,
                                         HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
+        // P1-BYOK：防御性校验用户选中的 modelCode 是否匹配该工具所需的 capability（text）
+        modelCredentialResolver.requireCapability(dto.getModelCode(), "text");
         return StreamHelper.stream(streamExecutor, emitter ->
                 aiOfficeToolService.aiWorkSummaryStream(userId, dto.getContent(),
                         dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId(),
                         dto.getApiKey(),
+                        dto.getModelCode(),
                         StreamHelper.asChunkConsumer(emitter)));
     }
 
