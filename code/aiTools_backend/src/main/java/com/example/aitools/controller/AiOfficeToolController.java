@@ -15,6 +15,8 @@ import com.example.aitools.handler.HandlerFactory;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
 import com.example.aitools.service.ModelCredentialResolver;
+import com.example.aitools.service.ToolOutputService;
+import com.example.aitools.vo.ToolOutputVO;
 import com.example.aitools.utils.AuthUtil;
 import com.example.aitools.vo.AiWorkSummaryVO;
 import com.example.aitools.vo.BatchStatusVO;
@@ -48,6 +50,7 @@ public class AiOfficeToolController {
     private final BatchTaskService batchTaskService;
     private final HandlerFactory handlerFactory;
     private final ModelCredentialResolver modelCredentialResolver;
+    private final ToolOutputService toolOutputService;
 
 
     /** SSE 流式任务线程池（核心 8 / 最大 32 / 队列 100） */
@@ -444,7 +447,9 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         if (!task.getUserId().equals(userId)) {
             return Result.fail("无权访问此任务");
         }
-        return Result.success(BatchStatusVO.from(task, since));
+        // 按 batchId 反查 sys_tool_output，拼到 results 里（让前端一次拿到产物 fileUrl）
+        List<ToolOutputVO> outputs = toolOutputService.listByBatchId(batchId);
+        return Result.success(BatchStatusVO.from(task, since, outputs));
     }
 
     /** 兼容旧前端：批量任务 SSE 端点保留（仅做"补发已完成结果"），新前端可忽略 */
@@ -489,8 +494,9 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         if (!task.getUserId().equals(userId)) {
             return Result.fail(ResultCode.FORBIDDEN.getCode(), "无权访问此任务");
         }
-        // 旧端点返回全部 items（since=0）
-        return Result.success(BatchStatusVO.from(task, 0));
+        // 旧端点返回全部 items（since=0）；同样补齐产物信息
+        List<ToolOutputVO> outputs = toolOutputService.listByBatchId(batchId);
+        return Result.success(BatchStatusVO.from(task, 0, outputs));
     }
 
     /**

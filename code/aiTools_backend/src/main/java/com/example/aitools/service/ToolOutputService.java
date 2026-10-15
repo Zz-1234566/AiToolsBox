@@ -47,12 +47,45 @@ public interface ToolOutputService {
                                     String mimeType, Integer width, Integer height, Integer durationMs);
 
     /**
+     * 保存一个文件类产物（批量任务来源版）。
+     * <p>
+     * 与原 {@link #saveFileOutput} 的唯一区别：传 {@code batchId}（批量任务 ID），
+     * 让 {@code GET /api/ai-office/batch/{batchId}/completed} 能按 batchId 反查产物并填充 results。
+     * <p>
+     * 工作流来源请使用原 {@code saveFileOutput}（传 {@code runId}）；
+     * 批量任务来源请用本方法（传 {@code batchId}）；两者互斥。
+     *
+     * @param batchId   批量任务 ID；非批量任务来源传 null
+     * @param toolCode  产出该产物的工具编码
+     * @param fileIndex 对应第几个输入
+     * @param outputType 产物类型（2图片 3视频 4音频 5文件）
+     * @param content   文件字节
+     * @param fileName  文件名（含扩展名）
+     * @param mimeType  MIME 类型；为空时按扩展名推断
+     * @param width     宽（可选）
+     * @param height    高（可选）
+     * @param durationMs 时长毫秒（可选）
+     * @return 落库后的产物
+     */
+    ToolOutputVO saveBatchFileOutput(String batchId, String toolCode,
+                                       int fileIndex, int outputType, byte[] content, String fileName,
+                                       String mimeType, Integer width, Integer height, Integer durationMs);
+
+    /**
      * 查询某次运行的所有产物，按节点与输入序号排序。
      *
      * @param runId 工作流运行 ID
      * @return 产物列表
      */
     List<ToolOutputVO> listByRunId(String runId);
+
+    /**
+     * 查询某次批量任务的所有产物，按 fileIndex 升序。
+     *
+     * @param batchId 批量任务 ID（sys_batch_task.batch_id）
+     * @return 产物列表
+     */
+    List<ToolOutputVO> listByBatchId(String batchId);
 
     /**
      * 查询某次运行的指定节点的产物。

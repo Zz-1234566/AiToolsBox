@@ -73,6 +73,39 @@ public class ToolOutputServiceImpl implements ToolOutputService {
     }
 
     @Override
+    public ToolOutputVO saveBatchFileOutput(String batchId, String toolCode,
+                                                int fileIndex, int outputType, byte[] content, String fileName,
+                                                String mimeType, Integer width, Integer height, Integer durationMs) {
+        if (content == null || content.length == 0) {
+            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "产物内容为空");
+        }
+        // 1) 实体入 COS（与 runId 来源共用同一前缀 tool-output/）
+        FileUploadResponse up = fileStorageService.store(
+                content, fileName, mimeType, Constants.TOOL_OUTPUT_PREFIX);
+
+        // 2) 元信息落库（只填 batchId，不填 runId/nodeId/nodeName —— 批量任务无工作流上下文）
+        ToolOutput o = new ToolOutput();
+        o.setBatchId(batchId);
+        o.setToolCode(toolCode);
+        o.setFileIndex(fileIndex);
+        o.setOutputType(outputType);
+        o.setFileName(up.getFileName() != null ? up.getFileName() : fileName);
+        o.setFileUrl(up.getCosKey());
+        o.setCosKey(up.getCosKey());
+        o.setFileSize((long) content.length);
+        o.setMimeType(mimeType);
+        o.setWidth(width);
+        o.setHeight(height);
+        o.setDurationMs(durationMs);
+        o.setDr(Constants.DR_NORMAL);
+        workflowOutputMapper.insert(o);
+
+        log.info("[tool-output] 批量任务产物已保存 batchId={} toolCode={} idx={} type={} name={} size={}B",
+                batchId, toolCode, fileIndex, outputType, o.getFileName(), content.length);
+        return toVO(o);
+    }
+
+    @Override
     public List<ToolOutputVO> listByRunId(String runId) {
         if (runId == null || runId.isBlank()) {
             return new ArrayList<>();
@@ -82,6 +115,23 @@ public class ToolOutputServiceImpl implements ToolOutputService {
                         .eq(ToolOutput::getRunId, runId)
                         .eq(ToolOutput::getDr, Constants.DR_NORMAL)
                         .orderByAsc(ToolOutput::getNodeId)
+                        .orderByAsc(ToolOutput::getFileIndex));
+        List<ToolOutputVO> vos = new ArrayList<>(list.size());
+        for (ToolOutput o : list) {
+            vos.add(toVO(o));
+        }
+        return vos;
+    }
+
+    @Override
+    public List<ToolOutputVO> listByBatchId(String batchId) {
+        if (batchId == null || batchId.isBlank()) {
+            return new ArrayList<>();
+        }
+        List<ToolOutput> list = workflowOutputMapper.selectList(
+                new LambdaQueryWrapper<ToolOutput>()
+                        .eq(ToolOutput::getBatchId, batchId)
+                        .eq(ToolOutput::getDr, Constants.DR_NORMAL)
                         .orderByAsc(ToolOutput::getFileIndex));
         List<ToolOutputVO> vos = new ArrayList<>(list.size());
         for (ToolOutput o : list) {

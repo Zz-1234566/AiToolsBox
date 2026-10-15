@@ -18,6 +18,27 @@ import com.example.aitools.dto.SegmentResult;
 public interface SegmentationService {
 
     /**
+     * 3 模式合一入口（image-bg-remover 工具专用）。
+     * <p>
+     * 根据 {@code mode} 分发到三种去/换背景逻辑：
+     * <ul>
+     *   <li>{@code transparent} —— 单纯去背景，输出透明 PNG（PNG 含 alpha）</li>
+     *   <li>{@code color} —— 换底色（red / blue / white），输出不透明 PNG</li>
+     *   <li>{@code image} —— 换背景图（fg 去背景后叠到用户上传的 bg 上），输出 JPG</li>
+     * </ul>
+     *
+     * @param imageBytes      原始图片字节
+     * @param mode            transparent / color / image（大小写不敏感）
+     * @param backgroundColor mode=color 时必填（red / blue / white）
+     * @param backgroundImage mode=image 时必填（任意 ImageIO 可解格式）
+     * @return 合成后的图片字节 + 宽高 + mime
+     * @throws com.example.aitools.exception.BusinessException mode 非法 / 必填参数缺失 /
+     *                                                    图片无法解码 / 推理失败
+     */
+    SegmentResult processImage(byte[] imageBytes, String mode,
+                                String backgroundColor, byte[] backgroundImage);
+
+    /**
      * 去背景并合成指定底色。
      * <p>
      * 流程：解码 → 缩放到模型输入尺寸 → 归一化送 ONNX 推理 → 取第 0 个输出的首通道
@@ -37,7 +58,7 @@ public interface SegmentationService {
     /**
      * 去背景，输出<b>透明 PNG（TYPE_INT_ARGB）</b>，不做底色合成。
      * <p>
-     * 给 {@code image-bg-changer}（fg + 用户上传背景图）合成路径使用。
+     * 给 {@code image-bg-remover}（fg + 用户上传背景图）合成路径使用。
      *
      * @param imageBytes 原始图片字节
      * @return 透明 PNG 字节 + 宽高信息

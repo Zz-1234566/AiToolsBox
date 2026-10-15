@@ -757,6 +757,7 @@ CREATE TABLE IF NOT EXISTS `sys_workflow_run` (
 CREATE TABLE IF NOT EXISTS `sys_tool_output` (
     `id`            bigint       NOT NULL AUTO_INCREMENT COMMENT '主键',
     `run_id`        varchar(64)           DEFAULT NULL COMMENT 'sys_workflow_run.run_id；仅工作流来源有值，独立调用工具时为 NULL',
+    `batch_id`      varchar(64)           DEFAULT NULL COMMENT 'sys_batch_task.batch_id；仅批量任务来源（如 image-bg-remover）有值，工作流/单工具调用为 NULL',
     `node_id`       varchar(32)           DEFAULT NULL COMMENT 'nodeId，如 n1；仅工作流来源有值，独立调用工具时为 NULL',
     `node_name`     varchar(64)           DEFAULT NULL COMMENT '节点名称快照；仅工作流来源有值，独立调用工具时为 NULL',
     `tool_code`     varchar(64)           DEFAULT NULL COMMENT '产出该产物的工具编码',
@@ -777,10 +778,11 @@ CREATE TABLE IF NOT EXISTS `sys_tool_output` (
     `dr`            tinyint      NOT NULL DEFAULT 0 COMMENT '逻辑删除：0正常 1删除',
     PRIMARY KEY (`id`),
     KEY `idx_run` (`run_id`),
+    KEY `idx_batch` (`batch_id`),
     KEY `idx_run_node` (`run_id`, `node_id`),
     KEY `idx_run_node_idx` (`run_id`, `node_id`, `file_index`),
     KEY `idx_type` (`output_type`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='全局工具产物表（任何工具产出的文件类产物都存此表；仅工作流来源 run_id/node_id/node_name 有值，独立调用工具时为 NULL）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='全局工具产物表（任何工具产出的文件类产物都存此表；仅工作流来源 run_id/node_id/node_name 有值，独立调用工具时为 NULL；批量任务来源 batch_id 有值）';
 
 
 -- ============================================================

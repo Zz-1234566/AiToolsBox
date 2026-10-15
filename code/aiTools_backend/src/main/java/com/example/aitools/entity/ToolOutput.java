@@ -51,10 +51,13 @@ public class ToolOutput implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    /** sys_workflow_run.run_id；仅工作流来源有值，独立调用工具时为 null */
+    /** sys_workflow_run.run_id；仅工作流来源有值，独立调用工具时为 NULL */
     private String runId;
 
-    /** 节点 ID，如 n1；仅工作流来源有值，独立调用工具时为 null */
+    /** sys_batch_task.batch_id；仅批量任务来源（如 image-bg-remover）有值，工作流/单工具直接调用为 NULL */
+    private String batchId;
+
+    /** 节点 ID，如 n1；仅工作流来源有值，独立调用工具时为 NULL */
     private String nodeId;
 
     /** 节点名称快照（工作流改名后仍显示当时名称）；仅工作流来源有值，独立调用工具时为 null */
