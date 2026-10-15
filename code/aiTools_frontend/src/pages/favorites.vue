@@ -131,9 +131,13 @@ onShow(() => {
   fetchList()
 })
 
-/** 去使用：跳转到该工具详情页 */
+/** 去使用：跳转到该工具详情页（image-bg-remolver 走专属页） */
+const SPECIAL_PAGES = {
+  'image-bg-remover': '/pages/image-bg-remover'
+}
 const openTool = (item) => {
-  uni.navigateTo({ url: `/pages/tool-common?id=${item.toolCode}` })
+  const url = SPECIAL_PAGES[item.toolCode] || `/pages/tool-common?id=${item.toolCode}`
+  uni.navigateTo({ url })
 }
 
 /** 取消收藏工具 */

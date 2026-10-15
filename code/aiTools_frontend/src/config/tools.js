@@ -11,7 +11,7 @@ export const CATEGORIES = [
   },
   {
     code: '图片创意工具',
-    tools: ['id-photo-bg-change']
+    tools: ['id-photo-bg-change', 'image-bg-remover']
   }
 ]
 
@@ -153,6 +153,19 @@ export const TOOLS = {
     actionText: '生成证件照', resultTitle: '换背景结果', resultPlaceholder: '生成结果将在这里显示...',
     validateRules: {
       image:  { token: true, file: { type: 'single', min: 1, error: '请先上传证件照' } },
+      file:   { unsupported: true, error: '该工具请上传图片（jpg/png/bmp）' },
+      text:   { unsupported: true, error: '该工具请上传图片' },
+    }
+  },
+  'image-bg-remover': {
+    name: '图片背景去除', icon: 'bg-image', category: '图片创意工具', realized: true,
+    inputLabel: '图片',
+    desc: '上传任意图片，AI 一键去除背景，并支持换纯色底或换自定义背景图。',
+    inputTypes: ['image'], defaultInput: 'image', fileType: 'image',
+    uploadTitle: '点击上传图片', uploadDesc: '支持 JPG、PNG、BMP · 单张不超过 20MB',
+    actionText: '去除背景', resultTitle: '处理结果', resultPlaceholder: '去背景后的结果将在这里显示...',
+    validateRules: {
+      image:  { token: true, file: { type: 'single', min: 1, error: '请先上传图片' } },
       file:   { unsupported: true, error: '该工具请上传图片（jpg/png/bmp）' },
       text:   { unsupported: true, error: '该工具请上传图片' },
     }

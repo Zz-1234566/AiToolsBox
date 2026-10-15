@@ -135,8 +135,13 @@ const filteredTools = computed(() => {
   }
 })
 
+// 部分工具有专属详情页；其它走通用 tool-common
+const SPECIAL_PAGES = {
+  'image-bg-remover': '/pages/image-bg-remover'
+}
 const goToTool = (id) => {
-  uni.navigateTo({ url: `/pages/tool-common?id=${id}` })
+  const url = SPECIAL_PAGES[id] || `/pages/tool-common?id=${id}`
+  uni.navigateTo({ url })
 }
 
 /** 收藏：点击同步后端（乐观更新） */

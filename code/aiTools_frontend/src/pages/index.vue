@@ -142,8 +142,13 @@ function goToCategory() {
 function goToHistory() {
   uni.navigateTo({ url: '/pages/history' })
 }
+// 部分工具有专属详情页；其它走通用 tool-common
+const SPECIAL_PAGES = {
+  'image-bg-remover': '/pages/image-bg-remover'
+}
 function goToTool(id) {
-  uni.navigateTo({ url: `/pages/tool-common?id=${id}` })
+  const url = SPECIAL_PAGES[id] || `/pages/tool-common?id=${id}`
+  uni.navigateTo({ url })
 }
 function toggleFav(id) {
   const t = hotTools.value.find(x => x.id === id)
