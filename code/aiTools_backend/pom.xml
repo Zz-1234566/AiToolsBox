@@ -135,7 +135,7 @@
             <version>${poi.version}</version>
         </dependency>
 
-        <!-- 图片去背景：本地 ONNX 推理（U²-Net / u2netp.onnx），纯 CPU 离线运行 -->
+        <!-- 图片去背景：本地 ONNX 推理（MODNet，模型文件不入库需自行下载），纯 CPU 离线运行 -->
         <dependency>
             <groupId>com.microsoft.onnxruntime</groupId>
             <artifactId>onnxruntime</artifactId>

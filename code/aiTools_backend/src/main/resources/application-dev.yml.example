@@ -150,9 +150,11 @@ compress:
   audio-sample-rate: 16000
   audio-channels: 1
 
-# 人像分割（证件照换背景色 / 图片去背景，u2netp.onnx 离线推理）
+# 人像分割（证件照换背景色 / 图片去背景，MODNet 本地 ONNX 离线推理）
+# 模型文件不入库，需自行下载 modnet_photographic_portrait_matting.onnx 放到 resources/models/
+# 获取方式见 README「图片工具与本地 ONNX 模型」小节
 segmentation:
   enabled: true
-  model-path: classpath:models/u2netp.onnx
-  input-size: 320
+  model-path: classpath:models/modnet_photographic_portrait_matting.onnx
+  input-size: 512
   max-image-pixels: 40000000
