@@ -1,10 +1,11 @@
-package com.example.aitools.handler;
+package com.example.aitools.handler.impl;
 
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.ai.AiClient;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.dto.BatchProcessResult;
 import com.example.aitools.exception.BusinessException;
+import com.example.aitools.handler.AiToolHandler;
 import com.example.aitools.service.AiPromptTemplateService;
 import com.example.aitools.service.HistoryService;
 import com.fasterxml.jackson.databind.JsonNode;

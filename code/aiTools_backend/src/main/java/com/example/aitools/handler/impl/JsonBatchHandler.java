@@ -1,6 +1,7 @@
-package com.example.aitools.handler;
+package com.example.aitools.handler.impl;
 
 import com.example.aitools.dto.BatchFilePayload;
+import com.example.aitools.handler.AiToolHandler;
 import com.example.aitools.dto.BatchProcessResult;
 import com.example.aitools.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;

@@ -202,3 +202,68 @@ if (text.length() > max) {
 - 中文回复，技术术语保留英文
 - 简明扼要，不堆方案、不绕弯
 - 较大改动 / 删代码 / 改 DB / 改公共接口 → **先沟通 + 给多方案** + 等用户确认
+
+---
+
+## 12. Service / Handler / Component 拆分规范（强制）
+
+> 第 4 节已经规定了 service 必须 `interface + impl`，本节补充 **handler / 其他 Spring Bean** 的拆分要求，以及"为什么要拆"。
+
+### 12.1 强制规则
+
+| 类型 | 必须 interface + impl | 例外 |
+|---|---|---|
+| **Service** | ✅ **必须** | — |
+| **Handler**（多态分派 / Factory 注入 `List<XxxHandler>`） | ✅ **必须** | — |
+| **Strategy / Factory 选中的目标** | ✅ **必须** | — |
+| **工具类 / 静态常量 / Spring 配置类** | ❌ 不需要 | `@Configuration` / `*Util` / `*Constants` / `*Enum` |
+| **Controller** | ❌ **禁止**拆（接口契约 = URL + 请求体 + 响应）| 100% class |
+| **Mapper（MyBatis）** | ❌ **禁止**改 class（`BaseMapper<T>` 要求 interface）| 100% interface |
+
+### 12.2 强制要求 —— 类型 × 场景判断标准
+
+| 场景 | 拆？ | 原因 |
+|---|---|---|
+| 注入到 Controller / Handler / 其他 Bean | ✅ **必须** | 调用方依赖接口，便于切换实现 |
+| 单元测试要 mock | ✅ **必须** | Mockito 直接 mock interface，不依赖 Spring 容器 |
+| Factory 模式分派（`List<XxxHandler>`） | ✅ **必须** | 注入类型必须为 interface，否则新实现必须改 Factory |
+| 实现简单（< 50 行且无依赖） | 任意 | 仍建议拆分以保持一致 |
+
+### 12.3 文件组织
+
+```
+service/
+├── XxxService.java          ← interface
+└── impl/
+    └── XxxServiceImpl.java  ← class, @Service, @RequiredArgsConstructor
+
+handler/
+├── XxxHandler.java          ← interface
+├── impl/
+│   ├── AaaHandler.java      ← class, @Component("aaa")，implements XxxHandler
+│   └── BbbHandler.java      ← class, @Component("bbb")，implements XxxHandler
+└── HandlerFactory.java      ← class, @Component, 注入 List<XxxHandler>
+```
+
+### 12.4 反面案例（提交时必须驳回）
+
+| 反模式 | 后果 |
+|---|---|
+| ❌ `public class TranscribeService` 直接 `@Service` | 单元测试无法 mock → 改逻辑要起整个 Spring 容器 |
+| ❌ `public class JsonBatchHandler implements AiToolHandler` 直接 `@Component` | 后续要加新 Handler 必须改 Factory → 破坏开闭原则 |
+| ❌ `public class TranscribeService` + `public class TranscribeServiceImpl`（**impl 也暴露 public**）| impl 应是包内可见或 `public`，但**调用方必须依赖 interface**（即 `@RequiredArgsConstructor` 注入 interface 引用） |
+| ❌ Service interface 里写业务实现 | interface = 契约，全部 = 细节 |
+| ❌ `@Component` 拆出"Service interface 的工具类"（如 `TranscribeHelper`) | 业务代码统一进 `*ServiceImpl`，不要发明新类 |
+
+### 12.5 当前现状（待修）
+
+| 位置 | 现状 | 应改 | 工作量 |
+|---|---|---|---|
+| `service/TranscribeService.java` | ❌ class，`@Service` 直接写业务 | 拆 `TranscribeService`（interface）+ `TranscribeServiceImpl`（class）| 10 分钟 |
+| `handler/AiToolHandler.java` | ✅ 已是 interface | — | — |
+| `handler/JsonBatchHandler` 等 4 个实现 | ⚠️ 已是 `implements AiToolHandler` + `@Component("...")`，但**目录风格**未走 `handler/impl/` | 把 4 个文件从 `handler/` 根目录移到 `handler/impl/`（仅目录整洁，**不影响可扩展性**，可与拆 TranscribeService 一并做或延后）| 5 分钟 |
+| `handler/HandlerFactory.java` | ✅ 注入 `Map<String, AiToolHandler>`（Spring 自动按 type + bean name 收集），**架构已对**，是注册中心不是多态分派目标 | 无需拆 interface | — |
+
+### 12.6 强制要求
+
+新写的 service / handler / strategy 类 **必须按本规范**。提交时如不符合（class 直接 `@Service` / `@Component`），**不允许 merge**。
