@@ -285,7 +285,7 @@ AI 办公类工具划分为两层，**目的是让每个工具都能作为工作
 | 配置 | `segmentation.model-path` 指向它 + `segmentation.input-size: 512` |
 | 授权 | MODNet 官方仓库 Apache License 2.0 |
 
-> ⚠️ **模型未入库**（`.gitignore` 没有 `*.onnx` 规则），clone 后该目录是空的，
+> ⚠️ **模型未入库**（`.gitignore` 已排除 `*.onnx`），clone 后该目录是空的，
 > 图片工具启动即失败。获取方式见下。
 
 #### 模型从哪来
@@ -301,15 +301,15 @@ ONNX 版由社区转换而来。三个可行来源：
    <https://github.com/ZHKKKe/MODNet/tree/master/onnx>
 3. **官方仓库** —— <https://github.com/ZHKKKe/MODNet>（Apache-2.0，含论文与 Colab 清单）
 
-#### 两个必须注意的坑
+#### 两个工具共用一个模型
 
-1. **不要用 `u2netp.onnx` 顶替。** `SegmentationServiceImpl` 的预处理严格对齐 MODNet
-   （固定除以 255、mean/std 均为 0.5），而 U²-Net 用的是「整图 maxPix 做除数」那一套。
-   喂错模型**不会报错**，只会静默输出错蒙版。
-2. **`application-dev.yml.example` 的默认值是错的**：模板里写的是
-   `model-path: classpath:models/u2netp.onnx` + `input-size: 320`，
-   而代码实际需要 MODNet + 512。照模板部署必然出错误抠图结果，
-   需自行改配置（`segmentation.model-path` 与 `segmentation.input-size`）。
+`id-photo-bg-change` 与 `image-bg-remover` 走的是**同一个** `SegmentationServiceImpl`、
+同一个 `OrtSession`、同一份 `segmentation.model-path`。两者差别只在**后处理合成策略**
+（前者固定换红/蓝/白底，后者 3 模式：透明 / 换底色 / 换背景图），抠图环节完全共用。
+
+> ⚠️ **不要用 `u2netp.onnx` 顶替。** `SegmentationServiceImpl` 的预处理严格对齐 MODNet
+> （固定除以 255、mean/std 均为 0.5），而 U²-Net 用的是「整图 maxPix 做除数」那一套。
+> 喂错模型**不会报错**，只会静默输出错蒙版。仓库里原来的 `u2netp.onnx` 已删除。
 
 #### 换成外挂模型
 
@@ -519,26 +519,25 @@ ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
 
 **注意**：`history_file.role` 语义为 **1输入 / 2输出**（原建表注释 0/1 与 Java 代码 1/2 冲突，已统一为后者）。
 
-### 3. ONNX 抠图模型未入库（`.gitignore` 无 `*.onnx` 规则）
+### 3. ONNX 抠图模型不入库（`.gitignore` 已排除 `*.onnx`）—— ✅ 已处理
 
-**现象**：`code/aiTools_backend/src/main/resources/models/` 下的模型文件目前是**未跟踪状态**，
-而 `.gitignore` 里没有任何 `*.onnx` / `models/` 规则 —— 一旦 `git add` 就会进仓。
+**现状**：`code/aiTools_backend/src/main/resources/models/` 下的模型**不入库**，
+`.gitignore` 已加 `src/main/resources/models/*.onnx` 规则。
 
-实际只需要 **`modnet_photographic_portrait_matting.onnx`（24.69 MB）** 一个；
-同目录下的 `u2netp.onnx`（4.36 MB）与代码的预处理不兼容，属于历史遗留，可删。
+只需要 **`modnet_photographic_portrait_matting.onnx`（24.69 MB）** 一个；
+原先同目录的 `u2netp.onnx`（4.36 MB）**已删除** —— 它与 `SegmentationServiceImpl`
+的 MODNet 预处理不兼容，没有任何代码路径会加载它。
 模型获取方式见「图片工具与本地 ONNX 模型」小节。
 
-**影响**：clone 后 `resources/models/` 是**空目录**，`segmentation.enabled=true` 时
-图片工具（证件照换底 / 去背景）启动或首次调用即失败。
+**影响**：clone 后 `resources/models/` 是**空目录**，必须先放入模型文件，
+否则 `segmentation.enabled=true` 时图片工具（证件照换底 / 去背景）启动即失败。
 
-**可选处理**：
-1. 明确不入库：`.gitignore` 加 `src/main/resources/models/*.onnx`（**建议**），
-   README 保留模型获取章节（已完成）
-2. 入库：接受仓库增加 24.7MB（GitHub 单文件 100MB 限制内，但每次 clone 都要拖这份二进制）
-3. 启动时自动下载到 `models/` 目录（兼顾可复现与仓库体积，需处理下载失败与校验）
+**如需进一步自动化**（可选）：启动时检测模型缺失并从固定地址下载，
+兼顾可复现与仓库体积，但需处理下载失败与文件校验。
 
-**顺带修正**：`application-dev.yml.example` 里 `segmentation.model-path` / `input-size`
-仍是旧的 `u2netp.onnx` + `320`，与代码实际的 MODNet + 512 不一致，应一并更正。
+**同批已修正**：`application-dev.yml.example` 里 `segmentation.model-path` / `input-size`
+原为旧的 `u2netp.onnx` + `320`，已对齐代码实际的 MODNet + 512；
+`SegmentationConfig` 的字段默认值与 javadoc、`pom.xml` 依赖注释同步更新。
 
 ### 4. App 端（Android/iOS）无法选择文件
 
