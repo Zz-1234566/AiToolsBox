@@ -35,17 +35,16 @@ import java.util.Arrays;
 import java.util.Iterator;
 
 /**
- * 人像分割服务实现：本地 ONNX Runtime 加载 U²-Net 轻量版（u2netp），CPU 推理。
+ * 人像分割服务实现：本地 ONNX Runtime 加载 MODNet（modnet_photographic_portrait_matting），CPU 推理。
  * <p>
- * <b>算法口径严格对齐 rembg</b>（{@code base.py} + {@code u2net.py}），因为该组合已经过
- * 大规模验证，重新发明只会得到更差的抠图效果。三个最易踩错、且必须写死的点：
+ * <b>预处理严格对齐 ZHKKKe/MODNet 官方</b>（{@code src/model.py}）：固定 {@code mean=[0.5,0.5,0.5]}、
+ * {@code std=[0.5,0.5,0.5]}，像素除以 255 后再中心化到 {@code [-1,1]}。三个最易踩错的点：
  * <ol>
- *   <li><b>归一化除数是「整图最大像素值」而非固定 255</b>。
- *       rembg 取 {@code maxPix} 后再除，能兼容 16bit / 少动态范围的图；
- *       写死 255 在深色证件照上蒙版会整体偏移，抠出来的人像发灰。</li>
- *   <li><b>推理取 outputs[0] 的第 0 个通道</b>。U²-Net 有 7 个输出（6 个侧边监督 + 1 个主输出），
- *       只认第 0 个；换 u2net_h 之类模型时此处形状会变，故强校验 shape。</li>
- *   <li><b>取张量值必须走 {@code getFloatBuffer()} 而非 {@code getValue()}**。
+ *   <li><b>归一化除数是「固定 255」而非整图 maxPix</b>。MODNet 官方就是固定 255；写 {@code maxPix}
+ *       （rembg/u2netp 习惯）会让蒙版整体偏移，头发丝检测率显著下降。</li>
+ *   <li><b>STD 必须是 0.5/0.5/0.5</b>。写 1.0/1.0/1.0 不会报错但效果差——只做了中心化没真正归一化，
+ *       蒙版会偏向过曝区域。</li>
+ *   <li><b>取张量值必须走 {@code getFloatBuffer()} 而非 {@code getValue()}</b>。
  *       4 维张量的 {@code getValue()} 返回的是嵌套数组，强转 {@code float[]} 会
  *       ClassCastException；{@code getFloatBuffer()} 拿到的是扁平 buffer，NCHW 布局下按行主序排布。</li>
  * </ol>
@@ -84,14 +83,11 @@ public class SegmentationServiceImpl implements SegmentationService {
     /** 模型输入节点名，懒加载时从 session 动态取一次后缓存 */
     private volatile String inputName;
 
-    /** ImageNet 均值（R/G/B），rembg base.py 的固定值 */
-    private static final float[] MEAN = {0.485f, 0.456f, 0.406f};
+    /** MODNet 均值（R/G/B，归一化 0~1 空间），ZHKKKe/MODNet 官方预处理 */
+    private static final float[] MEAN = {0.5f, 0.5f, 0.5f};
 
-    /** ImageNet 标准差（R/G/B），rembg base.py 的固定值 */
-    private static final float[] STD = {0.229f, 0.224f, 0.225f};
-
-    /** 全黑图兜底除数（rembg 里 maxPix 为 0 时的取值） */
-    private static final float MAX_PIX_FALLBACK = 1e-6f;
+    /** MODNet 标准差（R/G/B，归一化 0~1 空间），ZHKKKe/MODNet 官方预处理（=0.5/0.5/0.5） */
+    private static final float[] STD = {0.5f, 0.5f, 0.5f};
 
     private static final String OUTPUT_MIME = "image/png";
 
@@ -123,8 +119,10 @@ public class SegmentationServiceImpl implements SegmentationService {
         // 4) 推理 → 0~255 灰度蒙版（模型尺寸）
         int[] mask = predictMask(input, inputSize);
 
-        // 5) 蒙版二值化 + 羽化：让 alpha 边缘平滑（头发丝自然）
-        int[] maskRefined = refineMask(mask, inputSize);
+        // 5) 蒙版二值化 + 羽化：让 alpha 边缘平滑（头发丝自然）。
+        //    走 yml 配置（公开端点不接受用户参数，与 image-bg-remover 工具分流）。
+        int[] maskRefined = refineMask(mask, inputSize,
+                segmentationConfig.getMaskThreshold(), segmentationConfig.getFeatherSize());
 
         // 6) 蒙版双线性放大回原图尺寸 + 按 alpha 混合底色
         byte[] output = composite(source, maskRefined, inputSize, color);
@@ -154,8 +152,9 @@ public class SegmentationServiceImpl implements SegmentationService {
         BufferedImage resized = resize(upscaled, inputSize, inputSize);
         float[] input = toInputTensor(resized, inputSize);
         int[] mask = predictMask(input, inputSize);
-        // 蒙版二值化 + 羽化
-        int[] maskRefined = refineMask(mask, inputSize);
+        // 蒙版二值化 + 羽化（走 yml 配置）
+        int[] maskRefined = refineMask(mask, inputSize,
+                segmentationConfig.getMaskThreshold(), segmentationConfig.getFeatherSize());
         byte[] output = compositeTransparent(source, maskRefined, inputSize);
 
         return new SegmentResult(output, width, height, OUTPUT_MIME);
@@ -224,11 +223,12 @@ public class SegmentationServiceImpl implements SegmentationService {
         if (mode == null || mode.isBlank()) {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请指定处理模式（transparent/color/image）");
         }
+
         // mode 标准化：忽略大小写
         String m = mode.trim().toLowerCase(java.util.Locale.ROOT);
         switch (m) {
             case "transparent":
-                // 单纯去背景，输出透明 PNG
+                // 单纯去背景，输出透明 PNG（走 yml 配置：mask-threshold / feather-size）
                 return removeBackgroundTransparent(imageBytes);
             case "color":
                 if (backgroundColor == null || backgroundColor.isBlank()) {
@@ -239,6 +239,7 @@ public class SegmentationServiceImpl implements SegmentationService {
                 if (backgroundImage == null || backgroundImage.length == 0) {
                     throw ErrorFactory.of(ResultCode.PARAM_MISSING, "image 模式必须上传背景图");
                 }
+                // 走「透明 PNG + 叠到 bg」路径
                 return changeBackground(imageBytes, backgroundImage);
             default:
                 throw ErrorFactory.of(ResultCode.PARAM_ERROR,
@@ -348,14 +349,14 @@ public class SegmentationServiceImpl implements SegmentationService {
      * <b>形状保留</b>：ConvolveOp 会因为 EDGE_NO_OP 把边缘忽略（输出边缘值会变小），
      * 但模型蒙版的边缘本来就接近背景（maskThreshold=0.5），影响可忽略。
      *
-     * @param mask  模型尺寸（{@code inputSize*inputSize}）的 0~255 灰度蒙版
-     * @param size  蒙版边长
+     * @param mask       模型尺寸（{@code inputSize*inputSize}）的 0~255 灰度蒙版
+     * @param size       蒙版边长
+     * @param threshold  0~1 二值化阈值（≤0 视作不门控）
+     * @param feather    羽化半径像素（≤0 视作不羽化）
      * @return 同样尺寸但边缘平滑后的灰度蒙版
      */
-    private int[] refineMask(int[] mask, int size) {
-        double thr = segmentationConfig.getMaskThreshold();
-        int r = segmentationConfig.getFeatherSize();
-        if (thr <= 0 && r <= 0) {
+    private int[] refineMask(int[] mask, int size, double threshold, int feather) {
+        if (threshold <= 0 && feather <= 0) {
             return mask;
         }
 
@@ -363,8 +364,8 @@ public class SegmentationServiceImpl implements SegmentationService {
         BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
         // 第一步：按阈值清理背景侧。阈值（0~1）转 0~255 后用「不低于阈值则保留原始灰度」策略，
         // 避免完全二值化导致后续卷积在边缘产生可见振铃。
-        if (thr > 0) {
-            int thr255 = (int) Math.round(Math.min(1.0, Math.max(0.0, thr)) * 255);
+        if (threshold > 0) {
+            int thr255 = (int) Math.round(Math.min(1.0, Math.max(0.0, threshold)) * 255);
             byte[] pixels = ((java.awt.image.DataBufferByte) img.getRaster().getDataBuffer()).getData();
             for (int i = 0; i < mask.length; i++) {
                 pixels[i] = mask[i] < thr255 ? 0 : (byte) mask[i];
@@ -377,7 +378,8 @@ public class SegmentationServiceImpl implements SegmentationService {
         }
 
         // 第二步：均值卷积羽化
-        if (r > 0) {
+        if (feather > 0) {
+            int r = feather;
             int k = 2 * r + 1;
             float[] kernel = new float[k * k];
             Arrays.fill(kernel, 1.0f / (k * k));
@@ -396,11 +398,11 @@ public class SegmentationServiceImpl implements SegmentationService {
     }
 
     /**
-     * 把图片转成 NCHW 排布的 float 数组并按 ImageNet 统计量归一化。
+     * 把图片转成 NCHW 排布的 float 数组并按 ZHKKKe/MODNet 官方预处理归一化。
      * <p>
-     * 归一化公式 {@code (v / maxPix - mean[c]) / std[c]}，其中 {@code maxPix} 是
-     * <b>整张图所有通道的最大像素值</b>（不是 255），rembg 用它做除数以适配
-     * 动态范围不足的图；全 0 图用 1e-6 兜底防除零。
+     * 归一化公式 {@code (v / 255 - mean[c]) / std[c]}，{@code mean=[0.5,0.5,0.5]}、
+     * {@code std=[0.5,0.5,0.5]}，最终把像素压到 {@code [-1, 1]}。这是 MODNet 官方推荐写法，
+     * 与 rembg/u2netp 的「整图 maxPix 做除数」不同——后者是给 U²-Net 用的，不能套到 MODNet 上。
      *
      * @param image     已缩放到模型尺寸的图片
      * @param size      边长
@@ -410,29 +412,16 @@ public class SegmentationServiceImpl implements SegmentationService {
         int planeSize = size * size;
         float[] tensor = new float[3 * planeSize];
 
-        // 第一遍只找最大值，不建中间数组
-        int maxPix = 0;
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                int rgb = image.getRGB(x, y);
-                int r = (rgb >> 16) & 0xFF;
-                int g = (rgb >> 8) & 0xFF;
-                int b = rgb & 0xFF;
-                if (r > maxPix) maxPix = r;
-                if (g > maxPix) maxPix = g;
-                if (b > maxPix) maxPix = b;
-            }
-        }
-        float divisor = maxPix > 0 ? (float) maxPix : MAX_PIX_FALLBACK;
-
-        // 第二遍按通道各写一张平面（NCHW）
+        // MODNet 官方：固定除以 255，把像素压到 [0, 1] 后再做中心化
+        final float inv255 = 1.0f / 255.0f;
+        // 按通道各写一张平面（NCHW）
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 int rgb = image.getRGB(x, y);
                 int idx = y * size + x;
-                tensor[idx]                    = (((rgb >> 16) & 0xFF) / divisor - MEAN[0]) / STD[0];
-                tensor[planeSize + idx]        = (((rgb >>  8) & 0xFF) / divisor - MEAN[1]) / STD[1];
-                tensor[2 * planeSize + idx]    = ((rgb         & 0xFF) / divisor - MEAN[2]) / STD[2];
+                tensor[idx]                    = ((((rgb >> 16) & 0xFF) * inv255) - MEAN[0]) / STD[0];
+                tensor[planeSize + idx]        = ((((rgb >>  8) & 0xFF) * inv255) - MEAN[1]) / STD[1];
+                tensor[2 * planeSize + idx]    = ((( rgb         & 0xFF) * inv255) - MEAN[2]) / STD[2];
             }
         }
         return tensor;
