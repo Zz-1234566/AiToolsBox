@@ -26,7 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
@@ -61,6 +65,15 @@ public class SegmentationController {
      *  真实后缀由 mimeType 决定（storage 层会按 mime 取后缀），此处仅作语义占位 */
     private static final String OUTPUT_FILENAME_BG_REMOVER = "image-bg-remover.png";
 
+    /** image-bg-remover 允许的 MIME 白名单（与 SegmentationService 一致）。
+     *  前端 image-bg-remover.vue 的 ALLOWED_EXTS 必须与此表保持同步。 */
+    private static final List<String> ALLOWED_IMAGE_TYPES =
+            Arrays.asList("image/jpeg", "image/png", "image/bmp", "image/gif");
+
+    /** image-bg-remover 允许的文件扩展名白名单（兜底：客户端未传 contentType 时使用）。 */
+    private static final Set<String> ALLOWED_IMAGE_EXTS =
+            new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "bmp", "gif"));
+
     private final SegmentationService segmentationService;
     private final ToolOutputService toolOutputService;
     private final BatchTaskService batchTaskService;
@@ -85,12 +98,19 @@ public class SegmentationController {
                                                 @RequestParam(value = "bgColor", required = false,
                                                         defaultValue = "red") String bgColor,
                                                 HttpServletRequest request) {
-        // 1) 入参校验（与 FileController 同一口径：空文件 / 超 20MB 一律拒绝）
+        // 1) 入参校验（与 FileController 同一口径：空文件 / 超 20MB / 非图片 一律拒绝）
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请选择要处理的证件照");
         }
         if (file.getSize() > Constants.MAX_FILE_SIZE) {
             throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
+        }
+        // 证件照白名单：jpg/jpeg/png/bmp（不含 gif/webp）
+        String photoName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        String photoExt = FileStorageService.extractExtension(photoName).replaceFirst("^\\.", "");
+        if (!Constants.ALLOWED_ID_PHOTO_EXTENSIONS.contains(photoExt)) {
+            throw new BusinessException(ResultCode.FILE_UNSUPPORTED.getCode(),
+                    "不支持的证件照格式，仅支持 JPG/JPEG/PNG/BMP");
         }
 
         byte[] source;
@@ -154,6 +174,28 @@ public class SegmentationController {
         // 1) 入参校验
         if (files == null || files.isEmpty()) {
             throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请至少上传 1 张图片");
+        }
+        // 1.1) 文件类型白名单（contentType / 扩展名 任一通过即放行；
+        //      webp 等不在白名单内的格式直接拒，避免走到 service 才抛异常）
+        for (MultipartFile file : files) {
+            String contentType = file.getContentType();
+            String filename = file.getOriginalFilename();
+            String ext = (filename != null && filename.contains("."))
+                    ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT)
+                    : "";
+
+            boolean typeOk = contentType != null && ALLOWED_IMAGE_TYPES.contains(contentType);
+            boolean extOk = !ext.isEmpty() && ALLOWED_IMAGE_EXTS.contains(ext);
+
+            if (!typeOk && !extOk) {
+                String ctx = (contentType != null ? contentType : "未知")
+                        + (filename != null ? "（" + filename + "）" : "");
+                // 错误码 10001：与前端 image-bg-remover.vue 的 _showErrorToast 映射一致
+                // （文件格式不支持）。10001 已被 USER_NOT_FOUND 占用，按 task 要求
+                // 直接用字面量，不引入新的 ResultCode 枚举项。
+                throw new BusinessException(10001,
+                        "不支持的图片格式：" + ctx + "，仅支持 JPG / PNG / BMP / GIF");
+            }
         }
         if (files.size() > Constants.BATCH_MAX_FILE_COUNT) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),

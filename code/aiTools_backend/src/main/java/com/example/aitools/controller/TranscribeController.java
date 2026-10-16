@@ -9,6 +9,7 @@ import com.example.aitools.dto.TranscribeResponse;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
+import com.example.aitools.service.FileStorageService;
 import com.example.aitools.service.TranscribeService;
 import com.example.aitools.config.ExecutorConfig;
 import com.example.aitools.utils.AuthUtil;
@@ -63,6 +64,19 @@ public class TranscribeController {
                                                 @RequestParam(value = "engine", required = false) String engine,
                                                 HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请选择要转写的录音文件");
+        }
+        // 音频白名单：mp3/wav/m4a/aac/flac/ogg/amr
+        String audioName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        String audioExt = FileStorageService.extractExtension(audioName).replaceFirst("^\\.", "");
+        if (!Constants.ALLOWED_AUDIO_EXTENSIONS.contains(audioExt)) {
+            throw new BusinessException(ResultCode.FILE_UNSUPPORTED.getCode(),
+                    "不支持的音频格式，仅支持 MP3/WAV/M4A/AAC/FLAC/OGG/AMR");
+        }
+        if (file.getSize() > Constants.MAX_FILE_SIZE) {
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
+        }
         log.info("[meeting-minutes/transcribe] userId={} file={} size={} engine={}",
                 userId, file.getOriginalFilename(), file.getSize(), engine);
         try {
@@ -88,23 +102,38 @@ public class TranscribeController {
         if (files == null || files.isEmpty()) {
             throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请至少上传 1 个录音文件");
         }
-        if (files.size() > Constants.BATCH_MAX_FILE_COUNT) {
+        // 批量：先按音频白名单过滤，只保留符合要求的文件（mp3/wav/m4a/aac/flac/ogg/amr）
+        List<MultipartFile> filtered = files.stream()
+                .filter(f -> f != null && !f.isEmpty())
+                .filter(f -> {
+                    String n = f.getOriginalFilename() == null ? "" : f.getOriginalFilename();
+                    String e = FileStorageService.extractExtension(n).replaceFirst("^\\.", "");
+                    return Constants.ALLOWED_AUDIO_EXTENSIONS.contains(e);
+                })
+                .toList();
+        if (filtered.isEmpty()) {
+            throw new BusinessException(ResultCode.FILE_UNSUPPORTED.getCode(),
+                    "没有符合要求的录音文件，仅支持 MP3/WAV/M4A/AAC/FLAC/OGG/AMR");
+        }
+        if (filtered.size() > Constants.BATCH_MAX_FILE_COUNT) {
             throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
                     "单次最多上传 " + Constants.BATCH_MAX_FILE_COUNT + " 个文件");
         }
-        long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
+        long totalSize = filtered.stream().mapToLong(MultipartFile::getSize).sum();
         if (totalSize > Constants.BATCH_MAX_TOTAL_SIZE) {
             throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "批量文件总大小超过 200MB");
         }
+        // 用过滤后的列表继续后续逻辑（final 引用以兼容 lambda）
+        final List<MultipartFile> validFiles = filtered;
 
-        String batchId = batchTaskService.createTask(userId, "audio-transcribe", files.size());
+        String batchId = batchTaskService.createTask(userId, "audio-transcribe", validFiles.size());
         log.info("[B2-ASR] 创建批量任务 batchId={} userId={} fileCount={} engine={}",
-                batchId, userId, files.size(), engine);
+                batchId, userId, validFiles.size(), engine);
 
         // 同步读到内存（避开 Tomcat 异步线程跑批时临时文件已被清理）
         List<BatchFilePayload> payloads;
         try {
-            payloads = files.stream().map(f -> {
+            payloads = validFiles.stream().map(f -> {
                 try {
                     return BatchFilePayload.from(f);
                 } catch (java.io.IOException e) {
@@ -114,7 +143,7 @@ public class TranscribeController {
         } catch (BusinessException e) {
             log.error("[B2-ASR] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
             try {
-                batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
+                batchTaskService.completeBatch(batchId, 0, validFiles.size(), "[]");
             } catch (Exception ex) {
                 log.error("[B2-ASR] 失败标记写入失败 batchId={}", batchId, ex);
             }
@@ -130,7 +159,7 @@ public class TranscribeController {
             } catch (Exception e) {
                 log.error("[B2-ASR] 异常 batchId={}", batchId, e);
                 try {
-                    batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
+                    batchTaskService.completeBatch(batchId, 0, validFiles.size(), "[]");
                 } catch (Exception ex) {
                     log.error("[B2-ASR] 兜底 completeBatch 失败 batchId={}", batchId, ex);
                 }
@@ -139,7 +168,7 @@ public class TranscribeController {
 
         BatchUploadResponse resp = new BatchUploadResponse();
         resp.setBatchId(batchId);
-        resp.setFileCount(files.size());
+        resp.setFileCount(validFiles.size());
         return Result.success("任务已创建", resp);
     }
 }

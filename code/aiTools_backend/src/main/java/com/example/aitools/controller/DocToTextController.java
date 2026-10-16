@@ -1,10 +1,12 @@
 package com.example.aitools.controller;
 
+import com.example.aitools.common.Constants;
 import com.example.aitools.common.Result;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.DocToTextResponse;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.service.DocToTextService;
+import com.example.aitools.service.FileStorageService;
 import com.example.aitools.utils.AuthUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,16 @@ public class DocToTextController {
         Long userId = authUtil.getUserIdFromRequest(request);
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ResultCode.DOC_EMPTY.getCode(), "请选择要转换的文档");
+        }
+        // 文件类型白名单：PDF/Word/TXT/图片（OCR 入口）
+        String docName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
+        String docExt = FileStorageService.extractExtension(docName).replaceFirst("^\\.", "");
+        if (!Constants.ALLOWED_DOC_EXTENSIONS.contains(docExt)) {
+            throw new BusinessException(ResultCode.FILE_UNSUPPORTED.getCode(),
+                    "不支持的文件类型，仅支持 PDF/DOCX/TXT 或图片 PNG/JPG/JPEG/BMP/GIF/WEBP");
+        }
+        if (file.getSize() > Constants.MAX_FILE_SIZE) {
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
         }
         return Result.success("转换成功", docToTextService.toText(userId, file));
     }
