@@ -543,7 +543,7 @@ const applyQuickPrompt = (text) => { inputText.value = text }
 const askText = ref('')
 const applySuggested = (text) => { askText.value = text }
 const uploadedFiles = ref([])   // 批量工具已选文件（mockup 阶段的示例数据已移除）
-/** 批量工具选文件（文档重点提取 / 智能识别 / AI 文件解读）：H5 原生多选，App 用 chooseMessageFile */
+/** 批量工具选文件（文档重点提取 / 智能识别 / AI 文件解读）：H5 原生多选；图片走 chooseImage，文档/音频走 chooseMessageFile（App 端不可用，见下方能力探测） */
 const onFilePickerClick = () => {
   const rule = toolInfo.value.fileRule || {}
   const maxCount = rule.maxCount || 10
