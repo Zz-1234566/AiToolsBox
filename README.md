@@ -276,20 +276,45 @@ AI 办公类工具划分为两层，**目的是让每个工具都能作为工作
 ### 图片工具与本地 ONNX 模型
 
 `id-photo-bg-change`（证件照换背景色）和 `image-bg-remover`（图片背景去除）
-**不调用云端 AI**，由后端 ONNX Runtime 做 CPU 离线推理，因此需要随包携带模型文件。
+**不调用云端 AI**，由后端 ONNX Runtime 做 CPU 离线推理，需要随包携带 **1 个**模型文件。
 
-| 模型 | 大小 | 用途 |
-|---|---|---|
-| `u2netp.onnx` | 4.36 MB | U²-Net 轻量版，`segmentation.model-path` 默认值，320×320 输入 |
-| `modnet_photographic_portrait_matting.onnx` | 24.69 MB | MODNet 人像抠图，边缘 matting 质量更高 |
+| 项 | 值 |
+|---|---|
+| 文件名 | `modnet_photographic_portrait_matting.onnx`（24.69 MB） |
+| 放置目录 | `code/aiTools_backend/src/main/resources/models/` |
+| 配置 | `segmentation.model-path` 指向它 + `segmentation.input-size: 512` |
+| 授权 | MODNet 官方仓库 Apache License 2.0 |
 
-两个模型放在 `code/aiTools_backend/src/main/resources/models/`，
-经 `segmentation.model-path` 读取（支持 `classpath:models/x.onnx` 或普通文件路径 /
-`file:` 前缀，解析统一走 Spring `ResourceLoader`，**部署时换成外挂模型即可热更而不动包**）。
+> ⚠️ **模型未入库**（`.gitignore` 没有 `*.onnx` 规则），clone 后该目录是空的，
+> 图片工具启动即失败。获取方式见下。
 
-> ⚠️ **模型文件未入库**（`.gitignore` 无 `*.onnx` 规则，clone 后 `resources/models/` 是空的）。
-> 换机器部署需手动把两个 `.onnx` 放回该目录，否则图片工具启动即失败。
-> 详见「已知问题」第 3 条。
+#### 模型从哪来
+
+MODNet 官方仓库**不直接分发 `.onnx`**，只提供预训练权重（`.ckpt`）与推理代码，
+ONNX 版由社区转换而来。三个可行来源：
+
+1. **官方 Colab（ONNX 版，最省事）** —— 官方 README 列出的 ONNX Colab demo，
+   在线跑完即可直接下载 `.onnx`：
+   <https://colab.research.google.com/drive/1P3cWtg8fnmu9karZHYDAtmm1vj1rgA-f>
+2. **社区 ONNX 转换脚本** —— 官方仓库 `onnx/` 目录（由 @manthan3C273 提供），
+   拿官方 `.ckpt` 自行转换：
+   <https://github.com/ZHKKKe/MODNet/tree/master/onnx>
+3. **官方仓库** —— <https://github.com/ZHKKKe/MODNet>（Apache-2.0，含论文与 Colab 清单）
+
+#### 两个必须注意的坑
+
+1. **不要用 `u2netp.onnx` 顶替。** `SegmentationServiceImpl` 的预处理严格对齐 MODNet
+   （固定除以 255、mean/std 均为 0.5），而 U²-Net 用的是「整图 maxPix 做除数」那一套。
+   喂错模型**不会报错**，只会静默输出错蒙版。
+2. **`application-dev.yml.example` 的默认值是错的**：模板里写的是
+   `model-path: classpath:models/u2netp.onnx` + `input-size: 320`，
+   而代码实际需要 MODNet + 512。照模板部署必然出错误抠图结果，
+   需自行改配置（`segmentation.model-path` 与 `segmentation.input-size`）。
+
+#### 换成外挂模型
+
+`segmentation.model-path` 支持 `classpath:models/x.onnx`、绝对路径或 `file:` 前缀，
+解析统一走 Spring `ResourceLoader`。部署时把模型外挂到包外、改配置即可**热更模型不动包**。
 
 ## 工作流模块
 
@@ -496,18 +521,24 @@ ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
 
 ### 3. ONNX 抠图模型未入库（`.gitignore` 无 `*.onnx` 规则）
 
-**现象**：`code/aiTools_backend/src/main/resources/models/` 下两个模型共 **29MB**
-（`modnet_...matting.onnx` 24.69MB + `u2netp.onnx` 4.36MB）目前是**未跟踪状态**，
+**现象**：`code/aiTools_backend/src/main/resources/models/` 下的模型文件目前是**未跟踪状态**，
 而 `.gitignore` 里没有任何 `*.onnx` / `models/` 规则 —— 一旦 `git add` 就会进仓。
+
+实际只需要 **`modnet_photographic_portrait_matting.onnx`（24.69 MB）** 一个；
+同目录下的 `u2netp.onnx`（4.36 MB）与代码的预处理不兼容，属于历史遗留，可删。
+模型获取方式见「图片工具与本地 ONNX 模型」小节。
 
 **影响**：clone 后 `resources/models/` 是**空目录**，`segmentation.enabled=true` 时
 图片工具（证件照换底 / 去背景）启动或首次调用即失败。
 
 **可选处理**：
-1. 明确不入库：`.gitignore` 加 `src/main/resources/models/*.onnx`，
-   README 写清下载地址（模型有公开的官方 release / HuggingFace 来源）
-2. 入库：接受仓库增加 29MB（GitHub 单文件 100MB 限制内，但每次 clone 都要拖这 29MB）
-3. 启动时下载到 `models/` 目录（推荐，兼顾可复现与仓库体积）
+1. 明确不入库：`.gitignore` 加 `src/main/resources/models/*.onnx`（**建议**），
+   README 保留模型获取章节（已完成）
+2. 入库：接受仓库增加 24.7MB（GitHub 单文件 100MB 限制内，但每次 clone 都要拖这份二进制）
+3. 启动时自动下载到 `models/` 目录（兼顾可复现与仓库体积，需处理下载失败与校验）
+
+**顺带修正**：`application-dev.yml.example` 里 `segmentation.model-path` / `input-size`
+仍是旧的 `u2netp.onnx` + `320`，与代码实际的 MODNet + 512 不一致，应一并更正。
 
 ### 4. App 端（Android/iOS）无法选择文件
 
