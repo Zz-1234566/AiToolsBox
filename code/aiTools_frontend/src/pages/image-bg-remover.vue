@@ -198,6 +198,11 @@
 <script>
 import { imageBgRemover, pollBatchCompleted } from '@/api/image-bg-remover'
 
+// 与后端 SegmentationController.ALLOWED_IMAGE_EXTS / ALLOWED_IMAGE_TYPES 保持同步：
+// jpg / jpeg / png / bmp / gif。webp 等不在白名单内的格式直接前端拦截，
+// 不送往后端，避免走到 service 才抛异常。
+const ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'bmp', 'gif']
+
 export default {
   data() {
     return {
@@ -233,6 +238,9 @@ export default {
       dragStartY: 0,
       objectStartX: 0,
       objectStartY: 0,
+
+      // ⭐ 去背景调参：已移除（MODNet 官方推荐默认：mask-threshold=0 / feather-size=0，模型不可调）
+      // yml 中 SegmentationConfig 是最佳默认值，前端不再传参。
 
       // 12 色 + 透明选项
       bgColors: [
@@ -302,12 +310,27 @@ export default {
         count: 1,
         sizeType: ['compressed'],
         sourceType: ['album', 'camera'],
+        // extension 让文件选择器**先**过滤（H5 端会映射为 input.accept），与 ALLOWED_EXTS 保持一致
+        extension: ALLOWED_EXTS,
         success: (res) => {
           const path = (res.tempFilePaths || [])[0]
           if (!path) return
           const temp = (res.tempFiles || [])[0]
+          // 文件名校验：uni.chooseImage 在 H5/小程序/App 下字段可能不同，统一兜底取 path 末段
+          const fileName = (temp && temp.name) || path.split('/').pop() || ''
+          const ext = fileName.includes('.')
+            ? fileName.split('.').pop().toLowerCase()
+            : ''
+          if (!ALLOWED_EXTS.includes(ext)) {
+            uni.showToast({
+              title: '不支持的格式：' + (ext || '未知') + '，仅支持 JPG / PNG / BMP / GIF',
+              icon: 'none',
+              duration: 3000
+            })
+            return
+          }
           this.uploadedImage = path
-          this.uploadedFileName = (temp && temp.name) || path.split('/').pop() || 'image.png'
+          this.uploadedFileName = fileName || 'image.png'
         },
         fail: () => {
           uni.showToast({ title: '未选择图片', icon: 'none' })
@@ -339,10 +362,18 @@ export default {
 
       try {
         // 1) 提交任务：mode=transparent（一键去背景 → 透明 PNG）
-        const res = await imageBgRemover(this.uploadedImage, { mode: 'transparent' })
+        // 不再传调参，MODNet 官方推荐默认（mt=0/fs=0/matte=none）由后端 yml 控制
+        const res = await imageBgRemover(this.uploadedImage, {
+          mode: 'transparent'
+        })
         const data = (res && res.data) || null
         if (!res || res.code !== 200 || !data || !data.batchId) {
-          throw new Error((res && res.message) || '提交任务失败')
+          // 失败时把后端 code + message 一并塞进 Error，方便 catch 块做具体提示
+          const code = (res && res.code) || 0
+          const msg = (res && res.message) || '提交任务失败'
+          const e = new Error(msg)
+          e.code = code
+          throw e
         }
         this.batchId = data.batchId
 
@@ -350,11 +381,60 @@ export default {
         await this._pollBatch(this.batchId)
       } catch (err) {
         console.error('[image-bg-remover] 去背景失败:', err)
-        uni.showToast({ title: (err && err.message) || '处理失败', icon: 'none' })
+        this._showErrorToast(err)
         this._clearTimers()
         this.state = 'A'
         this.progress = 0
       }
+    },
+
+    /**
+     * 把 onStartRemove 流程中抛出的 err 翻译成用户能看懂的提示
+     * - err.code 0  = 本地包装（如「提交任务失败」），原始 message 即提示
+     * - err.code 在 10001/10002/90001/90004/90005 → 给出具体话术
+     * - 其他 code → 显示「message（错误码 code）」
+     * - err.errMsg（uni.request/uploadFile fail）→ 网络异常
+     * - 其他 → 客户端错误
+     */
+    _showErrorToast(err) {
+      const code = (err && err.code) || 0
+      const msg = (err && err.message) || ''
+
+      if (code === 90001) {
+        uni.showModal({ title: '未登录', content: '请重新登录后再试', showCancel: false })
+        return
+      }
+      if (code === 90004) {
+        uni.showToast({ title: '请求太频繁，请稍后再试', icon: 'none' })
+        return
+      }
+      if (code === 90005) {
+        uni.showToast({ title: '系统错误：' + (msg || '请稍后再试'), icon: 'none', duration: 3000 })
+        return
+      }
+      if (code === 10001) {
+        uni.showToast({ title: '文件格式不支持：' + (msg || '请换一张图'), icon: 'none', duration: 3000 })
+        return
+      }
+      if (code === 10002) {
+        uni.showToast({ title: '文件太大：' + (msg || '请压缩后重试'), icon: 'none', duration: 3000 })
+        return
+      }
+      if (code && code !== 0) {
+        // 其他后端错误码：把后端 message + 错误码一起给用户
+        uni.showToast({ title: (msg || '处理失败') + '（错误码 ' + code + '）', icon: 'none', duration: 3000 })
+        return
+      }
+      if (err && err.errMsg) {
+        // uni.request / uni.uploadFile fail 时的结构：{ errMsg: 'request:fail ...' }
+        if (String(err.errMsg).includes('timeout')) {
+          uni.showToast({ title: '网络超时，请检查后重试', icon: 'none' })
+        } else {
+          uni.showToast({ title: '网络异常，请检查后重试', icon: 'none' })
+        }
+        return
+      }
+      uni.showToast({ title: msg || '处理失败，请重试', icon: 'none' })
     },
 
     /**
@@ -469,6 +549,8 @@ export default {
         count: 1,
         sizeType: ['compressed'],
         sourceType: ['album', 'camera'],
+        // extension 让文件选择器**先**过滤，与 ALLOWED_EXTS 保持一致
+        extension: ALLOWED_EXTS,
         success: (res) => {
           const path = (res.tempFilePaths || [])[0]
           if (!path) return
@@ -1066,6 +1148,8 @@ export default {
     grid-template-columns: repeat(6, 1fr);
     gap: 16rpx;
   }
+
+  /* 去背景参数面板：已移除（MODNet 官方推荐默认由 yml 控制） */
   .color-chip {
     height: 72rpx;
     border-radius: 16rpx;
