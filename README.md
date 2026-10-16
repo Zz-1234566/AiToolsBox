@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-一个面向移动端 / H5 的 AI 工具箱 App，内置工作总结、文档重点提取等 AI 办公能力，并预留了图片处理、效率小工具的扩展位。文本类工具调用 MiniMax M2.7（OpenAI 兼容协议），结果支持 SSE 流式打字机效果。
+一个面向移动端 / H5 的 AI 工具箱 App，当前已实现 **8 个工具**：文档提取、录音转写、会议纪要、重点提取、工作总结、周报生成（AI 办公），以及证件照换背景色、图片背景去除（本地 ONNX 抠图，不走云端 AI）。加工层工具调用 MiniMax 文本模型 M2.7（OpenAI 兼容协议），多模态与语音识别用 M3 / asr-1.0，结果支持 SSE 流式打字机效果。各工具可被编排成**工作流流水线**一次跑完。
 
 ## 技术栈
 
@@ -14,6 +14,8 @@
 - Spring Data Redis + JWT 鉴权（jjwt 0.12.5）
 - 腾讯云 COS SDK（文件存储，可切本地）
 - Apache PDFBox + POI（PDF / Word 文档解析）
+- ONNX Runtime（人像分割，本地 CPU 离线推理）
+- 腾讯云 OCR / 语音识别 / COS SDK（云端能力）
 - Hutool 工具库
 
 ### 前端（`code/aiTools_frontend`）
@@ -27,10 +29,11 @@
 Graduation project/
 ├── code/
 │   ├── aiTools_backend/          # 后端 Spring Boot 工程
-│   │   ├── sql/init.sql          # 数据库初始化脚本
+│   │   ├── sql/                  # 建库脚本（只有 4 个被 git 跟踪，见下方说明）
 │   │   └── src/main/resources/
 │   │       ├── application.yml                # 公共配置
-│   │       └── application-dev.yml.example    # 开发环境配置模板（占位符）
+│   │       ├── application-dev.yml.example    # 开发环境配置模板（占位符）
+│   │       └── models/                        # 本地 ONNX 抠图模型（不入库，需自行下载）
 │   └── aiTools_frontend/         # 前端 uni-app 工程
 ├── App图标/                      # App 图标资源
 ├── 默认头像/                     # 默认头像资源
@@ -54,12 +57,33 @@ Graduation project/
 
 ### 2. 初始化数据库
 
+`sql/` 目录里大部分迁移脚本被 `.gitignore` 排除（`sql/*` + `!sql/init.sql`），
+**实际只有 4 个脚本入库**，且必须**按顺序全部执行**，只跑 `init.sql` 会缺表：
+
+| # | 脚本 | 作用 |
+|---|---|---|
+| 1 | `sql/init.sql` | 建库 `ai_toolbox` + 13 张表 + 工具/提示词/工作流初始数据 |
+| 2 | `sql/v1_2026_10_12_ai_model_upgrade.sql` | 建 `sys_user_ai_model`（用户自选 AI 模型，**AI 模型选择功能依赖此表**） |
+| 3 | `sql/v1_2026_10_12_ai_model_seeds.sql` | 系统模型注册表 `sys_ai_model` 的初始数据 |
+| 4 | `sql/v1_2026_10_12_image_bg_remover_seed.sql` | 图片背景去除工具的 seed |
+
 ```bash
-# 登录 MySQL 后执行
+# 登录 MySQL 后依次执行
 mysql -u root -p < code/aiTools_backend/sql/init.sql
+mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_ai_model_upgrade.sql
+mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_ai_model_seeds.sql
+mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_image_bg_remover_seed.sql
 ```
 
-脚本会创建 `ai_toolbox` 库及全部业务表，并写入 14 个初始化工具（详见 sys_aitools_tool 表，sort_no 1-14 唯一连续）及对应系统提示词。
+建库后可自检：
+
+```bash
+grep -c "INSERT INTO.*sys_aitools_tool" code/aiTools_backend/sql/init.sql   # 15
+grep -c "INSERT INTO.*sys_ai_prompt"   code/aiTools_backend/sql/init.sql   # 16
+```
+
+> ⚠️ 本地还有 `v1_2026_10_12_ai_model_deepseek_seed.sql`（DeepSeek 模型 seed）**未入库**，
+> 换机器部署会丢失 DeepSeek 选项，需要的话手动执行或补进仓库。
 
 ### 3. 配置后端
 
@@ -107,7 +131,16 @@ npm run dev:h5
 | `COS_SECRET_KEY` | ⛔ 可选 | 腾讯云 COS SecretKey | 同上 |
 | `COS_BUCKET` | ⛔ 可选 | 腾讯云 COS **桶名**（如 `ai-tools-box-1419900334`）。`cos.enabled=true` 时**必填**，缺失会回退到占位符桶名导致上传失败 | 腾讯云控制台 → 对象存储 → 存储桶列表 |
 | `COS_REGION` | ⛔ 可选 | COS 地域（如 `ap-guangzhou`），需与桶所在地域一致 | 同上 |
-| `AI_MINIMAX_TEXT_API_KEY` | ✅ | MiniMax（OpenAI 兼容）API Key，用于文本类办公工具 | MiniMax 开放平台 → API Keys |
+| `AI_MINIMAX_TEXT_API_KEY` | ✅ | MiniMax API Key，用于**文本模型** `MiniMax-M2.7`（会议纪要 / 重点提取 / 工作总结 / 周报） | MiniMax 开放平台 → API Keys |
+| `AI_MINIMAX_API_KEY` | ✅ | MiniMax API Key，用于 **M3 多模态**与**语音识别**（文件解读 / 录音转写 minimax 通道） | 同上 |
+| `ASR_TENCENT_ENABLED` / `ASR_APP_ID` / `ASR_SECRET_ID` / `ASR_SECRET_KEY` / `ASR_REGION` | ⛔ 可选 | 腾讯云语音识别通道；`ASR_SECRET_*` 留空自动复用 `COS_SECRET_*` | 腾讯云语音识别控制台 |
+| `ASR_FFMPEG_PATH` | ⛔ 可选 | ffmpeg 可执行文件路径，留空走系统 PATH | 自设 |
+| `SYS_AI_MODEL_KEY` | ⛔ 可选 | 系统 AI 模型注册表 `sys_ai_model` 的密钥加密主密钥 | 自设 |
+
+> ⚠️ **两个 MiniMax Key 别搞混**：配置里有两套独立入口 ——
+> `ai.minimax-text`（读 `AI_MINIMAX_TEXT_API_KEY`，模型 `MiniMax-M2.7`）服务加工层 4 个工具；
+> `ai.minimax` + `asr`（读 `AI_MINIMAX_API_KEY`，模型 `MiniMax-M3` / `asr-1.0`）服务多模态与转写。
+> 只配其中一个会导致另一半功能 401。
 
 > **PowerShell 临时设置示例**（当前会话有效）：
 > ```powershell
@@ -130,23 +163,35 @@ npm run dev:h5
 
 ## 已实现的 AI 工具
 
-工具以 `sys_aitools_tool` 为唯一数据源（`sort_no` 1-6 连续），前端 `src/config/tools.js` 与之 1:1 对应。
+工具以 `sys_aitools_tool` 为唯一数据源，前端 `src/config/tools.js` 与之 1:1 对应
+（`CATEGORIES` 中列出的即为当前**已实现并可运行**的工具，共 8 个）。
 
-工具划分为两层，**目的是让每个工具都能作为工作流的原子节点自由编排**：
+AI 办公类工具划分为两层，**目的是让每个工具都能作为工作流的原子节点自由编排**：
 
 | 层 | 职责 | 工具 |
 |---|---|---|
 | **解析层** | 纯转换，**不调用 AI** | 文档提取、录音转写 |
 | **加工层** | 调文本大模型，**只吃文字** | 会议纪要、重点提取、工作总结、周报生成 |
 
-| sort_no | 工具编码 | 名称 | 层 | 输入 | 输出 | 接口 |
+| 工具编码 | 名称 | 分类 | 层 | 输入 | 输出 | 接口 |
 |---|---|---|---|---|---|---|
-| 1 | `doc-to-text` | 文档提取 | 解析 | 文件 | 文本 | `POST /api/ai-office/doc-to-text`（纯解析） |
-| 2 | `audio-transcribe` | 录音转写 | 解析 | 音频 | 文本 | `POST /api/ai-office/meeting-minutes/transcribe`（ffmpeg + **双引擎**）<br>`POST /api/ai-office/meeting-minutes/batch-transcribe`（多文件批量） |
-| 3 | `meeting-minutes` | 会议纪要 | 加工 | 文本 | 文本 | `POST /api/ai-office/meeting-minutes/decide-route`（路由决策）<br>`POST /api/ai-office/meeting-minutes/stream`（SSE）<br>`POST /api/ai-office/meeting-minutes/json`（结构化） |
-| 4 | `doc-keypoint-extract` | 重点提取 | 加工 | 文本 | 文本 | `POST /api/ai-office/document-summary/text-stream`（SSE，纯文字） |
-| 5 | `work-summary` | 工作总结 | 加工 | 文本 | 文本 | `POST /api/ai-office/work-summary/stream`（SSE） |
-| 6 | `weekly-report` | 周报生成 | 加工 | 文本 | 文本 | `POST /api/ai-office/weekly-report/stream`（SSE） |
+| `doc-to-text` | 文档提取 | AI办公助手 | 解析 | 文档 / **图片** | 文本 | `POST /api/ai-office/doc-to-text`（纯解析） |
+| `audio-transcribe` | 录音转写 | AI办公助手 | 解析 | 音频（≤10 个） | 文本 | `POST /api/ai-office/meeting-minutes/transcribe`（ffmpeg + **双引擎**）<br>`POST /api/ai-office/meeting-minutes/batch-transcribe`（多文件批量） |
+| `meeting-minutes` | 会议纪要 | AI办公助手 | 加工 | 文本 | 文本 | `POST /api/ai-office/meeting-minutes/decide-route`（路由决策）<br>`POST /api/ai-office/meeting-minutes/stream`（SSE）<br>`POST /api/ai-office/meeting-minutes/json`（结构化） |
+| `doc-keypoint-extract` | 重点提取 | AI办公助手 | 加工 | 文本 | 文本 | `POST /api/ai-office/document-summary/text-stream`（SSE，纯文字） |
+| `work-summary` | 工作总结 | AI办公助手 | 加工 | 文本 | 文本 | `POST /api/ai-office/work-summary/stream`（SSE） |
+| `weekly-report` | 周报生成 | AI办公助手 | 加工 | 文本 | 文本 | `POST /api/ai-office/weekly-report/stream`（SSE） |
+| `id-photo-bg-change` | 证件照换背景色 | 图片创意工具 | 本地推理 | 图片 | 图片 | `POST /api/ai-office/id-photo-bg-change`（ONNX 离线抠图 + 底色合成） |
+| `image-bg-remover` | 图片背景去除 | 图片创意工具 | 本地推理 | 图片 | 图片 / 透明底 PNG | `POST /api/ai-office/image-bg-remover`（3 种模式合一：去背景 / 换背景 / 保留主体） |
+
+> 8 个工具分属 2 个分类：AI办公助手 6 个 + 图片创意工具 2 个。
+> 图片类工具**不调用任何云端 AI**，由后端 ONNX Runtime 本地 CPU 推理完成（见「图片工具与本地模型」）。
+
+### 已下线的工具（`dr=1`，保留可回滚）
+
+`ocr-recognize`（能力并入 `doc-to-text`）、`ai-file-reader`（多模态与「加工层只吃文本」冲突）、
+图片创意 4 个与效率小工具 3 个（未实现）。`init.sql` 中仍保留它们的 INSERT 再置 `dr=1`，
+是历史顺序的产物，不代表可用。
 
 ### 文档提取的三条通道
 
@@ -169,6 +214,24 @@ npm run dev:h5
 > 其 OCR 模块下不存在任何 Pdf Request 类（已核实 SDK 3.1.270 全量 class），故扫描件 PDF 必须先转图片。
 > 20 页上限用于控制 OCR 按量计费成本。
 
+**支持的文件类型（共 9 种，单文件 ≤ 20MB）**：
+
+| 类别 | 扩展名 | 通道 |
+|---|---|---|
+| 文档 | `pdf` `docx` `txt` | 文字层（PDF 抽不到时降级 OCR） |
+| 图片 | `png` `jpg` `jpeg` `bmp` `gif` `webp` | OCR |
+
+> ⚠️ **不支持 `.doc`**（旧版 Word 二进制格式）。后端 `Constants.ALLOWED_DOC_EXTENSIONS` 只含
+> `pdf/docx/txt` + 6 种图片，但 `DocToTextController` 的报错文案写了「仅支持 PDF/**DOC**/DOCX/TXT…」
+> —— 传 `.doc` 会被拒，文案却暗示支持，属于已知不一致。
+
+> ⚠️ **App 端（Android/iOS）当前选不了文件**：`tool-common.vue` 的 `onPureConvertPick` 分两条路 ——
+> H5 用原生 `<input type="file">`，非 H5 用 `uni.chooseMessageFile`。
+> 但按 uni-app 官方兼容表，**这两个 API 在 App 端都不支持**（`chooseMessageFile` 仅微信/QQ 小程序；
+> `chooseFile` 仅 H5）。官方给 App 端的方案是插件市场「文件选择」或 `plus.io` 自绘选择框。
+> 当前**图片也走同一个文件选择器**，所以在 App 端连图片都选不了。
+> 若要补齐，图片类型可改走 `uni.chooseImage`（**全平台支持**，`image-bg-remover.vue` / `profile.vue` 已在用）。
+
 ### 提示词设计
 
 加工层 4 个工具各 2 条系统提示词（`sys_ai_prompt` 的 `prompt_use` 区分），共 8 条：
@@ -179,16 +242,54 @@ npm run dev:h5
 | `generate` | 规定**角色与处理步骤** | 怎么读、提炼什么、什么不能编造 |
 
 两者分离，用户可只改其中一项。`getDefaultByUse` 按 `id` 升序取第一条作为该工具的系统默认，
-故迁移脚本统一「先逻辑删除旧的 → 再插入新的」（见 `sql/migrate_prompt_*.sql`）。
-
-**已删除的工具**（`dr=1`，保留可回滚）：`ocr-recognize`（能力并入 `doc-to-text`）、
-`ai-file-reader`（多模态与「加工层只吃文本」冲突）、图片创意 4 个与效率小工具 3 个（一直未实现）。
+故迁移脚本统一「先逻辑删除旧的 → 再插入新的」（见 `sql/migrate_prompt_*.sql`，**这些脚本未入库**，仅本地保留）。
 
 > **说明**：`bank-receipt-recognize` / `invoice-recognize` **不是工具**，它们仅作为**系统提示词**存在于 `sys_ai_prompt` 表（供 OCR 场景复用），不在 `sys_aitools_tool` 登记。
 
 ### 工具输入类型说明
 
 `sys_aitools_tool.input_type` / `output_type` 为**逗号分隔的枚举集合**（`none`/`text`/`audio`/`document`/`image`/`file`），用于工作流节点连线时的类型匹配（`upstream.output_type ⊆ downstream.input_type`）。
+
+### 用户自选 AI 模型
+
+用户可在「我的 → 我的 AI 模型」里登记自己的 API Key，调用工具时从下拉框选模型，
+不必用系统默认配置。
+
+| 表 | 作用 |
+|---|---|
+| `sys_ai_model` | 系统模型注册表（模型编码、capability、是否内置），由 `v1_2026_10_12_ai_model_seeds.sql` 初始化 |
+| `sys_user_ai_model` | 用户自填的 Key（密钥加密存储），由 `v1_2026_10_12_ai_model_upgrade.sql` 建表 |
+
+**capability 机制**：模型按能力分类（`text` / `vision` / `ocr`），后端调用前校验所选模型
+是否具备该工具所需 capability，不匹配直接拒绝，避免拿文本模型去做多模态活。
+`modelCode` 会一路透传到实际调用。
+
+| 接口 | 说明 |
+|---|---|
+| `GET /api/user-ai-model/list` | 我的模型列表 |
+| `POST /api/user-ai-model/save` | 新增 / 更新 |
+| `POST /api/user-ai-model/set-default/{id}` | 设为默认 |
+| `DELETE /api/user-ai-model/{id}` | 删除 |
+
+前端页面：`pages/my-models.vue`。
+
+### 图片工具与本地 ONNX 模型
+
+`id-photo-bg-change`（证件照换背景色）和 `image-bg-remover`（图片背景去除）
+**不调用云端 AI**，由后端 ONNX Runtime 做 CPU 离线推理，因此需要随包携带模型文件。
+
+| 模型 | 大小 | 用途 |
+|---|---|---|
+| `u2netp.onnx` | 4.36 MB | U²-Net 轻量版，`segmentation.model-path` 默认值，320×320 输入 |
+| `modnet_photographic_portrait_matting.onnx` | 24.69 MB | MODNet 人像抠图，边缘 matting 质量更高 |
+
+两个模型放在 `code/aiTools_backend/src/main/resources/models/`，
+经 `segmentation.model-path` 读取（支持 `classpath:models/x.onnx` 或普通文件路径 /
+`file:` 前缀，解析统一走 Spring `ResourceLoader`，**部署时换成外挂模型即可热更而不动包**）。
+
+> ⚠️ **模型文件未入库**（`.gitignore` 无 `*.onnx` 规则，clone 后 `resources/models/` 是空的）。
+> 换机器部署需手动把两个 `.onnx` 放回该目录，否则图片工具启动即失败。
+> 详见「已知问题」第 3 条。
 
 ## 工作流模块
 
@@ -210,16 +311,18 @@ npm run dev:h5
 | `GET /api/workflow/runs` | 运行历史列表 |
 | `GET /api/workflow/runs/{runId}` | 运行详情（含每节点输入输出） |
 
-**相关表**：`sys_workflow`（工作流定义）、`sys_workflow_run`（运行历史）；DDL 见 `code/aiTools_backend/sql/init_workflow.sql`。
+**相关表**：`sys_workflow`（工作流定义）、`sys_workflow_run`（运行历史）、`sys_tool_output`（节点产物）；DDL 均在 `code/aiTools_backend/sql/init.sql`（本地另有 `init_workflow.sql` 等拆分脚本，**未入库**）。
 
 ## 其他模块
 
 | 模块 | 接口前缀 | 说明 |
 |---|---|---|
 | 用户 | `/api/user` | 登录/注册/找回账号/改密/资料（JWT 鉴权） |
+| 我的 AI 模型 | `/api/user-ai-model` | 用户自填 Key 的模型 CRUD + 设默认（见「用户自选 AI 模型」） |
 | 历史记录 | `/api/history` | 工具调用历史（主表 + 明细 + 文件） |
 | 提示词 | `/api/prompt` | 系统提示词查询 + 用户自定义提示词 CRUD + AI 生成 |
-| 收藏 | `/api/favorite` | 工具/提示词收藏（`sys_user_favorite`，DDL 见 `sql/init_favorite.sql`） |
+| 收藏 | `/api/favorite` | 工具/提示词收藏（`sys_user_favorite`，DDL 见 `sql/init.sql`） |
+| 图片处理 | `/api/ai-office/id-photo-bg-change`<br>`/api/ai-office/image-bg-remover` | 人像分割（本地 ONNX 离线推理） |
 | 文件 | `/api/file/upload` | 通用文件上传（COS / 本地，按 `prefix` 分目录） |
 
 ## 用户角色与权限
@@ -390,6 +493,45 @@ ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
 4. 前端详情页显示文件名，点击用该次签发的 URL 下载
 
 **注意**：`history_file.role` 语义为 **1输入 / 2输出**（原建表注释 0/1 与 Java 代码 1/2 冲突，已统一为后者）。
+
+### 3. ONNX 抠图模型未入库（`.gitignore` 无 `*.onnx` 规则）
+
+**现象**：`code/aiTools_backend/src/main/resources/models/` 下两个模型共 **29MB**
+（`modnet_...matting.onnx` 24.69MB + `u2netp.onnx` 4.36MB）目前是**未跟踪状态**，
+而 `.gitignore` 里没有任何 `*.onnx` / `models/` 规则 —— 一旦 `git add` 就会进仓。
+
+**影响**：clone 后 `resources/models/` 是**空目录**，`segmentation.enabled=true` 时
+图片工具（证件照换底 / 去背景）启动或首次调用即失败。
+
+**可选处理**：
+1. 明确不入库：`.gitignore` 加 `src/main/resources/models/*.onnx`，
+   README 写清下载地址（模型有公开的官方 release / HuggingFace 来源）
+2. 入库：接受仓库增加 29MB（GitHub 单文件 100MB 限制内，但每次 clone 都要拖这 29MB）
+3. 启动时下载到 `models/` 目录（推荐，兼顾可复现与仓库体积）
+
+### 4. App 端（Android/iOS）无法选择文件
+
+**现象**：`tool-common.vue` 的文件选择分两条路 —— H5 用 `<input type="file">`，
+非 H5 用 `uni.chooseMessageFile`。按 uni-app 官方兼容表
+（[api/media/file](https://uniapp.dcloud.net.cn/api/media/file.html)），
+**这两个 API 在 App 端都不支持**：`chooseMessageFile` 仅微信/QQ 小程序，`chooseFile` 仅 H5。
+
+**影响**：文档提取、录音转写、批量文档工具在 **App 端完全无法上传文件**（图片也不行，
+因为 `onPureConvertPick` 对图片和文档走的是同一个文件选择器）。这与项目
+`AGENTS.md §1`「App 端适配为最高指令」冲突。
+
+**修复方向**（按成本排序）：
+1. **图片**：改走 `uni.chooseImage`（**全平台支持**，`image-bg-remover.vue` / `profile.vue` 已在用），
+   改动最小，能立刻覆盖 doc-to-text 的图片场景
+2. 文档：引入插件市场「文件选择」（Android 可用 Native.js 无需原生插件，iOS 需原生插件），
+   或用 `plus.io` 自绘选择框读 `_doc` / `_downloads` / `_documents`
+3. 短期兜底：在 App 端给出明确提示文案，而不是静默失败
+
+### 5. `.doc` 文件被拒但报错文案暗示支持
+
+`Constants.ALLOWED_DOC_EXTENSIONS` 不含 `doc`，但 `DocToTextController` 的
+`FILE_UNSUPPORTED` 文案写了「仅支持 PDF/**DOC**/DOCX/TXT/JPG/PNG/BMP/WEBP/GIF」，
+且漏写 `JPEG`。用户传 `.doc` 会被拒却看到"支持 DOC"的提示。修文案或加解析支持，二选一。
 
 **降低优先级的原因**：文件类工具是少数，且规划中工具将逐步改为**前端解析后只传文本**，届时该表可能废弃。
 
