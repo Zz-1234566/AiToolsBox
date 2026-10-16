@@ -590,6 +590,15 @@ const onFilePickerClick = () => {
     return
   }
   // 文档/音频：chooseMessageFile
+  // App 端（Android/iOS）无该 API，能力探测同 UploadArea.vue，不要静默抛错
+  if (typeof uni.chooseMessageFile !== 'function') {
+    uni.showToast({
+      title: isAudio ? '当前平台暂不支持选择录音文件'
+                     : '当前平台暂不支持选择文档，可改用 H5 端或微信小程序',
+      icon: 'none', duration: 2500
+    })
+    return
+  }
   uni.chooseMessageFile({
     count: maxCount,
     type: isAudio ? 'audio' : 'file',
@@ -601,7 +610,8 @@ const onFilePickerClick = () => {
         path: f.path || f,
         size: f.size || 0
       })))
-    }
+    },
+    fail: () => { /* 用户主动取消，不提示 */ }
   })
   // #endif
 }
@@ -751,6 +761,14 @@ const idPhotoLoading = ref(false)
 const idPhotoError = ref('')
 
 /** 选择证件照：H5 用原生 input 拿 File 对象，App/小程序用 uni.chooseImage 拿临时路径 */
+/** 证件照白名单：与后端 Constants.ALLOWED_ID_PHOTO_EXTENSIONS 保持一致 */
+const ID_PHOTO_ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'bmp']
+const getFileExt = (name) => {
+  if (!name) return ''
+  const i = name.lastIndexOf('.')
+  return i >= 0 ? name.substring(i + 1).toLowerCase() : ''
+}
+
 const onIdPhotoPick = () => {
   // #ifdef H5
   const input = document.createElement('input')
@@ -759,6 +777,12 @@ const onIdPhotoPick = () => {
   input.onchange = () => {
     const f = (input.files && input.files[0]) || null
     if (!f) return
+    // 校验：accept 只是浏览器提示，用户仍可手动选 All files，必须按扩展名兜底
+    const ext = getFileExt(f.name)
+    if (!ID_PHOTO_ALLOWED_EXTS.includes(ext)) {
+      uni.showToast({ title: '不支持的证件照格式，仅支持 JPG/JPEG/PNG/BMP', icon: 'none', duration: 2500 })
+      return
+    }
     // 上一次选图的 objectURL 及时释放，避免内存泄漏
     const prev = idPhotoPicked.value
     if (prev && prev.isObjectUrl) URL.revokeObjectURL(prev.path)
@@ -781,13 +805,22 @@ const onIdPhotoPick = () => {
     count: 1,
     sizeType: ['compressed'],
     sourceType: ['album', 'camera'],
+    // extension 让文件选择器**先**过滤（H5 端会映射为 input.accept），与 ID_PHOTO_ALLOWED_EXTS 保持一致
+    extension: ID_PHOTO_ALLOWED_EXTS,
     success: (res) => {
       const path = (res.tempFilePaths || [])[0]
       if (!path) return
       const temp = (res.tempFiles || [])[0]
+      // 校验：App/小程序端走 chooseImage 通常是相机/相册，不一定能拿到扩展名，按 name 兜底
+      const fileName = (temp && temp.name) || path.split('/').pop() || '证件照'
+      const ext = getFileExt(fileName)
+      if (ext && !ID_PHOTO_ALLOWED_EXTS.includes(ext)) {
+        uni.showToast({ title: '不支持的证件照格式，仅支持 JPG/JPEG/PNG/BMP', icon: 'none', duration: 2500 })
+        return
+      }
       idPhotoPicked.value = {
         path,
-        name: (temp && temp.name) || path.split('/').pop() || '证件照',
+        name: fileName,
         sizeText: formatFileSize((temp && temp.size) || 0),
         size: (temp && temp.size) || 0,
         file: null
@@ -957,24 +990,42 @@ watch(toolId, () => {
   asrEngine.value = toolInfo.value.defaultEngine || 'minimax'
 }, { immediate: true })
 
-/** 选择文件（纯转换工具）：H5 用原生 input，App 用 chooseMessageFile */
+/** 纯转换工具白名单（与后端 Constants 保持同步）：
+ *  文档类：doc-to-text 工具用 PDF/DOCX/TXT 走文字层，PNG/JPG/JPEG/BMP/GIF/WEBP 走 OCR
+ *  音频类：audio-transcribe 工具用 mp3/wav/m4a/aac/flac/ogg/amr
+ */
+const PURE_CONVERT_DOC_EXTS = ['pdf', 'docx', 'txt', 'png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp']
+const PURE_CONVERT_AUDIO_EXTS = ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'amr']
+const getPureConvertExt = (name) => {
+  if (!name) return ''
+  const i = name.lastIndexOf('.')
+  return i >= 0 ? name.substring(i + 1).toLowerCase() : ''
+}
+
+/** 选中文案：音频走音频白名单，文档类（含图片）走文档白名单 */
+const pureConvertTip = (isAudio) => isAudio
+  ? '不支持的录音格式，仅支持 MP3/WAV/M4A/AAC/FLAC/OGG/AMR'
+  : '不支持的文件类型，仅支持 PDF/DOCX/TXT 或 PNG/JPG/JPEG/BMP/GIF/WEBP'
+
+/**
+ * 选择文件（纯转换工具）
+ *
+ * H5：原生 <input type="file">
+ * 微信/QQ 小程序：uni.chooseMessageFile（平台支持）
+ * App（Android/iOS）：**不存在文件选择器 API**，只有 uni.chooseImage 全平台可用。
+ *   详见 https://uniapp.dcloud.net.cn/api/media/file.html（App 列均为 x）。
+ *   故 App 端文档类改走 ActionSheet：图片走 chooseImage，文档给出明确提示而非静默失败。
+ */
 const onPureConvertPick = () => {
   const isAudio = toolId.value === 'audio-transcribe'
   const maxCount = (toolInfo.value.fileRule && toolInfo.value.fileRule.maxCount) || 1
-  // #ifdef H5
-  const input = document.createElement('input')
-  input.type = 'file'
-  // 方案 B：保留现有 mockup 外观，仅把选择逻辑改为支持多选（不引入新组件/样式）
-  input.multiple = maxCount > 1
-  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : '.pdf,.docx,.txt'
-  input.onchange = () => {
-    const picked = Array.from(input.files || [])
+  const allowedExts = isAudio ? PURE_CONVERT_AUDIO_EXTS : PURE_CONVERT_DOC_EXTS
+
+  /** 合并已选文件并裁剪到上限（H5 / 非 H5 共用，避免两份重复逻辑） */
+  const applyPicked = (picked) => {
     if (!picked.length) return
     if (maxCount > 1) {
-      // 多选：累加到 pureConvertFiles
-      const merged = pureConvertFiles.value.concat(
-        picked.map(f => ({ name: f.name, file: f, size: f.size || 0 }))
-      )
+      const merged = pureConvertFiles.value.concat(picked)
       if (merged.length > maxCount) {
         uni.showToast({ title: `最多 ${maxCount} 个文件，已截断`, icon: 'none' })
         merged.splice(maxCount)
@@ -983,33 +1034,99 @@ const onPureConvertPick = () => {
       // 兼容旧逻辑：pureConvertFile 始终指向第一个
       pureConvertFile.value = merged[0] || null
     } else {
-      // 单文件：保持原行为
-      pureConvertFile.value = { name: picked[0].name, file: picked[0] }
-      pureConvertFiles.value = [pureConvertFile.value]
+      pureConvertFile.value = picked[0]
+      pureConvertFiles.value = [picked[0]]
     }
+  }
+
+  // #ifdef H5
+  const input = document.createElement('input')
+  input.type = 'file'
+  // 方案 B：保留现有 mockup 外观，仅把选择逻辑改为支持多选（不引入新组件/样式）
+  input.multiple = maxCount > 1
+  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr'
+                       : '.pdf,.docx,.txt,.png,.jpg,.jpeg,.bmp,.gif,.webp'
+  input.onchange = () => {
+    const picked = Array.from(input.files || [])
+    if (!picked.length) return
+    // 兜底：accept 只是浏览器提示，用户仍可手动选 All files；按扩展名过滤，不符合的直接丢弃
+    const valid = picked.filter(f => {
+      const ext = getPureConvertExt(f.name)
+      return ext && allowedExts.includes(ext)
+    })
+    if (!valid.length) {
+      uni.showToast({ title: pureConvertTip(isAudio), icon: 'none', duration: 2500 })
+      return
+    }
+    applyPicked(valid.map(f => ({ name: f.name, file: f, size: f.size || 0 })))
   }
   input.click()
   // #endif
   // #ifndef H5
+  // App 端（Android/iOS）不存在 chooseFile / chooseMessageFile，只有 uni.chooseImage 可用。
+  // 能力探测同 UploadArea.vue：typeof 探测不到就不要再调，否则直接抛错。
+  if (typeof uni.chooseMessageFile !== 'function') {
+    if (isAudio) {
+      // 录音只能靠文件选择器，App 端无解 → 明确告知，不再静默失败
+      uni.showToast({ title: '当前平台暂不支持选择录音文件', icon: 'none', duration: 2500 })
+      return
+    }
+    // 文档提取的图片走 OCR，只需 chooseImage（全平台支持）→ 让用户选来源
+    uni.showActionSheet({
+      itemList: ['选择图片（自动走 OCR）', '选择文档文件'],
+      success: ({ tapIndex }) => {
+        if (tapIndex !== 0) {
+          uni.showToast({ title: '当前平台暂不支持选择文档，可改用图片', icon: 'none', duration: 2500 })
+          return
+        }
+        uni.chooseImage({
+          count: maxCount,
+          sizeType: ['compressed'],
+          sourceType: ['album', 'camera'],
+          success: (res) => {
+            const files = res.tempFiles || []
+            const picked = (res.tempFilePaths || []).map((p, i) => {
+              const t = files[i]
+              // uni.chooseImage 的 name 仅 H5 支持，App/小程序统一从 path 末段兜底取名
+              const name = (t && t.name) || p.split('/').pop() || ''
+              const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : ''
+              // 取不到扩展名时放行：后端 Constants.ALLOWED_DOC_EXTENSIONS 是权威校验，
+              // 且会返回明确错误文案；这里若拦死反而把 iOS 正常图片挡在门外
+              if (ext && !PURE_CONVERT_DOC_EXTS.includes(ext)) return null
+              return { name: name || '图片', file: null, path: p, size: (t && t.size) || 0 }
+            }).filter(Boolean)
+            if (!picked.length) {
+              uni.showToast({ title: pureConvertTip(false), icon: 'none', duration: 2500 })
+              return
+            }
+            applyPicked(picked)
+          },
+          fail: () => { /* 用户主动取消，不提示 */ }
+        })
+      }
+    })
+    return
+  }
   uni.chooseMessageFile({
     count: maxCount > 1 ? maxCount : 1,
     type: isAudio ? 'audio' : 'file',
+    // extension 让文件选择器**先**过滤（H5 端会映射为 input.accept），与 allowedExts 保持一致
+    extension: allowedExts,
     success: (res) => {
-      const picked = (res.tempFiles || []).map(f => ({ name: f.name || f.path, file: null, path: f.path, size: f.size || 0 }))
-      if (!picked.length) return
-      if (maxCount > 1) {
-        const merged = pureConvertFiles.value.concat(picked)
-        if (merged.length > maxCount) {
-          uni.showToast({ title: `最多 ${maxCount} 个文件，已截断`, icon: 'none' })
-          merged.splice(maxCount)
-        }
-        pureConvertFiles.value = merged
-        pureConvertFile.value = merged[0] || null
-      } else {
-        pureConvertFile.value = picked[0]
-        pureConvertFiles.value = [picked[0]]
+      const allPicked = (res.tempFiles || []).map(f => ({ name: f.name || f.path, file: null, path: f.path, size: f.size || 0 }))
+      if (!allPicked.length) return
+      // 兜底：chooseMessageFile 不按 accept 过滤，按 name 扩展名再次校验
+      const picked = allPicked.filter(f => {
+        const ext = getPureConvertExt(f.name)
+        return ext && allowedExts.includes(ext)
+      })
+      if (!picked.length) {
+        uni.showToast({ title: pureConvertTip(isAudio), icon: 'none', duration: 2500 })
+        return
       }
-    }
+      applyPicked(picked)
+    },
+    fail: () => { /* 用户主动取消，不提示 */ }
   })
   // #endif
 }

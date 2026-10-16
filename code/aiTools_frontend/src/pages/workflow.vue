@@ -368,12 +368,15 @@ const openRun = async (wf) => {
 const pickFile = (n) => {
   const t = toolByCode(n.nodeRef)
   const isAudio = t && t.inputType && t.inputType.includes('audio')
+  // 下游可能是 doc-to-text（接受文档与图片），故非音频节点同时放开图片格式；
+  // 图片扩展名与后端 ALLOWED_FILE_EXTENSIONS 对齐（不含 bmp，该端点不接受）
+  const DOC_ACCEPT = '.pdf,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp'
   // #ifdef H5
   const input = document.createElement('input')
   input.type = 'file'
   // 多选：工作流节点是数组语义（N 个文件 → N 个独立输入），支持一次选多个
   input.multiple = true
-  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : '.pdf,.docx,.txt'
+  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : DOC_ACCEPT
   input.onchange = async () => {
     const list = Array.from(input.files || [])
     if (list.length) await uploadFiles(n, list)
@@ -381,13 +384,24 @@ const pickFile = (n) => {
   input.click()
   // #endif
   // #ifndef H5
+  // App 端（Android/iOS）无 chooseFile / chooseMessageFile，能力探测同 UploadArea.vue，
+  // 探测不到就明确提示，不要静默抛错
+  if (typeof uni.chooseMessageFile !== 'function') {
+    uni.showToast({
+      title: isAudio ? '当前平台暂不支持选择录音文件'
+                     : '当前平台暂不支持选择文档，可改用 H5 端或微信小程序',
+      icon: 'none', duration: 2500
+    })
+    return
+  }
   uni.chooseMessageFile({
     count: 10,
     type: isAudio ? 'audio' : 'file',
     success: async (res) => {
       const list = (res.tempFiles || []).map(f => f.path || f)
       if (list.length) await uploadFiles(n, list)
-    }
+    },
+    fail: () => { /* 用户主动取消，不提示 */ }
   })
   // #endif
 }

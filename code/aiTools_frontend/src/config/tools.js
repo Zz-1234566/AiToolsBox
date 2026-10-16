@@ -128,6 +128,15 @@ export const TOOLS = {
     pureConvert: true,                        // 纯解析工具：不渲染提示词卡片、无提示词校验
     desc: '上传文档或图片提取纯文本：文本型 PDF/Word/TXT 走文字层解析，图片与扫描件自动走 OCR。',
     inputTypes: ['file'], defaultInput: 'file', fileType: 'file',
+    fileRule: {
+      accept: '.pdf,.docx,.txt,.png,.jpg,.jpeg,.bmp,.gif,.webp',
+      maxCount: 1,
+      maxTotalSize: 20 * 1024 * 1024,
+      title: '上传文件',
+      desc: '支持 PDF、DOCX、TXT、JPG、PNG、BMP、GIF、WEBP · 单个文件 20MB',
+      uploadType: 'file',
+      apiPath: '/api/ai-office/doc-to-text'
+    },
     uploadTitle: '上传文件', uploadDesc: '支持 PDF、Word、TXT、图片',
     actionText: '提取文本', resultTitle: '提取结果', resultPlaceholder: '提取的文本将在这里显示...',
     validateRules: {
@@ -142,6 +151,15 @@ export const TOOLS = {
     // 注意：不要加 pureConvert —— tool-common.vue 的 isPureConvert 区块会再渲染一套上传卡，与本页 UI 重复
     desc: '上传一张人像证件照，AI 自动抠出人像并合成红 / 蓝 / 白底证件照。',
     inputTypes: ['image'], defaultInput: 'image', fileType: 'image',
+    fileRule: {
+      accept: '.jpg,.jpeg,.png,.bmp',
+      maxCount: 1,
+      maxTotalSize: 20 * 1024 * 1024,
+      title: '上传证件照',
+      desc: '支持 JPG、JPEG、PNG、BMP · 单张 20MB',
+      uploadType: 'file',
+      apiPath: '/api/ai-office/id-photo-bg-change'
+    },
     uploadTitle: '点击上传证件照', uploadDesc: '支持 JPG、PNG、BMP · 单张不超过 20MB',
     // 底色选项（value 对应后端 bgColor 入参）
     bgColorOptions: [
