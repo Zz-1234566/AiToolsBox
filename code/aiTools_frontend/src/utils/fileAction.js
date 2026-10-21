@@ -1,0 +1,176 @@
+/**
+ * 产物类型判定 + 下载/打开的唯一出口。
+ *
+ * 【为什么必须有这个文件】
+ * 1) 类型判定：后端 ToolOutput.outputType 约定为 1文本/2图片/3视频/4音频/5文件，
+ *    但历史记录走的是「把产物 URL 写进 output_content」这条老路，
+ *    只能靠扩展名反推。改造前 history.vue / history-detail.vue / workflowView.js
+ *    各自维护一份扩展名数组，同一工具在不同页面展示口径不一致
+ *    （列表页显示裸 URL，详情页显示图片）。
+ * 2) 下载：改造前项目里有 5 份 downloadFile / <a download> 复制品，
+ *    有的没做 403 过期处理、有的 App 端不存相册、有的带死代码。
+ *
+ * 【约束】新增文件下载 / 产物展示逻辑前，先 grep 本文件确认是否已有现成实现，
+ * 不允许再写第 N 份（见 AGENTS.md「前端规范」§3）。
+ *
+ * 类型判定的底层工具（isFileUrl / extensionOf / fileNameFromUrl）仍复用
+ * fileDisplayName.js，本文件只做「产物语义」的聚合，不再重复实现。
+ */
+import { isFileUrl, extensionOf, fileNameFromUrl, isAudioExt } from './fileDisplayName'
+
+// ==================== 扩展名词典（唯一一份） ====================
+const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+const VIDEO_EXT = ['mp4', 'mov', 'webm', 'avi', 'mkv']
+
+/** 图片扩展名 */
+const isImageExt = (ext) => IMAGE_EXT.indexOf(String(ext || '').toLowerCase()) >= 0
+/** 视频扩展名 */
+const isVideoExt = (ext) => VIDEO_EXT.indexOf(String(ext || '').toLowerCase()) >= 0
+
+/**
+ * 产物类型判定 —— 全项目唯一入口。
+ *
+ * @param {String|Number} output 产物 URL，或后端 outputType 数字
+ * @returns {'text'|'image'|'video'|'audio'|'file'}
+ *   text = 纯文本（AI 输出、摘要等，非 URL 字符串）
+ *   image / video / audio = 可直接内联展示的可视产物
+ *   file = 其他可下载文件（pdf、docx…）
+ */
+export const outputKindOf = (output) => {
+  // 传了后端 outputType（1文本 2图片 3视频 4音频 5文件）时直接映射
+  if (typeof output === 'number') {
+    return ({ 1: 'text', 2: 'image', 3: 'video', 4: 'audio', 5: 'file' })[output] || 'text'
+  }
+  const s = String(output || '').trim()
+  if (!s) return 'text'
+  // 整串是一个 URL 才按文件判定；正文里内嵌链接的文本按 text 处理
+  if (!isFileUrl(s)) return 'text'
+  const ext = extensionOf(fileNameFromUrl(s))
+  if (isImageExt(ext)) return 'image'
+  if (isVideoExt(ext)) return 'video'
+  if (isAudioExt(ext)) return 'audio'
+  return 'file'
+}
+
+/**
+ * 主操作按钮的文案 —— 文本走「复制结果」，可视产物走「下载」。
+ * 与 history-detail 的按钮口径保持一致。
+ */
+export const primaryActionLabel = (output) => {
+  const k = outputKindOf(output)
+  return ({
+    text: '复制结果',
+    image: '下载图片',
+    video: '下载视频',
+    audio: '下载音频',
+    file: '下载文件'
+  })[k]
+}
+
+/** 产物在页面上的短描述（列表页用；文本取前 N 字，可视产物取文件名） */
+export const outputBrief = (output, limit = 28) => {
+  const k = outputKindOf(output)
+  if (k === 'text') {
+    const t = String(output || '').replace(/\s+/g, ' ').trim()
+    if (!t) return '—'
+    return t.length > limit ? t.slice(0, limit) + '…' : t
+  }
+  const name = fileNameFromUrl(output) || '产物'
+  return name.length > limit ? name.slice(0, limit) + '…' : name
+}
+
+// ==================== 下载 / 打开 ====================
+
+/**
+ * 下载或打开一个产物。
+ *
+ * 跨端策略：
+ * - H5：<a download> 直接存盘。跨域图片同样可下载，无需 fetch 转 blob。
+ * - 非 H5：先 downloadFile 拿本地路径；图片存相册，其余 openDocument 让用户在
+ *   文件管理器里保存。
+ *
+ * COS 私有签名 URL 有效期有限（cos.signed-url-ttl-seconds，默认 3600s），
+ * 过期返回 403，这里给明确提示而不是透出英文错误码。
+ *
+ * @param {Object} target { url, name?, kind? }
+ * @param {Object} [opts]   { toast?: boolean } 是否在结束后弹提示
+ */
+export const downloadOutput = (target, opts = {}) => {
+  if (!target || !target.url) {
+    uni.showToast({ title: '文件链接不可用', icon: 'none' })
+    return
+  }
+  const url = target.url
+  const name = target.name || fileNameFromUrl(url) || 'output'
+  const kind = target.kind || outputKindOf(url)
+
+  // #ifdef H5
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.target = '_blank'
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  if (opts.toast !== false) uni.showToast({ title: '已开始下载', icon: 'success' })
+  return
+  // #endif
+
+  // #ifndef H5
+  uni.showLoading({ title: '下载中…', mask: true })
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      if (res.statusCode !== 200) {
+        uni.showToast({ title: '下载失败（链接可能已过期）', icon: 'none' })
+        return
+      }
+      if (kind === 'image') {
+        uni.saveImageToPhotosAlbum({
+          filePath: res.tempFilePath,
+          success: () => uni.showToast({ title: '已保存到相册', icon: 'success' }),
+          fail: () => uni.showToast({ title: '保存失败，可长按图片另存', icon: 'none' })
+        })
+      } else {
+        uni.openDocument({
+          filePath: res.tempFilePath,
+          showMenu: true,
+          fail: () => uni.showToast({ title: '无法打开该文件', icon: 'none' })
+        })
+      }
+    },
+    fail: () => uni.showToast({ title: '下载失败', icon: 'none' }),
+    complete: () => uni.hideLoading()
+  })
+  // #endif
+}
+
+/**
+ * 产物预览：图片全屏预览、视频/音频交给页面内控件，其余先下载再打开。
+ * 与 downloadOutput 分开——「看」和「存」是两种用户意图。
+ */
+export const previewOutput = (target) => {
+  if (!target || !target.url) {
+    uni.showToast({ title: '文件链接不可用', icon: 'none' })
+    return
+  }
+  const kind = target.kind || outputKindOf(target.url)
+  if (kind === 'image') {
+    uni.previewImage({ urls: [target.url], current: target.url })
+    return
+  }
+  // 音频走「下载后试听」：小程序端 playVoice 只接受本地路径，直接传网络地址会失败
+  if (kind === 'audio') {
+    downloadOutput(target, { toast: false })
+    return
+  }
+  // 视频有页面内 <video controls> 兜底；其余走下载
+  if (kind !== 'video') downloadOutput(target)
+}
+
+/** 类型对应的 emoji 图标（与项目既有风格一致） */
+export const outputIcon = (output) => {
+  const k = outputKindOf(output)
+  return ({ text: '📝', image: '🖼️', video: '🎬', audio: '🎵', file: '📎' })[k]
+}

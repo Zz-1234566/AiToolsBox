@@ -19,14 +19,28 @@
       </view>
     </view>
     <view class="result-content">
-      <text v-if="content" class="result-text">{{ content }}</text>
+      <!-- 产物类型分流：content 整串是 URL 且属于可视类型时，内联展示而不是当文本铺出来。
+           类型判定与下载统一走 utils/fileAction，禁止在组件里自维护扩展名数组。 -->
+      <view v-if="visualKind" class="result-visual">
+        <view v-if="visualKind === 'image'" class="result-visual__media" @click="onPreview">
+          <image :src="content" mode="widthFix" class="result-visual__img" />
+        </view>
+        <view v-else class="result-file" hover-class="result-file--hover" @click="onPreview">
+          <text class="result-file__icon">{{ outputIcon(content) }}</text>
+          <text class="result-file__name">{{ outputBrief(content, 40) }}</text>
+          <text class="result-file__action">{{ visualKind === 'audio' ? '试听' : '打开' }}</text>
+        </view>
+      </view>
+      <text v-else-if="content" class="result-text">{{ content }}</text>
       <text v-else class="result-placeholder">{{ placeholder }}</text>
     </view>
   </view>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { copyRaw } from '@/utils/clipboard'
+import { outputKindOf, outputIcon, outputBrief, previewOutput } from '@/utils/fileAction'
 
 const props = defineProps({
   title: {
@@ -45,9 +59,20 @@ const props = defineProps({
 
 const emit = defineEmits(['copy', 'regenerate'])
 
+/** 产物是否需要内联展示；text 则沿用纯文本渲染 */
+const visualKind = computed(() => {
+  const k = outputKindOf(props.content)
+  return k === 'text' ? '' : k
+})
+
 const onCopy = () => {
   copyRaw(props.content)
   emit('copy')
+}
+
+/** 产物预览：图片全屏、音频下载后试听、其余下载打开 */
+const onPreview = () => {
+  previewOutput({ url: props.content })
 }
 
 const onRegenerate = () => {
@@ -60,7 +85,52 @@ const onRegenerate = () => {
   background-color: $bg-white;
   border-radius: $radius-lg;
   padding: $spacing-md;
-  box-shadow: $shadow-card;
+  box-shadow: $shadow-card;}
+
+/* ===== 可视产物（图片 / 音频 / 视频 / 文件） ===== */
+.result-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.result-visual__media {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.result-visual__img {
+  display: block;
+  width: 100%;
+  /* 棋盘格衬出透明区域（抠图产物多为透明 PNG） */
+  background-color: $bg-gray;
+  background-image:
+    linear-gradient(45deg, rgba(0,0,0,0.05) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(0,0,0,0.05) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(0,0,0,0.05) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(0,0,0,0.05) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+.result-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+}
+.result-file--hover { opacity: 0.6; }
+.result-file__icon { font-size: 20px; }
+.result-file__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: $text-secondary;
+}
+.result-file__action {
+  font-size: 13px;
+  color: $brand-primary;
+  flex-shrink: 0;
 }
 
 .result-header {

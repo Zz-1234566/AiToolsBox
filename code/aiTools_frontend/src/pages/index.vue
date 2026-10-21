@@ -101,6 +101,7 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
 import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
+import { switchTab } from '@/utils/pageTransition'
 
 // tools.js icon 字段 → 首页可渲染的 iconType（共用映射）
 const ICON_TYPE_MAP = {
@@ -137,7 +138,10 @@ function goToSearch() {
   uni.navigateTo({ url: '/pages/search' })
 }
 function goToCategory() {
-  uni.navigateTo({ url: '/pages/category' })
+  // ⚠️ category 在 pages.json 的 tabBar.list 里，navigateTo 指向 tabBar 页
+  // 在 App / 小程序端会直接失败（tabBar 页只能 switchTab）。H5 端侥幸能跳，
+  // 但会多压一层页面栈，导致返回时多退一次才回到首页。
+  switchTab('/pages/category')
 }
 function goToHistory() {
   uni.navigateTo({ url: '/pages/history' })

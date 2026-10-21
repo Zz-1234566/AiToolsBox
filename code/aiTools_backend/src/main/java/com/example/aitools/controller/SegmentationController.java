@@ -9,8 +9,10 @@ import com.example.aitools.dto.BatchUploadResponse;
 import com.example.aitools.dto.SegmentResult;
 import com.example.aitools.entity.ToolOutput;
 import com.example.aitools.exception.BusinessException;
+import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.service.BatchTaskService;
 import com.example.aitools.service.FileStorageService;
+import com.example.aitools.service.HistoryService;
 import com.example.aitools.service.SegmentationService;
 import com.example.aitools.service.ToolOutputService;
 import com.example.aitools.utils.AuthUtil;
@@ -37,7 +39,8 @@ import java.util.concurrent.RejectedExecutionException;
 /**
  * 人像分割（图片去背景）Controller。
  * <p>
- * 提供证件照换背景色端点：上传人像照片 → 本地 ONNX 抠图 → 合成红/蓝/白底 → 存 COS + 产物落库。
+ * 提供图片去/换背景端点：上传人像照片 → 本地 ONNX 抠图 → 合成透明底 / 纯色底 / 背景图
+ * → 存 COS + 产物落库 + 写调用历史。
  * <p>
  * <b>鉴权说明</b>：端点路径不在 {@link Constants#PUBLIC_PATH_PATTERNS} 内，
  * {@code AuthInterceptor} 会自动强制登录，Controller 内无需任何鉴权代码。
@@ -52,13 +55,9 @@ import java.util.concurrent.RejectedExecutionException;
 @Slf4j
 public class SegmentationController {
 
-    /** 工具编码，与 sys_aitools_tool.tool_code 一致，历史记录按它归类 */
-    private static final String TOOL_CODE = "id-photo-bg-change";
-
-    /** 产物文件名（不含随机串，存储层会再拼） */
-    private static final String OUTPUT_FILENAME = "id-photo-bg-change.png";
-
-    /** 图片去/换背景图 tool_code（独立工具，与 id-photo-bg-change 不共享实现） */
+    /**
+     * 图片去/换背景图 tool_code（与人像分割共用实现，产品上只保留这一个图片工具）
+     */
     private static final String TOOL_CODE_BG_REMOVER = "image-bg-remover";
 
     /** image-bg-remover 产物文件名：transparent/color 模式输出 PNG，image 模式输出 JPG。
@@ -77,74 +76,13 @@ public class SegmentationController {
     private final SegmentationService segmentationService;
     private final ToolOutputService toolOutputService;
     private final BatchTaskService batchTaskService;
+    private final HistoryService historyService;
+    private final AiToolMapper aiToolMapper;
     private final AuthUtil authUtil;
 
     /** 批量任务线程池（核心 4 / 最大 16 / 队列 50）—— 与 OCR 批处理、文件解读同池 */
     @Qualifier(ExecutorConfig.BATCH_EXECUTOR)
     private final ExecutorService batchExecutor;
-
-    /**
-     * 证件照换背景色。
-     * <p>
-     * 独立调用工具（无工作流上下文），故 runId / nodeId / nodeName 全传 null，
-     * 产物仅靠 toolCode + fileIndex 关联 —— 与 ToolOutputService 接口约定一致。
-     *
-     * @param file    待处理的人像证件照（jpg / png / bmp）
-     * @param bgColor 底色：red / blue / white，不传默认红色
-     * @return 产物 URL、文件名、宽高信息
-     */
-    @PostMapping("/id-photo-bg-change")
-    public Result<ToolOutputVO> idPhotoBgChange(@RequestParam("file") MultipartFile file,
-                                                @RequestParam(value = "bgColor", required = false,
-                                                        defaultValue = "red") String bgColor,
-                                                HttpServletRequest request) {
-        // 1) 入参校验（与 FileController 同一口径：空文件 / 超 20MB / 非图片 一律拒绝）
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请选择要处理的证件照");
-        }
-        if (file.getSize() > Constants.MAX_FILE_SIZE) {
-            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
-        }
-        // 证件照白名单：jpg/jpeg/png/bmp（不含 gif/webp）
-        String photoName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
-        String photoExt = FileStorageService.extractExtension(photoName).replaceFirst("^\\.", "");
-        if (!Constants.ALLOWED_ID_PHOTO_EXTENSIONS.contains(photoExt)) {
-            throw new BusinessException(ResultCode.FILE_UNSUPPORTED.getCode(),
-                    "不支持的证件照格式，仅支持 JPG/JPEG/PNG/BMP");
-        }
-
-        byte[] source;
-        try {
-            source = file.getBytes();
-        } catch (IOException e) {
-            log.warn("[id-photo-bg-change] 读取上传文件失败 name={}", file.getOriginalFilename(), e);
-            throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
-        }
-
-        // 2) 去背景 + 换底色（非法底色、无法解码、推理失败均由 service 抛业务异常）
-        long start = System.currentTimeMillis();
-        SegmentResult result = segmentationService.removeBackground(source, bgColor);
-        log.info("[id-photo-bg-change] 抠图完成 bgColor={} {}x{} 耗时={}ms",
-                bgColor, result.getWidth(), result.getHeight(),
-                System.currentTimeMillis() - start);
-
-        // 3) 产物落库（内部先写 COS 再插 sys_tool_output，返回可直接给前端展示的 VO）
-        ToolOutputVO vo = toolOutputService.saveFileOutput(
-                null, null, null,
-                TOOL_CODE,
-                0,
-                ToolOutput.TYPE_IMAGE,
-                result.getImageBytes(),
-                OUTPUT_FILENAME,
-                result.getMimeType(),
-                result.getWidth(),
-                result.getHeight(),
-                null);
-
-        // 4) 本地存储实现只返回相对路径（/uploads/xxx），统一补成完整 URL
-        vo.setFileUrl(FileStorageService.resolveFullUrl(vo.getFileUrl(), request));
-        return Result.success("换背景色成功", vo);
-    }
 
     /**
      * 图片去/换背景（image-bg-remover，1-10 个文件，批量），3 模式合一：
@@ -153,9 +91,6 @@ public class SegmentationController {
      *   <li>{@code mode=color} —— 换底色（需传 {@code backgroundColor=red/blue/white}），输出 PNG</li>
      *   <li>{@code mode=image} —— 换背景图（需传 {@code background} 文件），输出 JPG</li>
      * </ul>
-     * <p>
-     * 与 {@code /id-photo-bg-change} 的区别：本端点是「批量 + 3 模式合一 + 通用尺寸」，
-     * 证件照是「单文件 + 固定 3 色 + 严格像素限」。两个端点不复用实现，独立 tool_code、独立产物。
      * <p>
      * 流程对齐 {@code /document-summary/batch-upload}：HTTP 同步建 batch 任务并立即返回
      * {@code batchId}，前端用 {@code GET /api/ai-office/batch/{batchId}/completed?since=N}
@@ -258,14 +193,22 @@ public class SegmentationController {
                     batchTaskService.markRunning(batchId);
                     int success = 0;
                     int fail = 0;
+                    // 工具 id 查一次即可（N 个文件共用），查不到不阻断（历史允许 tool_id 为空）
+                    Long bgRemoverToolId = findToolId(TOOL_CODE_BG_REMOVER);
                     for (BatchFilePayload p : payloads) {
+                        String fileName = p.getOriginalFilename();
+                        // 先建「处理中」历史，保证产物一产出就有记录（与 OCR / doc-to-text 同口径）
+                        Long historyId = historyService.createPendingHistory(
+                                userId, bgRemoverToolId, null, TOOL_CODE_BG_REMOVER,
+                                "上传图片：" + fileName);
+                        long fileStart = System.currentTimeMillis();
                         try {
                             // 3 模式合一：交由 service 内部按 mode 分发
                             SegmentResult r = segmentationService.processImage(
                                     p.getContent(), modeFinal, bgColorFinal, bgFinal);
                             // 产物落库（批量任务来源：写 batchId 让 completed 端点能反查）
                             // fileIndex 用循环下标区分同批次多张产物
-                            toolOutputService.saveBatchFileOutput(
+                            ToolOutputVO output = toolOutputService.saveBatchFileOutput(
                                     batchId,
                                     TOOL_CODE_BG_REMOVER,
                                     success + fail,
@@ -276,10 +219,14 @@ public class SegmentationController {
                                     r.getWidth(),
                                     r.getHeight(),
                                     null);
+                            // 历史输出内容存产物 URL（产物本体在 sys_tool_output，可按 batchId 回查）
+                            historyService.completeHistory(historyId, output.getFileUrl(),
+                                    (int) (System.currentTimeMillis() - fileStart));
                             success++;
                         } catch (Exception e) {
                             log.error("[image-bg-remover] 单文件失败 batchId={} file={} err={}",
-                                    batchId, p.getOriginalFilename(), e.getMessage());
+                                    batchId, fileName, e.getMessage());
+                            historyService.failHistory(historyId, e.getMessage());
                             fail++;
                         }
                     }
@@ -306,6 +253,27 @@ public class SegmentationController {
         resp.setBatchId(batchId);
         resp.setFileCount(files.size());
         return Result.success("任务已创建", resp);
+    }
+
+    /**
+     * 按 toolCode 查 {@code sys_aitools_tool.id}，供历史记录归类用。
+     * <p>
+     * 查不到返回 null 而不抛异常：历史表的 {@code tool_id} 列允许为空，
+     * 工具数据缺失不应阻断用户真正要的「去背景」这件事。
+     * 口径与 {@code NodeExecutor#workflowToolId} 保持一致。
+     */
+    private Long findToolId(String toolCode) {
+        try {
+            com.example.aitools.entity.AiTool tool = aiToolMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<
+                            com.example.aitools.entity.AiTool>()
+                            .eq(com.example.aitools.entity.AiTool::getToolCode, toolCode)
+                            .last("LIMIT 1"));
+            return tool == null ? null : tool.getId();
+        } catch (Exception e) {
+            log.warn("[image-bg-remover] 查询工具 id 失败 toolCode={}", toolCode, e);
+            return null;
+        }
     }
 
     /**

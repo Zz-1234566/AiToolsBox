@@ -49,6 +49,30 @@
         </view>
       </view>
 
+      <!-- 服务器地址（App 真机调试必填：localhost 在手机上不可达） -->
+      <view class="settings-group">
+        <view class="group-title">服务器地址</view>
+        <view class="group-card">
+          <view class="setting-item" @click="onEditServer">
+            <view class="item-left">
+              <view class="item-icon account-icon">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="2" y="3" width="20" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                  <rect x="2" y="14" width="20" height="7" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                  <circle cx="6" cy="6.5" r="1" fill="currentColor"/>
+                  <circle cx="6" cy="17.5" r="1" fill="currentColor"/>
+                </svg>
+              </view>
+              <view class="item-text-wrap">
+                <text class="item-text">后端地址</text>
+                <text class="item-desc">{{ serverUrl || '未设置（默认 localhost）' }}</text>
+              </view>
+            </view>
+            <text class="item-chevron">›</text>
+          </view>
+        </view>
+      </view>
+
       <!-- 账号设置 -->
       <view class="settings-group">
         <view class="group-title">{{ $t('settings.account') }}</view>
@@ -156,6 +180,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { initTheme, toggleTheme as doToggleTheme } from '@/utils/theme'
 import { requireLogin } from '@/utils/auth'
 import { logoutApi } from '@/api/user'
+import { getBaseUrl, setBaseUrl, resetBaseUrl } from '@/config/env'
 
 const { t, locale } = useI18n()
 
@@ -163,11 +188,45 @@ const isLoggedIn = ref(false)
 const isDarkTheme = ref(initTheme())
 const isEnglish = ref(locale.value === 'en')
 const appVersion = ref('1.0.0')
+/** 当前生效的后端地址（App 真机需填电脑局域网 IP） */
+const serverUrl = ref(getBaseUrl())
 
 onShow(() => {
+  serverUrl.value = getBaseUrl()
   if (!requireLogin()) return
   isLoggedIn.value = !!uni.getStorageSync('token')
 })
+
+/**
+ * 修改后端地址。
+ * 必要性：uni-app 官方说明 localhost / 127.0.0.1 在手机 App 端无法访问，
+ * 真机调试必须填电脑的局域网 IP（如 http://192.168.1.100:8080）。
+ */
+const onEditServer = () => {
+  uni.showModal({
+    title: '后端地址',
+    editable: true,
+    placeholderText: 'http://192.168.1.100:8080',
+    content: serverUrl.value,
+    confirmColor: '#3B82F6',
+    success: (res) => {
+      if (!res.confirm) return
+      const v = (res.content || '').trim()
+      if (!v) {
+        // 留空 = 恢复默认
+        serverUrl.value = resetBaseUrl()
+        uni.showToast({ title: '已恢复默认地址', icon: 'none' })
+        return
+      }
+      if (!/^https?:\/\//i.test(v)) {
+        uni.showToast({ title: '需以 http:// 或 https:// 开头', icon: 'none' })
+        return
+      }
+      serverUrl.value = setBaseUrl(v)
+      uni.showToast({ title: '已保存，接口将使用新地址', icon: 'none' })
+    }
+  })
+}
 
 const toggleTheme = () => {
   isDarkTheme.value = !isDarkTheme.value
@@ -346,6 +405,26 @@ const goToAbout = () => {
   .item-text {
     font-size: $font-size-md;
     color: $text-primary;
+  }
+
+  /* 服务器地址：标题 + 地址副标题（地址可能较长，允许换行） */
+  .item-text-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .item-desc {
+    font-size: $font-size-sm;
+    color: $text-tertiary;
+    margin-top: 4rpx;
+    word-break: break-all;
+  }
+  .item-chevron {
+    font-size: 40rpx;
+    color: $text-tertiary;
+    flex-shrink: 0;
+    margin-left: $spacing-sm;
   }
 
   .item-extra {

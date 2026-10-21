@@ -6,6 +6,11 @@
     </view>
   </view>
 
+  <!-- App 端 SSE 传输组件（视图层发起 XHR）；H5 端用原生 XHR，不需要此组件 -->
+  <!-- #ifdef APP-PLUS -->
+  <sse-renderjs />
+  <!-- #endif -->
+
   <scroll-view scroll-y class="page-content">
     <!-- Hero（左右布局） -->
     <section class="hero-tool">
@@ -226,196 +231,40 @@
       </block>
     </block>
 
-    <!-- 智能识别：上传 + 4 项识别类型列表 -->
-    <block v-if="toolId === 'ocr-recognize' || toolId === 'ocr-recognition'">
-      <view class="upload-card" @click="onFilePickerClick">
-        <view class="upload-card__icon">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+    <!-- ============ 通用结果区（加工层工具共用） ============ -->
+    <!-- 覆盖 work-summary / weekly-report / doc-keypoint-extract / 纯转换类工具：
+         这些工具的输出都写进 resultContent（流式累积或一次性赋值），
+         此前模板里没有任何渲染点，导致「生成完了但界面不显示」。
+         meeting-minutes 已有自己的 JSON 树 / SSE Markdown 渲染区，故排除。 -->
+    <block v-if="showResultArea">
+      <view class="section-title-row">
+        <text class="section-title">生成结果</text>
+        <view class="result-actions">
+          <view class="result-action-btn" @click="copyRaw(resultContent, 'Markdown')">
+            <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            <text>复制 Markdown</text>
+          </view>
+          <view class="result-action-btn" @click="copyPlain(resultContent, '纯文本')">
+            <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M16 1H4C2.9 1 2 1.9 2 3v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            <text>复制纯文本</text>
+          </view>
         </view>
-        <text class="upload-card__title">点击上传文件</text>
-        <text class="upload-card__desc">支持 JPG、PNG、PDF 格式</text>
       </view>
-      <view class="section-title">识别类型</view>
-      <view class="recognize-list">
-        <view v-for="(t, i) in ocrTypes" :key="i" class="recognize-item" @click="selectRecognizeType(t.code)">
-          <view class="recognize-item__icon">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>
-          </view>
-          <view class="recognize-item__body">
-            <text class="recognize-item__title">{{ t.title }}</text>
-            <text class="recognize-item__sub">{{ t.sub }}</text>
-          </view>
-          <view class="recognize-item__chev">
-            <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-          </view>
-        </view>
+      <view class="result-md">
+        <!-- 与会议纪要同一套渲染：streaming 期间只显示转义纯文本，结束后渲染富文本 -->
+        <MarkdownView :source="resultContent" :streaming="loading" />
       </view>
     </block>
 
-    <!-- 证件照换背景色：上传 + 3 色块 + 结果区（真实接口 /api/ai-office/id-photo-bg-change） -->
-    <block v-if="toolId === 'id-photo-bg-change'">
-      <!-- 已选图：展示缩略图 + 文件名，可重新选择 -->
-      <view v-if="idPhotoPicked" class="idphoto-picked" @click="onIdPhotoPick">
-        <image class="idphoto-picked__img" :src="idPhotoPicked.path" mode="aspectFill"></image>
-        <view class="idphoto-picked__body">
-          <text class="idphoto-picked__name">{{ idPhotoPicked.name }}</text>
-          <text class="idphoto-picked__meta">{{ idPhotoPicked.sizeText }}</text>
-        </view>
-        <view class="idphoto-picked__change">
-          <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 13c0-4.42-3.58-8-8-8zm0 12c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 6.74A7.93 7.93 0 004 11c0 4.42 3.58 8 8 8v4l5-5-5-5v4z"/></svg>
-          <text>重新选择</text>
-        </view>
+    <!-- ============ 批量结果卡片（多文件批量处理） ============ -->
+    <!-- 使用公共组件 components/BatchResultCards.vue：
+         它按「字段名：值」把 AI 输出拆成分段卡片，支持分段复制 / 全量复制 / 耗时 / 失败原因，
+         比本页自己内联一套卡片完整。batchCards 由 pollBatchCompleted 填充。 -->
+    <block v-if="batchCards.length > 0">
+      <view class="section-title-row">
+        <text class="section-title">批量结果（{{ batchProgress }}/{{ batchTotal }}）</text>
       </view>
-      <!-- 未选图：上传卡片 -->
-      <view v-else class="upload-card" @click="onIdPhotoPick">
-        <view class="upload-card__icon">
-          <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-        </view>
-        <text class="upload-card__title">{{ toolInfo.uploadTitle || '点击上传证件照' }}</text>
-        <text class="upload-card__desc">{{ toolInfo.uploadDesc || '支持 JPG、PNG 格式' }}</text>
-      </view>
-
-      <!-- 底色选择：红 / 蓝 / 白 单选 -->
-      <view class="section-title">选择背景色</view>
-      <view class="color-picker">
-        <view v-for="c in bgColorChips" :key="c.code" class="color-item" @click="selectBgColor(c.code)">
-          <view class="color-item__chip" :class="[c.cls, { 'is-active': selectedBgColor === c.code }]"></view>
-          <text class="color-item__label">{{ c.label }}</text>
-        </view>
-      </view>
-      <view class="tip">
-        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-        <text>建议上传正面免冠、背景干净的半身照，换底色效果更佳</text>
-      </view>
-
-      <!-- 结果区：loading → 错误 → 图片预览 -->
-      <block v-if="idPhotoLoading">
-        <view class="idphoto-loading">
-          <view class="idphoto-loading__spinner"></view>
-          <text class="idphoto-loading__text">AI 抠图中，请稍候…</text>
-        </view>
-      </block>
-      <view v-else-if="idPhotoError" class="idphoto-error">
-        <text class="idphoto-error__text">{{ idPhotoError }}</text>
-        <view class="idphoto-error__retry" @click="handleGenerate">
-          <text>重试</text>
-        </view>
-      </view>
-      <block v-else-if="idPhotoResult">
-        <view class="section-title-row">
-          <text class="section-title">{{ toolInfo.resultTitle || '换背景结果' }}</text>
-          <view class="result-actions">
-            <view class="result-action-btn" @click="previewIdPhoto">
-              <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zm0 12.5a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>
-              <text>放大预览</text>
-            </view>
-            <view class="result-action-btn" @click="saveIdPhoto">
-              <svg viewBox="0 0 24 24" class="result-action-icon"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-              <text>保存图片</text>
-            </view>
-          </view>
-        </view>
-        <view class="idphoto-result">
-          <image
-            class="idphoto-result__img"
-            :src="idPhotoResult.fileUrl"
-            mode="widthFix"
-            @click="previewIdPhoto"
-          ></image>
-          <view class="idphoto-result__meta">
-            <view class="idphoto-result__row">
-              <text class="idphoto-result__k">文件名</text>
-              <text class="idphoto-result__v">{{ idPhotoResult.fileName || '—' }}</text>
-            </view>
-            <view class="idphoto-result__row">
-              <text class="idphoto-result__k">文件大小</text>
-              <text class="idphoto-result__v">{{ idPhotoResult.fileSizeText || formatFileSize(idPhotoResult.fileSize) }}</text>
-            </view>
-            <view class="idphoto-result__row">
-              <text class="idphoto-result__k">图片尺寸</text>
-              <text class="idphoto-result__v">{{ idPhotoResult.width || '—' }} × {{ idPhotoResult.height || '—' }}</text>
-            </view>
-            <view class="idphoto-result__row">
-              <text class="idphoto-result__k">底色</text>
-              <text class="idphoto-result__v">{{ selectedBgColorLabel }}</text>
-            </view>
-          </view>
-        </view>
-      </block>
-    </block>
-
-    <!-- 密码生成：slider + 字符选项 + 密码框 + 强度 -->
-    <block v-if="toolId === 'password-gen'">
-      <view class="settings-card">
-        <view class="settings-card__title">密码设置</view>
-        <view class="slider-row">
-          <text class="slider-label">长度</text>
-          <text class="slider-value">{{ pwdLength }}</text>
-        </view>
-        <view class="slider-track" @click="onPwdLengthTrackClick">
-          <text class="slider-fill" :style="{ width: ((pwdLength - 4) / 28 * 100) + '%' }"></text>
-          <text class="slider-thumb" :style="{ left: ((pwdLength - 4) / 28 * 100) + '%' }"></text>
-        </view>
-        <view class="settings-card__title">包含字符</view>
-        <view class="checkbox-row">
-          <view v-for="(c, i) in pwdChars" :key="i" class="checkbox-item" @click="togglePwdChar(i)">
-            <view class="checkbox-item__box" :class="{ 'is-checked': c.checked }">
-              <svg v-if="c.checked" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-            </view>
-            <text>{{ c.label }}</text>
-          </view>
-        </view>
-      </view>
-      <view class="password-card">
-        <view class="password-card__title">生成结果</view>
-        <view class="password-display">
-          <text class="password-display__text">{{ generatedPassword }}</text>
-          <view class="password-display__copy" @click="copyPassword">
-            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-          </view>
-        </view>
-        <view class="strength-row">
-          <text class="strength-label">密码强度</text>
-          <view class="strength-bar"><view class="strength-fill" :style="{ width: pwdStrength + '%' }"></view></view>
-          <text class="strength-text">{{ pwdStrengthLabel }}</text>
-        </view>
-      </view>
-      <view class="tip">
-        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-        <text>请定期更换密码，避免使用相同密码</text>
-      </view>
-    </block>
-
-    <!-- 待办清单：输入新任务 + tab + 任务列表 -->
-    <block v-if="toolId === 'todo-list'">
-      <view class="add-task-card">
-        <textarea class="add-task-card__textarea" v-model="newTaskText" placeholder="添加新任务…"></textarea>
-        <view class="add-task-card__add" @click="addTask">
-          <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-        </view>
-      </view>
-      <view class="tabs">
-        <view class="tab-item" :class="{ 'is-active': taskTab === 'all' }" @click="taskTab = 'all'">全部</view>
-        <view class="tab-item" :class="{ 'is-active': taskTab === 'doing' }" @click="taskTab = 'doing'">进行中</view>
-        <view class="tab-item" :class="{ 'is-active': taskTab === 'done' }" @click="taskTab = 'done'">已完成</view>
-      </view>
-      <view class="task-list">
-        <view v-for="(t, i) in filteredTasks" :key="i" class="task-item" :class="{ 'is-done': t.done }">
-          <view class="task-item__checkbox" :class="{ 'is-checked': t.done }" @click="toggleTask(i)">
-            <svg v-if="t.done" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-          </view>
-          <view class="task-item__body">
-            <text class="task-item__name">{{ t.name }}</text>
-            <view class="task-item__meta">
-              <text class="task-priority" :class="'task-priority--' + t.priority">{{ t.priorityLabel }}</text>
-              <text>{{ t.date }}</text>
-            </view>
-          </view>
-          <view class="task-item__delete" @click="deleteTask(i)">
-            <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-          </view>
-        </view>
-      </view>
+      <BatchResultCards :items="batchCardsForView" :total="batchTotal" />
     </block>
 
     <view class="safe-area-bottom"></view>
@@ -424,7 +273,13 @@
 
   <!-- 底部按钮 -->
   <view class="bottom-action">
-    <button class="btn btn--primary btn--block" :disabled="loading" @click="handleGenerate">{{ bottomActionText }}</button>
+    <!-- 流式进行中：按钮变为「停止」，可中途中止请求（此前 :disabled=loading 导致无法停止） -->
+    <button
+      v-if="loading && streamCancel"
+      class="btn btn--block btn--stop"
+      @click="onStopStream"
+    >停止</button>
+    <button v-else class="btn btn--primary btn--block" :disabled="loading" @click="handleGenerate">{{ bottomActionText }}</button>
   </view>
 
     
@@ -443,20 +298,23 @@
 
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { BASE_URL } from '@/config/env'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
 import { requireLogin } from '@/utils/auth'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
-import { uploadFileApi, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson, idPhotoBgChange } from '@/api/ai.js'
+import { uploadFileApi, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson } from '@/api/ai.js'
 import { historyListByToolApi } from '@/api/history.js'
 import { streamRequest } from '../api/stream'
-import { formatAiResult } from '@/utils/format'
+import { downloadOutput } from '@/utils/fileAction'
+import { requestFrame, cancelFrame } from '@/utils/animation'
 import { copyRaw, copyPlain } from '@/utils/clipboard'
 import { request } from '@/api/request'
 import MarkdownView from '@/components/MarkdownView.vue'
+import BatchResultCards from '@/components/BatchResultCards.vue'
+import SseRenderjs from '@/components/sse-renderjs/sse-renderjs.vue'
 import { promptListApi, systemPromptListApi, generatePromptApi, promptAddApi } from '@/api/prompt'
 import { getTool, validate } from '@/config/tools'
 import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
@@ -511,11 +369,6 @@ const TOOL_META = {
   'weekly-report':       { iconType: 'image',  emoji: '📝', action: '生成周报', steps: ['填写内容', 'AI 生成', '预览下载'] },
   'meeting-minutes':     { iconType: 'meeting',emoji: '🎯', action: '生成周报', steps: ['上传会议内容', 'AI 整理', '生成纪要'] },
   'mm':                  { iconType: 'meeting',emoji: '🎯', action: '生成周报', steps: ['上传会议内容', 'AI 整理', '生成纪要'] },
-  'ocr-recognize':       { iconType: 'ocr',    emoji: '🔍', action: '开始识别', steps: ['上传文件', '选择类型', '获取结果'] },
-  'ocr-recognition':     { iconType: 'ocr',    emoji: '🔍', action: '开始识别', steps: ['上传文件', '选择类型', '获取结果'] },
-  'id-photo-bg-change':  { iconType: 'image',  emoji: '🖼️', action: '生成证件照', steps: ['上传照片', '选择背景', '生成下载'] },
-  'password-gen':        { iconType: 'image',  emoji: '🔐', action: '生成新密码', steps: ['设置参数', '生成密码', '复制使用'] },
-  'todo-list':           { iconType: 'image',  emoji: '✅', action: '保存清单', steps: ['添加任务', '完成任务', '保存清单'] }
 }
 
 const toolInfo = computed(() => {
@@ -532,6 +385,32 @@ const bottomActionText = computed(() => {
   const meta = TOOL_META[toolId.value]
   return (meta && meta.action) || '开始处理'
 })
+
+/**
+ * 是否展示通用结果区。
+ * - 只对「输出写进 resultContent」的工具成立；
+ * - meeting-minutes 自带 JSON 树 / SSE Markdown 渲染区，需排除，否则重复展示。
+ */
+const RESULT_AREA_EXCLUDED = ['meeting-minutes', 'mm']
+const showResultArea = computed(() => {
+  if (RESULT_AREA_EXCLUDED.indexOf(toolId.value) >= 0) return false
+  return !!resultContent.value
+})
+
+/**
+ * 批量结果喂给 BatchResultCards 前的字段适配。
+ * 组件约定 status 为 'failed' 字符串（用于卡片红框），而后端 BatchStatusVO 的
+ * items[].status 是 1/2 之类的任务状态码，这里按「有 errorMsg 即失败」判定，
+ * 避免为一个展示需求去改后端契约。
+ */
+const batchCardsForView = computed(() => batchCards.value.map((c, i) => ({
+  index: c.index != null ? c.index : i + 1,
+  fileName: c.fileName || '',
+  status: c.errorMsg || c.status === 'failed' || c.status === 4 ? 'failed' : 'ok',
+  costMs: c.costMs || 0,
+  errorMsg: c.errorMsg || '',
+  output: c.output || ''
+})))
 
 const goBack = () => safeBack('/pages/index')
 
@@ -632,18 +511,7 @@ const onFileItemClick = (f) => {
     uni.showToast({ title: '文件将在运行时上传', icon: 'none' })
     return
   }
-  // #ifdef H5
-  window.open(f.url, '_blank')
-  // #endif
-  // #ifndef H5
-  uni.downloadFile({
-    url: f.url,
-    success: (res) => {
-      if (res.statusCode === 200) uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-    },
-    fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
-  })
-  // #endif
+  downloadOutput({ url: f.url, name: f.name })
 }
 
 const weeklyDoneText = ref('')
@@ -719,211 +587,6 @@ const addMmItem = (kind) => {
   uni.showToast({ title: '已添加' + labels[kind], icon: 'success' })
   map[kind].value = ''
 }
-
-const ocrTypes = ref([
-  { code: 'text', title: '文字识别 OCR', sub: '识别图片中的文字内容' },
-  { code: 'table', title: '表格识别', sub: '识别图片中的表格结构' },
-  { code: 'receipt', title: '票据识别', sub: '识别发票、收据等票据' },
-  { code: 'idcard', title: '证件识别', sub: '识别身份证、护照等证件' }
-])
-const selectRecognizeType = (code) => { uni.showToast({ title: '识别类型：' + code + '（开发中）', icon: 'none' }) }
-
-const selectedBgColor = ref('red')   // 默认底色（与 tools.js 的 defaultBgColor 一致）
-const selectBgColor = (code) => { selectedBgColor.value = code }
-
-// ===== 证件照换背景色（id-photo-bg-change）=====
-// 底色选项以 tools.js 配置为准（value 与后端 bgColor 入参一致），配置缺失时退回本地兜底
-const ID_PHOTO_BG_FALLBACK = [
-  { value: 'red',   label: '红色', hex: '#EF4444' },
-  { value: 'blue',  label: '蓝色', hex: '#3B82F6' },
-  { value: 'white', label: '白色', hex: '#FFFFFF' }
-]
-// 色块样式类映射（设计稿的 3 个色块）
-const BG_COLOR_CLS = {
-  red: 'color-item__chip--red',
-  blue: 'color-item__chip--blue',
-  white: 'color-item__chip--white'
-}
-const idPhotoBgOptions = computed(() => toolInfo.value.bgColorOptions || ID_PHOTO_BG_FALLBACK)
-// 模板用的色块列表：由配置派生，避免配置与 UI 各写一份
-const bgColorChips = computed(() => idPhotoBgOptions.value.map((c) => ({
-  code: c.value, label: c.label, cls: BG_COLOR_CLS[c.value] || ''
-})))
-const selectedBgColorLabel = computed(() => {
-  const hit = idPhotoBgOptions.value.find((c) => c.value === selectedBgColor.value)
-  return hit ? hit.label : ''
-})
-/** 已选证件照：{ path, name, sizeText, file }，file 为 H5 原生 File/Blob（保留真实文件名） */
-const idPhotoPicked = ref(null)
-/** 换背景结果：后端返回的 ToolOutputVO（fileUrl / fileName / width / height …） */
-const idPhotoResult = ref(null)
-const idPhotoLoading = ref(false)
-const idPhotoError = ref('')
-
-/** 选择证件照：H5 用原生 input 拿 File 对象，App/小程序用 uni.chooseImage 拿临时路径 */
-/** 证件照白名单：与后端 Constants.ALLOWED_ID_PHOTO_EXTENSIONS 保持一致 */
-const ID_PHOTO_ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'bmp']
-const getFileExt = (name) => {
-  if (!name) return ''
-  const i = name.lastIndexOf('.')
-  return i >= 0 ? name.substring(i + 1).toLowerCase() : ''
-}
-
-const onIdPhotoPick = () => {
-  // #ifdef H5
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/jpeg,image/png,image/bmp'
-  input.onchange = () => {
-    const f = (input.files && input.files[0]) || null
-    if (!f) return
-    // 校验：accept 只是浏览器提示，用户仍可手动选 All files，必须按扩展名兜底
-    const ext = getFileExt(f.name)
-    if (!ID_PHOTO_ALLOWED_EXTS.includes(ext)) {
-      uni.showToast({ title: '不支持的证件照格式，仅支持 JPG/JPEG/PNG/BMP', icon: 'none', duration: 2500 })
-      return
-    }
-    // 上一次选图的 objectURL 及时释放，避免内存泄漏
-    const prev = idPhotoPicked.value
-    if (prev && prev.isObjectUrl) URL.revokeObjectURL(prev.path)
-    idPhotoPicked.value = {
-      path: URL.createObjectURL(f),
-      isObjectUrl: true,
-      name: f.name,
-      sizeText: formatFileSize(f.size),
-      size: f.size || 0,
-      file: f
-    }
-    idPhotoResult.value = null
-    idPhotoError.value = ''
-  }
-  input.click()
-  return
-  // #endif
-  // #ifndef H5
-  uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    sourceType: ['album', 'camera'],
-    // extension 让文件选择器**先**过滤（H5 端会映射为 input.accept），与 ID_PHOTO_ALLOWED_EXTS 保持一致
-    extension: ID_PHOTO_ALLOWED_EXTS,
-    success: (res) => {
-      const path = (res.tempFilePaths || [])[0]
-      if (!path) return
-      const temp = (res.tempFiles || [])[0]
-      // 校验：App/小程序端走 chooseImage 通常是相机/相册，不一定能拿到扩展名，按 name 兜底
-      const fileName = (temp && temp.name) || path.split('/').pop() || '证件照'
-      const ext = getFileExt(fileName)
-      if (ext && !ID_PHOTO_ALLOWED_EXTS.includes(ext)) {
-        uni.showToast({ title: '不支持的证件照格式，仅支持 JPG/JPEG/PNG/BMP', icon: 'none', duration: 2500 })
-        return
-      }
-      idPhotoPicked.value = {
-        path,
-        name: fileName,
-        sizeText: formatFileSize((temp && temp.size) || 0),
-        size: (temp && temp.size) || 0,
-        file: null
-      }
-      idPhotoResult.value = null
-      idPhotoError.value = ''
-    },
-    fail: () => uni.showToast({ title: '未选择图片', icon: 'none' })
-  })
-  // #endif
-}
-
-/** 调 /api/ai-office/id-photo-bg-change：上传选中的证件照 → 返回合成好底色的新图 */
-const runIdPhotoBgChange = async () => {
-  const picked = idPhotoPicked.value
-  if (!picked) {
-    idPhotoError.value = '请先上传证件照'
-    uni.showToast({ title: '请先上传证件照', icon: 'none' })
-    return
-  }
-  idPhotoLoading.value = true
-  idPhotoError.value = ''
-  idPhotoResult.value = null
-  try {
-    const res = await idPhotoBgChange(picked.file || picked.path, { bgColor: selectedBgColor.value })
-    const data = (res && res.data) || null
-    if (!res || res.code !== 200 || !data || !data.fileUrl) {
-      throw new Error((res && (res.message || res.msg)) || '换背景色失败，请稍后重试')
-    }
-    idPhotoResult.value = data
-  } catch (err) {
-    console.error('id-photo-bg-change error:', err)
-    idPhotoError.value = (err && err.message) || '换背景色失败，请稍后重试'
-  } finally {
-    idPhotoLoading.value = false
-  }
-}
-
-/** 放大预览结果图（uni.previewImage 跨端通用） */
-const previewIdPhoto = () => {
-  const url = idPhotoResult.value && idPhotoResult.value.fileUrl
-  if (!url) return
-  uni.previewImage({ urls: [url], current: url })
-}
-
-/** 保存/下载结果图：H5 走 a[download]，App 端 uni.downloadFile + openDocument 交系统保存 */
-const saveIdPhoto = () => {
-  const out = idPhotoResult.value
-  if (!out || !out.fileUrl) return
-  // #ifdef H5
-  const a = document.createElement('a')
-  a.href = out.fileUrl
-  a.download = out.fileName || 'id-photo-bg-change.png'
-  a.target = '_blank'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  // #endif
-  // #ifndef H5
-  uni.downloadFile({
-    url: out.fileUrl,
-    success: (res) => {
-      if (res.statusCode === 200) {
-        uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-      } else {
-        uni.showToast({ title: '保存失败', icon: 'none' })
-      }
-    },
-    fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
-  })
-  // #endif
-}
-
-const pwdLength = ref(16)
-const pwdChars = ref([{ label: '大小写字母', checked: true }, { label: '数字', checked: true }, { label: '特殊符号', checked: true }])
-const generatedPassword = ref('7Fq9ik2P@8m3Z#6t')
-const pwdStrength = ref(80)
-const pwdStrengthLabel = ref('强')
-const onPwdLengthTrackClick = () => { pwdLength.value = 12 }
-const togglePwdChar = (i) => { pwdChars.value[i].checked = !pwdChars.value[i].checked }
-const copyPassword = () => copyRaw(generatedPassword.value, '密码')
-
-const taskTab = ref('all')
-const newTaskText = ref('')
-const tasks = ref([
-  { name: '完成项目需求文档', priority: 'high', priorityLabel: '高', date: '2025-09-22', done: true },
-  { name: '整理本月财务数据', priority: 'medium', priorityLabel: '中', date: '2025-09-23', done: false },
-  { name: '设计新工具图标', priority: 'low', priorityLabel: '低', date: '2025-09-24', done: false }
-])
-const filteredTasks = computed(() => {
-  if (taskTab.value === 'doing') return tasks.value.filter(t => !t.done)
-  if (taskTab.value === 'done') return tasks.value.filter(t => t.done)
-  return tasks.value
-})
-const addTask = () => {
-  const text = newTaskText.value.trim()
-  if (!text) { uni.showToast({ title: '请输入任务内容', icon: 'none' }); return }
-  tasks.value.unshift({ name: text, priority: 'medium', priorityLabel: '中', date: new Date().toISOString().slice(0, 10), done: false })
-  newTaskText.value = ''
-}
-const toggleTask = (i) => { tasks.value[i].done = !tasks.value[i].done }
-const deleteTask = (i) => { tasks.value.splice(i, 1) }
-
 
 const pickerTabs = [
   { key: 'system', label: '系统提示词' },
@@ -1140,10 +803,9 @@ const removePureConvertFile = (idx) => {
 // 通用校验（按工具 + 输入方式）：返回第一个失败的错误文案，null = 通过
 // 在 handleGenerate 入口前置校验，不通过直接 return + toast，不进 if-else 分支
 const runValidation = () => validate(toolId.value, currentInputType.value, {
-  // 证件照换背景色自己维护已选文件（idPhotoPicked），把它映射成通用的 filePath 参与校验
   filePath: isPureConvert.value
     ? (pureConvertFiles.value.length ? 'selected' : '')
-    : (idPhotoPicked.value ? 'selected' : filePath.value),
+    : filePath.value,
   batchFiles: isPureConvert.value ? pureConvertFiles.value : uploadedFiles.value,
   inputText: inputText.value,
   promptFormat: promptFormatText.value,
@@ -1168,8 +830,55 @@ const fetchSystemFormat = async () => {
   }
 }
 
-onLoad((option) => {
-  if (!requireLogin()) return
+/**
+ * 页面级状态重置：换工具 / keep-alive 复用时清空上一页残留。
+ *
+ * ⚠️ 为什么必需：uni-h5 用 KeepAlive 包裹 RouterView，缓存 key 由
+ *    pageId 决定；navigateTo 回同一路由时若命中缓存，**onLoad 不再触发**，
+ *    只走 onShow。原先所有初始化都写在 onLoad 里，于是从「历史详情·再次使用」
+ *    进 A 工具 → 返回 → 再进 B 工具时，toolId / 输入 / 结果全是 A 的残留。
+ *    本函数由 initPageState() 统一调用，保证任何入口进来都是干净状态。
+ */
+const resetPageState = () => {
+  // 先中止进行中的请求，避免旧请求继续回写状态
+  abortStream()
+  inputText.value = ''
+  filePath.value = ''
+  fileName.value = ''
+  fileObj.value = null
+  fileUrl.value = ''
+  uploading.value = false
+  loading.value = false
+
+  // 纯转换工具的单选 / 多选
+  pureConvertFile.value = null
+  pureConvertFiles.value = []
+  // 批量工具已选文件
+  uploadedFiles.value = []
+
+  // 结果区（通用 + 会议纪要两套渲染状态都要清）
+  resultContent.value = ''
+  batchCards.value = []
+  batchTotal.value = 0
+  batchProgress.value = 0
+  meetingRoute.value = ''
+  meetingJsonResult.value = []
+  meetingMarkdownText.value = ''
+  meetingTypingDone.value = false
+
+  // 提示词：工具不同，其可用提示词也不同，必须跟着重置
+  promptFormatText.value = ''
+  promptGenerateText.value = ''
+  selectedPromptId.value = ''
+  showPromptPicker.value = false
+}
+
+/**
+ * 页面初始化（onLoad 与 keep-alive 复用时共用）。
+ * @param {Object} option 路由参数 { id, historyId }
+ */
+const initPageState = (option = {}) => {
+  resetPageState()
   toolId.value = option.id || ''
   // 初始化默认输入方式
   currentInputType.value = toolInfo.value.defaultInput
@@ -1181,7 +890,83 @@ onLoad((option) => {
   if (option.historyId) {
     applyHistoryById(option.historyId)
   }
+}
+
+// 记录本次已初始化的路由参数，onShow 时比对是否需要重新初始化
+let lastInitKey = ''
+
+onLoad((option) => {
+  if (!requireLogin()) return
+  lastInitKey = `${option.id || ''}#${option.historyId || ''}`
+  initPageState(option)
 })
+
+/**
+ * keep-alive 复用兜底。
+ *
+ * ⚠️ 两个坑：
+ * 1) 不能用 onShow。uni-h5 的 KeepAlive key 是 `path + getStateId()`（**不含 query**），
+ *    同路径不同 query（work-summary → weekly-report）会复用**同一个实例**，
+ *    onLoad 不再触发；更坑的是页面实例持有的 options.id 仍是旧值，
+ *    在 onShow 里读它拿到的是过期参数，重置逻辑根本不会生效。
+ * 2) 不能直接 computed(() => location.hash)——hash 不是响应式源，computed 不会重算。
+ *
+ * 正确做法：把 hash 存进 ref，用 hashchange 事件驱动，watch 它再比对参数。
+ */
+const routeHash = ref(typeof location !== 'undefined' ? location.hash : '')
+
+// #ifdef H5
+const onHashChange = () => {
+  routeHash.value = location.hash || ''
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', onHashChange)
+  onUnmounted(() => {
+    window.removeEventListener('hashchange', onHashChange)
+    // 离开本页时清空，避免下次进来带着上一条工具的残留
+    resetPageState()
+  })
+}
+// #endif
+
+/**
+ * 页面卸载清理（App 端关键）。
+ *
+ * ⚠️ onUnmounted 写在 #ifdef H5 块内 —— App 端根本没注册这个钩子。
+ *    而 App 端 navigateTo 会保留页面栈、页面不卸载 → 组件不销毁 → onUnmounted 不触发。
+ * uni-app 的 onUnload 在页面出栈时**一定触发**（App/小程序端都可靠），
+ *    这里用它兜底：中止底层请求 + 销毁打字机，避免请求跑到后端超时。
+ */
+onUnload(() => {
+  abortStream()
+  if (currentTypewriter) {
+    try { currentTypewriter.dispose() } catch (e) { /* ignore */ }
+    currentTypewriter = null
+  }
+})
+
+const currentRouteQuery = computed(() => {
+  const q = (routeHash.value || '').split('?')[1] || ''
+  const out = {}
+  q.split('&').forEach(kv => {
+    if (!kv) return
+    const i = kv.indexOf('=')
+    const k = i > 0 ? kv.slice(0, i) : kv
+    const v = i > 0 ? decodeURIComponent(kv.slice(i + 1)) : ''
+    if (k) out[k] = v
+  })
+  return out
+})
+
+watch(currentRouteQuery, (q) => {
+  const id = q.id || ''
+  const historyId = q.historyId || ''
+  const key = `${id}#${historyId}`
+  if (key === lastInitKey) return   // 同一参数不重复初始化，避免多余请求与 loading 抖动
+  lastInitKey = key
+  if (!requireLogin()) return
+  initPageState({ id, historyId })
+}, { deep: true })
 
 /** 按 id 拉取指定历史记录并回填（供「再次使用」进入时调用） */
 const applyHistoryById = async (historyId) => {
@@ -1466,6 +1251,40 @@ const confirmSaveName = async () => {
 //
 // 打字机句柄：保存上一轮结果，每次请求时先清掉旧的（防止用户中途取消 / 重新生成时残留）
 let currentTypewriter = null
+/**
+ * 当前进行中的流式请求的取消函数（streamRequest 返回）。
+ *
+ * ⚠️ 之前直接丢弃了 streamRequest 的返回值 → 没有任何地方能真正中止请求：
+ *   - 用户点返回 / 切页面，底层 HTTP 仍会跑到后端超时；
+ *   - App 端 navigateTo 保留页面栈，页面不卸载 → 请求与打字机持续运行。
+ * 现在保存下来，在 onDone / onError / 页面卸载时统一释放。
+ * 用 ref 而非普通变量：模板要据它把底部按钮切成「停止」，必须是响应式的。
+ */
+const streamCancel = ref(null)
+
+/** 释放当前流式请求（幂等） */
+const abortStream = () => {
+  if (streamCancel.value) {
+    try { streamCancel.value() } catch (e) { /* ignore */ }
+    streamCancel.value = null
+  }
+}
+
+/**
+ * 用户主动停止流式生成。
+ * 中止底层请求 + 销毁打字机 + 恢复按钮可用（否则 loading 永不复位）。
+ */
+const onStopStream = () => {
+  abortStream()
+  if (currentTypewriter) {
+    try { currentTypewriter.dispose() } catch (e) { /* ignore */ }
+    currentTypewriter = null
+  }
+  meetingTypingDone.value = true
+  loading.value = false
+  uni.showToast({ title: '已停止', icon: 'none' })
+}
+
 const runTextStream = (url) => {
   return new Promise((resolve, reject) => {
     // 防御：上一轮未清理的句柄先 dispose
@@ -1499,6 +1318,8 @@ const runTextStream = (url) => {
       }
     }
     const onDone = () => {
+      // 流已结束，取消句柄失效
+      streamCancel.value = null
       if (isMeeting) {
         // 排空队列 → 唤醒 onComplete → 销毁
         currentTypewriter?.flush()
@@ -1512,6 +1333,8 @@ const runTextStream = (url) => {
       resolve(fullText)
     }
     const onError = (err) => {
+      // 流已失败，取消句柄失效
+      streamCancel.value = null
       if (isMeeting) {
         currentTypewriter?.dispose()
         currentTypewriter = null
@@ -1520,7 +1343,8 @@ const runTextStream = (url) => {
       }
       reject(err)
     }
-    streamRequest({ url, data: {
+    // ⚠️ 必须接住返回值：它是中止底层请求的唯一入口（此前被丢弃 → 请求无法停止）
+    streamCancel.value = streamRequest({ url, data: {
       content: inputText.value,
       promptFormat: promptFormatText.value,
       promptGenerate: promptGenerateText.value,
@@ -1596,7 +1420,9 @@ const createTypewriter = (options) => {
   const scheduleNext = () => {
     if (disposed || rafId !== null) return
     if (queue.length === 0) return
-    rafId = requestAnimationFrame(tick)
+    // 用 requestFrame 而非裸 rAF：App 端逻辑层没有 requestAnimationFrame，
+    // 裸用会在推字第一帧抛 ReferenceError（详见 utils/animation.js 注释）
+    rafId = requestFrame(tick)
   }
 
   return {
@@ -1626,7 +1452,7 @@ const createTypewriter = (options) => {
       disposed = true
       queue.length = 0
       if (rafId !== null) {
-        cancelAnimationFrame(rafId)
+        cancelFrame(rafId)
         rafId = null
       }
     },
@@ -1702,12 +1528,6 @@ const handleGenerate = async () => {
   try {
     const id = toolId.value
 
-    // 证件照换背景色：单图上传 + 底色 → 后端换底色 → 渲染结果图（自有 loading/error 状态，不走通用纯转换分支）
-    if (id === 'id-photo-bg-change') {
-      await runIdPhotoBgChange()
-      return
-    }
-
     // 录音转写若选中多个文件，走批量；单个则退回原有单文件纯转换路径
     const audioBatchFiles = pureConvertFiles.value.length > 1
       ? pureConvertFiles.value
@@ -1735,7 +1555,7 @@ const handleGenerate = async () => {
         : '/api/ai-office/doc-to-text'
       const upRes = await new Promise((resolve, reject) => {
         uni.uploadFile({
-          url: BASE_URL + url,
+          url: BASE_URL() + url,
           filePath: picked.path || picked.file,
           name: 'file',
           // 录音转写透传引擎；文档转文本不带该字段
@@ -2518,6 +2338,8 @@ svg {
 
 /* ============ 工具详情页新样式（一比一复刻 mockup） ============ */
 .topbar {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex;
   align-items: center;
   height: 88rpx;
@@ -3050,45 +2872,6 @@ svg {
   border-radius: 24rpx;
   overflow: hidden;
 }
-.recognize-item {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  padding: 32rpx;
-  border-bottom: 1rpx solid var(--divider-color, #F0F0F0);
-  cursor: pointer;
-}
-.recognize-item:last-child { border-bottom: none; }
-.recognize-item__icon {
-  width: 72rpx;
-  height: 72rpx;
-  border-radius: 16rpx;
-  background: var(--brand-primary-light, #EFF6FF);
-  color: var(--brand-primary, #3B82F6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.recognize-item__icon svg { width: 40rpx; height: 40rpx; fill: currentColor; }
-.recognize-item__body { flex: 1; min-width: 0; }
-.recognize-item__title {
-  font-size: 28rpx;
-  color: var(--text-primary, #111827);
-  font-weight: 500;
-  margin-bottom: 4rpx;
-}
-.recognize-item__sub {
-  font-size: 24rpx;
-  color: var(--text-tertiary, #9CA3AF);
-}
-.recognize-item__chev {
-  color: var(--text-tertiary, #9CA3AF);
-  display: flex;
-  align-items: center;
-}
-.recognize-item__chev svg { width: 32rpx; height: 32rpx; fill: currentColor; }
-
 /* 颜色选择器 */
 .color-picker {
   display: flex;
@@ -3124,128 +2907,6 @@ svg {
   color: var(--text-secondary, #4B5563);
 }
 
-/* ============ 证件照换背景色（id-photo-bg-change） ============ */
-/* 已选证件照（缩略图 + 文件名 + 重新选择） */
-.idphoto-picked {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  margin: 0 32rpx 24rpx;
-  padding: 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-}
-.idphoto-picked__img {
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: 16rpx;
-  background: var(--bg-gray, #F3F4F6);
-  flex-shrink: 0;
-}
-.idphoto-picked__body { flex: 1; min-width: 0; }
-.idphoto-picked__name {
-  display: block;
-  font-size: 28rpx;
-  font-weight: 500;
-  color: var(--text-primary, #111827);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.idphoto-picked__meta { display: block; margin-top: 4rpx; font-size: 24rpx; color: var(--text-tertiary, #9CA3AF); }
-.idphoto-picked__change {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  padding: 10rpx 18rpx;
-  background: var(--brand-primary-light, #EFF6FF);
-  color: var(--brand-primary, #3B82F6);
-  font-size: 22rpx;
-  border-radius: 12rpx;
-  flex-shrink: 0;
-}
-.idphoto-picked__change svg { width: 28rpx; height: 28rpx; fill: currentColor; }
-
-/* loading */
-.idphoto-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20rpx;
-  margin: 0 32rpx 24rpx;
-  padding: 64rpx 32rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-}
-.idphoto-loading__spinner {
-  width: 56rpx;
-  height: 56rpx;
-  border: 4rpx solid var(--brand-primary-light, #EFF6FF);
-  border-top-color: var(--brand-primary, #3B82F6);
-  border-radius: 50%;
-  animation: idphotoSpin 0.9s linear infinite;
-}
-@keyframes idphotoSpin {
-  to { transform: rotate(360deg); }
-}
-.idphoto-loading__text { font-size: 26rpx; color: var(--text-secondary, #6B7280); }
-
-/* 错误提示（可重试） */
-.idphoto-error {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24rpx;
-  margin: 0 32rpx 24rpx;
-  padding: 24rpx 32rpx;
-  background: rgba(239, 68, 68, 0.08);
-  border: 1rpx solid rgba(239, 68, 68, 0.2);
-  border-radius: 24rpx;
-}
-.idphoto-error__text { flex: 1; min-width: 0; font-size: 26rpx; color: #EF4444; }
-.idphoto-error__retry {
-  padding: 10rpx 28rpx;
-  background: #EF4444;
-  color: #FFFFFF;
-  font-size: 24rpx;
-  border-radius: 999rpx;
-  flex-shrink: 0;
-}
-
-/* 结果区 */
-.idphoto-result {
-  margin: 0 32rpx 24rpx;
-  padding: 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-}
-.idphoto-result__img {
-  width: 100%;
-  border-radius: 16rpx;
-  background: var(--bg-gray, #F3F4F6);
-  display: block;
-}
-.idphoto-result__meta { margin-top: 24rpx; }
-.idphoto-result__row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24rpx;
-  padding: 14rpx 0;
-  border-bottom: 1rpx solid var(--border-color, #F3F4F6);
-}
-.idphoto-result__row:last-child { border-bottom: none; }
-.idphoto-result__k {
-  font-size: 24rpx;
-  color: var(--text-tertiary, #9CA3AF);
-  flex-shrink: 0;
-}
-.idphoto-result__v {
-  font-size: 24rpx;
-  color: var(--text-primary, #111827);
-  text-align: right;
-  word-break: break-all;
-}
 
 /* 示例对比 */
 .example-compare {
@@ -3527,329 +3188,6 @@ svg {
 }
 .qr-info__copy svg { width: 28rpx; height: 28rpx; fill: currentColor; }
 
-/* 密码生成设置 */
-.settings-card {
-  margin: 0 32rpx 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  padding: 32rpx;
-}
-.settings-card__title {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: var(--text-primary, #111827);
-  margin-bottom: 24rpx;
-}
-
-/* 字符选项 */
-.checkbox-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24rpx;
-}
-.checkbox-item {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  font-size: 26rpx;
-  color: var(--text-primary, #111827);
-  cursor: pointer;
-}
-.checkbox-item__box {
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 8rpx;
-  border: 1rpx solid var(--border-color, #E5E7EB);
-  background: var(--bg-card, #FFFFFF);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.checkbox-item__box.is-checked {
-  background: var(--brand-primary, #3B82F6);
-  border-color: var(--brand-primary, #3B82F6);
-  color: #FFFFFF;
-}
-.checkbox-item__box svg { width: 24rpx; height: 24rpx; fill: currentColor; }
-
-/* 密码展示 */
-.password-card {
-  margin: 0 32rpx 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  padding: 32rpx;
-}
-.password-card__title {
-  font-size: 28rpx;
-  font-weight: 500;
-  color: var(--text-primary, #111827);
-  margin-bottom: 24rpx;
-}
-.password-display {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  padding: 24rpx;
-  background: var(--bg-page, #F3F4F6);
-  border-radius: 16rpx;
-  border: 1rpx dashed var(--border-color, #E5E7EB);
-}
-.password-display__text {
-  flex: 1;
-  font-family: monospace;
-  font-size: 32rpx;
-  font-weight: 600;
-  color: var(--text-primary, #111827);
-  word-break: break-all;
-  letter-spacing: 2rpx;
-}
-.password-display__copy {
-  width: 64rpx;
-  height: 64rpx;
-  background: var(--brand-primary, #3B82F6);
-  color: #FFFFFF;
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.password-display__copy svg { width: 32rpx; height: 32rpx; fill: currentColor; }
-
-/* 密码强度 */
-.strength-row {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  margin-top: 24rpx;
-}
-.strength-label {
-  font-size: 24rpx;
-  color: var(--text-secondary, #4B5563);
-  flex-shrink: 0;
-}
-.strength-bar {
-  flex: 1;
-  height: 12rpx;
-  background: var(--bg-disabled, #F3F4F6);
-  border-radius: 999rpx;
-  overflow: hidden;
-}
-.strength-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #10B981, #34D399);
-  border-radius: 999rpx;
-}
-.strength-text {
-  font-size: 24rpx;
-  font-weight: 500;
-  color: var(--color-success, #10B981);
-  flex-shrink: 0;
-}
-
-
-/* ============ 会议纪要结果渲染（JSON 表格 + SSE Markdown） ============ */
-.mm-json-table {
-  margin: 0 32rpx 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  overflow: hidden;
-}
-.mm-json-row {
-  display: flex;
-  flex-direction: column;
-  gap: 12rpx;
-  padding: 24rpx 32rpx;
-  border-bottom: 1rpx solid var(--divider-color, #F0F0F0);
-}
-.mm-json-row:last-child {
-  border-bottom: none;
-}
-.mm-json-cell-title {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-.mm-json-key {
-  font-size: 22rpx;
-  color: var(--text-tertiary, #9CA3AF);
-  font-family: monospace;
-  background: var(--bg-page, #F3F4F6);
-  padding: 4rpx 12rpx;
-  border-radius: 8rpx;
-}
-.mm-json-title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: var(--text-primary, #111827);
-}
-.mm-json-cell-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 12rpx;
-  padding-left: 16rpx;
-}
-.mm-json-checkbox {
-  font-size: 32rpx;
-  color: var(--text-tertiary, #9CA3AF);
-  flex-shrink: 0;
-  line-height: 1.4;
-}
-.mm-json-content {
-  flex: 1;
-  font-size: 28rpx;
-  color: var(--text-primary, #111827);
-  line-height: 1.6;
-}
-.mm-json-empty {
-  padding: 60rpx 0;
-  text-align: center;
-  color: var(--text-tertiary, #9CA3AF);
-  font-size: 26rpx;
-}
-/* ===== 会议纪要结果区 ===== */
-/* markdown 正文（h1-h6 / p / ul / ol / table / pre / code …）的标签样式统一由全局主题
-   src/styles/markdown.css 提供（作用域 .markdown-body），此处只保留滚动卡片外框 */
-/* 注意：v-html 注入的子元素没有 data-v-xxx 属性，不要在这里写 scoped 的标签选择器 */
-.mm-md-result {
-  margin: 0 16px 12px;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 12px;
-  padding: 16px;
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--text-primary, #111827);
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-}
-/* 说明：原先针对 .mm-md-html / .mm-md-result 的 :deep() 标签样式已删除，
-   统一收敛到全局主题 src/styles/markdown.css（.markdown-body） */
-
-/* 提示卡 */
-.tip {
-  margin: 0 32rpx 24rpx;
-  padding: 24rpx;
-  background: var(--brand-primary-light, #EFF6FF);
-  border-radius: 16rpx;
-  color: var(--text-secondary, #4B5563);
-  font-size: 26rpx;
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-}
-.tip svg { width: 32rpx; height: 32rpx; fill: var(--brand-primary, #3B82F6); flex-shrink: 0; }
-
-/* 添加新任务卡 */
-.add-task-card {
-  margin: 0 32rpx 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  padding: 32rpx;
-  display: flex;
-  align-items: flex-start;
-  gap: 24rpx;
-}
-.add-task-card__textarea {
-  flex: 1;
-  min-height: 120rpx;
-  border: 1rpx solid var(--border-color, #E5E7EB);
-  border-radius: 16rpx;
-  padding: 24rpx;
-  font-size: 28rpx;
-  color: var(--text-primary, #111827);
-  background: var(--bg-page, #F3F4F6);
-  resize: none;
-  outline: none;
-  font-family: inherit;
-  line-height: 1.5;
-}
-.add-task-card__add {
-  width: 72rpx;
-  height: 72rpx;
-  background: var(--brand-primary, #3B82F6);
-  color: #FFFFFF;
-  border-radius: 16rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.add-task-card__add svg { width: 40rpx; height: 40rpx; fill: currentColor; }
-
-/* 任务列表 */
-.task-list {
-  margin: 0 32rpx 24rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  overflow: hidden;
-}
-.task-item {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  padding: 24rpx 32rpx;
-  border-bottom: 1rpx solid var(--divider-color, #F0F0F0);
-}
-.task-item:last-child { border-bottom: none; }
-.task-item.is-done .task-item__name {
-  text-decoration: line-through;
-  color: var(--text-tertiary, #9CA3AF);
-}
-.task-item__checkbox {
-  width: 36rpx;
-  height: 36rpx;
-  border-radius: 50%;
-  border: 1rpx solid var(--border-color, #E5E7EB);
-  background: var(--bg-card, #FFFFFF);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-.task-item__checkbox.is-checked {
-  background: var(--brand-primary, #3B82F6);
-  border-color: var(--brand-primary, #3B82F6);
-  color: #FFFFFF;
-}
-.task-item__checkbox svg { width: 24rpx; height: 24rpx; fill: currentColor; }
-.task-item__body { flex: 1; min-width: 0; }
-.task-item__name {
-  font-size: 28rpx;
-  color: var(--text-primary, #111827);
-  font-weight: 500;
-  margin-bottom: 8rpx;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.task-item__meta {
-  display: flex;
-  gap: 16rpx;
-  align-items: center;
-  font-size: 24rpx;
-  color: var(--text-tertiary, #9CA3AF);
-}
-.task-priority {
-  padding: 2rpx 16rpx;
-  border-radius: 8rpx;
-  font-size: 22rpx;
-  font-weight: 500;
-}
-.task-priority--high { background: rgba(239, 68, 68, 0.1); color: #EF4444; }
-.task-priority--medium { background: rgba(245, 158, 11, 0.1); color: #F59E0B; }
-.task-priority--low { background: rgba(16, 185, 129, 0.1); color: #10B981; }
-.task-item__delete {
-  color: var(--text-tertiary, #9CA3AF);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-.task-item__delete svg { width: 32rpx; height: 32rpx; fill: currentColor; }
-
 /* 底部按钮 */
 .bottom-action {
   position: fixed;
@@ -3877,6 +3215,12 @@ svg {
   color: #FFFFFF;
 }
 .btn--primary[disabled] { opacity: 0.6; }
+/* 停止按钮：与主按钮同尺寸，用描边区分「中断」语义 */
+.btn--stop {
+  background: #FFFFFF;
+  color: #DC2626;
+  border: 2rpx solid #FCA5A5;
+}
 .btn--block { width: 100%; }
 
 .safe-area-bottom { height: 60rpx; }

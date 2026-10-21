@@ -267,3 +267,107 @@ handler/
 ### 12.6 强制要求
 
 新写的 service / handler / strategy 类 **必须按本规范**。提交时如不符合（class 直接 `@Service` / `@Component`），**不允许 merge**。
+
+---
+
+## 13. 前端规范（强制）
+
+> 前 12 节基本只覆盖后端。以下条款全部来自**实测踩过的坑**，每条都给出可验证的检查动作。
+
+### 13.1 页面导航（返回 / 跳转）
+
+| # | 规则 | 原因（实测） |
+|---|---|---|
+| 1 | 返回**必须** `import { safeBack } from '@/utils/pageTransition'` 调 `safeBack(兜底页)` | H5 的 `navigateBack` 走 `history.back()`，**栈空时既不报错也不触发 `fail` 回调**。写 `navigateBack({fail:兜底})` 的兜底形同虚设，点返回完全没反应 |
+| 2 | **禁止**手写 `getCurrentPages().length > 1 ? navigateBack : reLaunch` | 逻辑虽对，但属于重复实现，改一处忘一处就是下一个 bug |
+| 3 | `navigateTo` **禁止**指向 `pages.json` 里 `tabBar.list` 中的页面 | tabBar 页只能 `switchTab`。App / 小程序端 `navigateTo` 到 tabBar 页**直接失败**，H5 端侥幸能跳但会多压一层栈 |
+| 4 | 跳 tabBar 页统一走 `switchTab()`（`pageTransition.js` 已导出） | 同上 |
+
+**提交前自检**（过滤注释行；路径过滤用 `/`，Windows 下 `\` 匹配不到）：
+```bash
+cd code/aiTools_frontend
+# navigateBack 的真实调用只应出现在 utils/pageTransition.js（唯一出口）
+grep -rn "navigateBack(" src/ --include=*.vue --include=*.js \
+  | grep -v "^\s*\*" | grep -v "pageTransition.js"
+# 预期：无输出
+```
+
+### 13.2 keep-alive 与页面状态（**最隐蔽的坑**）
+
+`uni-h5` 用 `<KeepAlive>` 包 `RouterView`，缓存 key = `path + getStateId()`，**不含 query**。后果：
+
+| 现象 | 说明 |
+|---|---|
+| 同路径不同 query 会**复用同一个实例** | `navigateTo('/tool-common?id=A')` → 返回 → `navigateTo('/tool-common?id=B')`，**`onLoad` 不再触发** |
+| 页面实例持有的 `options` **不会同步更新** | 在 `onShow` 里读 `getCurrentPages().at(-1).options.id` 拿到的是**过期值**，比对逻辑永远成立 → 变成死代码 |
+
+**规则**：
+
+1. 凡是 `onLoad(option)` 里根据参数初始化状态的页面，**必须**额外处理参数变化复用。
+2. ❌ **禁止**用 `onShow` + `getCurrentPages().options` 做这件事（拿不到新参数）。
+3. ❌ **禁止**写 `computed(() => location.hash)` —— `location.hash` 不是 Vue 响应式源，computed 不会重算。
+4. ✅ **正确做法**（见 `tool-common.vue` / `workflow-edit.vue` / `workflow-run.vue`）：
+   ```js
+   const routeHash = ref(location.hash || '')
+   const onHashChange = () => { routeHash.value = location.hash || '' }
+   window.addEventListener('hashchange', onHashChange)
+   watch(routeHash, (h) => { /* 解析 query，与上次比对，不同则重新初始化 */ })
+   ```
+5. 页面级初始化统一抽成 `initPageState(option)`，由 `onLoad` 与 watch **共用**，避免两套逻辑漂移。
+6. `onUnmounted` 里 `removeEventListener` 必须传**同一个函数引用**，否则解绑失败（泄漏）。
+
+### 13.3 产物类型分流与下载（禁止重复实现）
+
+后端产物分 5 类（`ToolOutput.outputType`）：`1文本 / 2图片 / 3视频 / 4音频 / 5文件`；
+历史记录走的是「把产物 URL 写进 `output_content`」这条老路，只能靠扩展名反推。
+
+**规则**：
+
+1. 类型判定**只能**用 `utils/fileAction.js` 的 `outputKindOf()`，返回 `text|image|video|audio|file`。
+2. 产物展示：文本按文本渲染（Markdown），可视产物**内联展示**（图片 `<image>`、视频 `<video>`），**不得**把 COS 签名 URL 当正文铺出来。
+3. 下载 / 打开**只能**用 `utils/fileAction.js` 的 `downloadOutput()` / `previewOutput()`，禁止再写 `uni.downloadFile` / `<a download>` 复制品。
+4. 复制文本**只能**用 `utils/clipboard.js` 的 `copyRaw()` / `copyPlain()`。
+5. `tool-common.vue` 的 `resultContent`、`batchCards` 等被写入的响应式数据，**必须**在模板中有渲染点 —— 曾出现过 12 处赋值、0 处渲染的缺陷。
+
+**提交前自检**（过滤注释行）：
+```bash
+cd code/aiTools_frontend
+# 下载实现只应出现在 utils/fileAction.js
+grep -rn "createElement('a')\|uni\.downloadFile(\|saveImageToPhotosAlbum(" src/ \
+  | grep -v "^\s*//" | grep -v "fileAction.js"
+# 预期：仅 image-bg-remover.vue 的 canvas dataURL 特例
+```
+
+**唯一允许的例外**：`image-bg-remover.vue` 中下载 canvas 合成结果（`data:` URL）必须用 `<a download>`，
+因为 `uni.downloadFile` 只接受网络 / 本地路径，不接受内存 data URL。
+
+### 13.4 公共能力优先复用
+
+写任何「复制 / 下载 / 类型判定 / 文件名解析 / 返回跳转」逻辑**之前**，先 grep `src/utils/` 确认是否已有现成实现。
+新增公共能力必须落到 `src/utils/`，不得留在页面里。
+
+`src/utils/` 现有职责：
+
+| 文件 | 职责 |
+|---|---|
+| `pageTransition.js` | `safeBack` / `switchTab`，页面跳转唯一出口 |
+| `fileDisplayName.js` | 文件名 / 扩展名 / COS object key 解析 |
+| `fileAction.js` | 产物类型判定 + 下载 / 预览唯一出口 |
+| `clipboard.js` | 复制文本（Markdown / 纯文本）唯一出口 |
+| `auth.js` | 登录态校验、角色判断 |
+| `workflowView.js` | 工作流节点图标 / 名称 / 展示计算 |
+
+### 13.5 孤儿组件自检
+
+新增或改动组件后，确认没有组件变成孤儿：
+
+```bash
+cd code/aiTools_frontend
+for f in src/components/*.vue; do
+  n=$(basename $f .vue)
+  grep -rq "$n" src/pages src/components --include=*.vue | grep -v "components/$n.vue" || echo "孤儿组件: $n"
+done
+```
+
+> 历史遗留孤儿（暂未清理，非本次引入）：
+> `AudioInputArea` / `FileInputArea` / `InputSwitcher` / `PromptInputArea` / `TextInputArea` / `ToolCard`

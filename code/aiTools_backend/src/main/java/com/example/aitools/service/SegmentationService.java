@@ -5,7 +5,7 @@ import com.example.aitools.dto.SegmentResult;
 /**
  * 人像分割（图片去背景）服务。
  * <p>
- * 同时服务 {@code id-photo-bg-change} 证件照换背景色与 {@code image-bg-remover} 图片背景去除：
+ * 服务 {@code image-bg-remover} 图片去/换背景：
  * 输入一张人像照片，本地 ONNX 推理出前景蒙版，再把背景抠掉并按需合成底色 / 背景图 / 透明通道。
  * <p>
  * <b>为什么是本地推理而不是云 API</b>：证件照属于个人敏感信息，出境/上传到第三方

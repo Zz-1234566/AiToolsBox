@@ -7,9 +7,8 @@ import org.springframework.stereotype.Component;
 /**
  * 人像分割（图片去背景）配置。
  * <p>
- * 同时服务 {@code id-photo-bg-change} 证件照换背景色与 {@code image-bg-remover} 图片背景去除
- * 两个工具：二者共用同一个 ONNX 模型，推理引擎为本地 ONNX Runtime，纯 CPU 离线运行，
- * 不依赖任何第三方云服务。
+ * 服务 {@code image-bg-remover} 图片去/换背景工具：
+ * 本地 ONNX Runtime 做 CPU 离线推理，不依赖任何第三方云服务。
  * <p>
  * <b>当前模型</b>：MODNet（modnet_photographic_portrait_matting.onnx，24.69MB，Apache-2.0）。
  * 预处理严格对齐 MODNet 官方写法（固定除以 255、mean/std 均为 0.5），

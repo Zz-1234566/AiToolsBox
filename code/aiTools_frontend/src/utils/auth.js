@@ -1,3 +1,5 @@
+import { base64Decode } from './base64'
+
 /**
  * 解析 JWT 的 payload 部分（base64url 解码）
  * @param {String} token
@@ -7,13 +9,9 @@ const parseJwt = (token) => {
   try {
     const parts = token.split('.')
     if (parts.length !== 3) return null
-    // payload 是第二部分
-    const base64Url = parts[1]
-    // base64url 转 base64
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
-    // 补齐 padding
-    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
-    const json = decodeURIComponent(escape(atob(padded)))
+    // payload 是第二部分（base64url，解码由 utils/base64 跨端安全实现）
+    const json = base64Decode(parts[1])
+    if (!json) return null
     return JSON.parse(json)
   } catch (e) {
     return null

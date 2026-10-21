@@ -19,7 +19,7 @@ export const request = (options) => {
     }
 
     uni.request({
-      url: BASE_URL + options.url,
+      url: BASE_URL() + options.url,
       method: options.method || 'GET',
       data: options.data,
       header: headers,
@@ -71,7 +71,7 @@ export const uploadFile = (url, filePath, name = 'file', formData = {}) => {
     }
 
     const options = {
-      url: BASE_URL + url,
+      url: BASE_URL() + url,
       name,
       header: headers
     }
@@ -121,7 +121,7 @@ export const uploadWithFormData = (url, filePath, formData = {}, name = 'image')
     }
 
     // 同 uploadFile：H5 端 File/Blob 必须走 file 参数，否则内部 getRealPath 报错
-    const opts = { url: BASE_URL + url, name, formData, header }
+    const opts = { url: BASE_URL() + url, name, formData, header }
     if (typeof Blob !== 'undefined' && filePath instanceof Blob) {
       opts.file = filePath
       opts.filePath = filePath.name || 'file'

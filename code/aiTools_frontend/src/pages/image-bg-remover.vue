@@ -70,48 +70,79 @@
 
       <!-- ============ 状态 C：处理完成 + 实时预览（换底色 / 换背景图） ============ -->
       <view v-else class="state-c">
-        <!-- 实时预览：左原图 / 右合成结果 -->
-        <view class="compare-preview">
-          <view class="preview-box">
-            <text class="preview-box__label">原图</text>
-            <view class="preview-box__canvas">
-              <image :src="uploadedImage" mode="aspectFit" class="preview-box__img" />
-            </view>
-          </view>
-
-          <view class="preview-box">
-            <text class="preview-box__label">结果（实时预览）</text>
-            <!-- 实时合成：背景层 + 物体层（可拖动 + 可缩放） -->
+        <!-- 成果图：只展示去背景后的合成结果，不再并排展示原图 -->
+        <view class="preview-box">
+          <text class="preview-box__label">成果图（可拖动缩放）</text>
+          <!-- 实时合成：背景层 + 物体层（可拖动 + 可缩放） -->
+          <view
+            ref="composeCanvas"
+            class="preview-box__canvas preview-box__canvas--compose"
+            :class="{ 'preview-box__canvas--checker': !currentBgColor && !bgImage }"
+          >
+            <!-- 背景层（不动） -->
+            <view class="bg-layer" :style="composeStyle"></view>
+            <!-- 物体层（可拖动 + 可缩放） -->
             <view
-              class="preview-box__canvas preview-box__canvas--compose"
-              :class="{ 'preview-box__canvas--checker': !currentBgColor && !bgImage }"
+              class="object-layer"
+              :style="objectTransformStyle"
+              @touchstart.stop="onTouchStart"
+              @touchmove.stop.prevent="onTouchMove"
+              @touchend.stop="onTouchEnd"
+              @touchcancel.stop="onTouchEnd"
+              @mousedown.stop="onMouseDown"
+              @mousemove.stop.prevent="onMouseMove"
+              @mouseup.stop="onMouseEnd"
+              @mouseleave.stop="onMouseEnd"
             >
-              <!-- 背景层（不动） -->
-              <view class="bg-layer" :style="composeStyle"></view>
-              <!-- 物体层（可拖动 + 可缩放） -->
-              <view
-                class="object-layer"
-                :style="objectTransformStyle"
-                @touchstart.stop="onTouchStart"
-                @touchmove.stop.prevent="onTouchMove"
-                @touchend.stop="onTouchEnd"
-                @touchcancel.stop="onTouchEnd"
-                @mousedown.stop="onMouseDown"
-                @mousemove.stop.prevent="onMouseMove"
-                @mouseup.stop="onMouseEnd"
-                @mouseleave.stop="onMouseEnd"
-              >
+              <image
+                v-if="transparentPng"
+                :src="transparentPng"
+                mode="aspectFit"
+                class="object-layer__img"
+                :draggable="false"
+              />
+              <view v-else class="preview-box__placeholder">
+                <text>暂无合成结果</text>
+                <text class="preview-box__placeholder-sub">后端产物暂未回传</text>
+              </view>
+            </view>
+
+            <!-- ============ 对比滑块：一半原图 / 一半去背景（可选开启） ============ -->
+            <!-- 覆盖在画布左侧，只露出 compareRatio 宽度；右侧自然透出下方编辑结果 -->
+            <view
+              v-if="compareEnabled && uploadedImage"
+              class="compare-layer"
+              :style="{ width: compareRatio * 100 + '%' }"
+            >
+              <view class="compare-layer__inner" :style="compareInnerStyle">
                 <image
-                  v-if="transparentPng"
-                  :src="transparentPng"
+                  :src="uploadedImage"
                   mode="aspectFit"
-                  class="object-layer__img"
+                  class="compare-layer__img"
+                  :style="objectTransformStyle"
                   :draggable="false"
                 />
-                <view v-else class="preview-box__placeholder">
-                  <text>暂无合成结果</text>
-                  <text class="preview-box__placeholder-sub">后端产物暂未回传</text>
-                </view>
+              </view>
+            </view>
+            <!-- 分界线 + 可拖动手柄
+                 手势绑定在**分界线容器**而非手柄上：
+                 ① 鼠标落在内部 <svg> 上时不会冒泡不到手柄，绑容器才稳；
+                 ② 拖动过程中指针移出手柄，mousemove 仍能继续跟到画布范围内。 -->
+            <view
+              v-if="compareEnabled && uploadedImage"
+              class="compare-divider"
+              :class="{ 'compare-divider--active': isComparing }"
+              :style="{ left: compareRatio * 100 + '%' }"
+              @touchstart.stop="onCompareStart"
+              @touchmove.stop.prevent="onCompareMove"
+              @touchend.stop="onCompareEnd"
+              @touchcancel.stop="onCompareEnd"
+              @mousedown.stop="onCompareMouseDown"
+              @mousemove.stop.prevent="onCompareMouseMove"
+              @mouseup.stop="onCompareMouseUp"
+            >
+              <view class="compare-divider__handle">
+                <svg viewBox="0 0 24 24"><path d="M9.5 7.5L5 12l4.5 4.5M14.5 7.5L19 12l-4.5 4.5"/></svg>
               </view>
             </view>
           </view>
@@ -139,6 +170,12 @@
           <view class="object-controls__btns">
             <button class="btn-mini" @click="resetObject">重置</button>
             <button class="btn-mini btn-mini--active" @click="centerObject">居中</button>
+            <!-- 对比原图：开启后画布上出现分界线，可左右拖动 -->
+            <button
+              class="btn-mini"
+              :class="{ 'btn-mini--active': compareEnabled }"
+              @click="onToggleCompare"
+            >{{ compareEnabled ? '关闭对比' : '对比原图' }}</button>
           </view>
         </view>
 
@@ -197,11 +234,31 @@
 
 <script>
 import { imageBgRemover, pollBatchCompleted } from '@/api/image-bg-remover'
+import { safeBack } from '@/utils/pageTransition'
+import { downloadOutput } from '@/utils/fileAction'
 
 // 与后端 SegmentationController.ALLOWED_IMAGE_EXTS / ALLOWED_IMAGE_TYPES 保持同步：
 // jpg / jpeg / png / bmp / gif。webp 等不在白名单内的格式直接前端拦截，
 // 不送往后端，避免走到 service 才抛异常。
 const ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'bmp', 'gif']
+
+// ==================== 物体调整参数常量 ====================
+/** 缩放下限 / 上限（与滑条 min=10 / max=300 保持一致） */
+const MIN_OBJECT_SCALE = 0.1
+const MAX_OBJECT_SCALE = 3.0
+
+/**
+ * 屏幕 px → rpx 的换算系数。
+ * ⚠️ 原来各手势分支里散落着硬编码的 `dx * 2`，那是假定「750rpx = 375px」
+ *    （即仅 iPhone 6/7/8 这类 375pt 宽机型）。在 414pt / 428pt 的机型上
+ *    手指移动同样距离会被换算成更大的 rpx 位移，导致「拖过头」。
+ * 统一按 uni.upx2px 的逆运算推导：1rpx 对应多少 px，375pt 机型下正好等于 2。
+ */
+const _upx2px = (rpx) => (uni && uni.upx2px ? uni.upx2px(rpx) : rpx)
+const RPX_PER_PX = 750 / Math.max(1, _upx2px(750))
+
+/** 成果图画布在 750rpx 设计稿下的宽度（= 100% - preview-box 左右各 16rpx padding） */
+const PREVIEW_CANVAS_RPX = 750 - 32
 
 export default {
   data() {
@@ -232,12 +289,29 @@ export default {
       objectY: 0,             // 垂直偏移 (rpx)
       objectScale: 1,         // 缩放比例 (0.1 - 3.0)
 
+      // 对比滑块：左原图 / 右去背景，默认关闭，避免干扰编辑
+      compareEnabled: false,
+      compareRatio: 0.5,      // 分界线位置 0~1
+      isComparing: false,
+      // H5 window 监听句柄（非响应式，避免每次拖动触发重渲染）
+      _compareBound: false,
+      _compareMoveHandler: null,
+      _compareUpHandler: null,
+
       // 手势状态
       isDragging: false,
       dragStartX: 0,
       dragStartY: 0,
       objectStartX: 0,
       objectStartY: 0,
+      // 双指捏合状态（缩放锚点 = 两指中点）
+      isPinching: false,
+      pinchStartDist: 0,
+      pinchStartMidX: 0,
+      pinchStartMidY: 0,
+      pinchStartScale: 1,
+      // 画布在屏幕坐标系里的原点与边长（每次手势开始实测）
+      canvasRect: null,
 
       // ⭐ 去背景调参：已移除（MODNet 官方推荐默认：mask-threshold=0 / feather-size=0，模型不可调）
       // yml 中 SegmentationConfig 是最佳默认值，前端不再传参。
@@ -292,16 +366,60 @@ export default {
       const xPx = uni.upx2px ? uni.upx2px(this.objectX) : this.objectX
       const yPx = uni.upx2px ? uni.upx2px(this.objectY) : this.objectY
       return `transform: translate(${xPx}px, ${yPx}px) scale(${this.objectScale});`
+    },
+
+    /**
+     * 对比层内部定位：宽度必须等于**整个画布**（而非被裁剪后的可见宽度），
+     * 否则原图会跟着分界线一起被压缩，两侧比例就对不上了。
+     * 用 100000rpx 的绝对宽度配合父级 left:0 + overflow 隐藏来实现裁剪。
+     */
+    compareInnerStyle() {
+      return `width: ${_upx2px(PREVIEW_CANVAS_RPX)}px; height: 100%;`
     }
   },
 
   onUnload() {
     this._clearTimers()
+    // 拖动中途离开页面会漏掉 mouseup，必须在这里解绑 window 监听
+    // #ifdef H5
+    this._detachCompareWindowListeners()
+    // #endif
   },
 
   methods: {
+    /**
+     * 成果图画布在**屏幕坐标系**里的原点与边长（px）。
+     * 捏合缩放的锚点补偿必须用画布相对坐标，否则页面滚动后锚点会偏。
+     * 读 DOM 而非 computed：无响应式依赖，computed 会被永久缓存，
+     * 故在 onTouchStart（每次手势开始）实测一次。
+     */
+    _measureCanvas() {
+      const fallback = _upx2px(Math.min(PREVIEW_CANVAS_RPX, 720))
+      // #ifdef H5
+      try {
+        const el = this.$refs.composeCanvas
+        if (el) {
+          const rect = el.getBoundingClientRect()
+          if (rect && rect.width > 0) {
+            this.canvasRect = { left: rect.left, top: rect.top, size: rect.width }
+            return
+          }
+        }
+      } catch (err) {
+        // 非 H5 端无 DOM API，走下面的兜底
+      }
+      // #endif
+      this.canvasRect = { left: 0, top: 0, size: fallback }
+    },
+
+    /**
+     * 返回：用项目的 safeBack，而不是 navigateBack + fail 兜底。
+     * H5 端 navigateBack 走 history.back()，页面栈为空时（刷新本页 /
+     * vite 热更新重载后）既不报错也不触发 fail，点击返回会完全没反应；
+     * safeBack 主动判断 getCurrentPages().length，栈底时改走 reLaunch。
+     */
     goBack() {
-      uni.navigateBack({ delta: 1, fail: () => uni.switchTab({ url: '/pages/index' }) })
+      safeBack('/pages/index')
     },
 
     // ==================== 状态 A：上传 ====================
@@ -532,6 +650,96 @@ export default {
     // 空操作：scroll-view 上拦截 touchmove，让拖动手势不被滚动抢走
     onNoop() {},
 
+    // ==================== 对比滑块（左右分界） ====================
+    /** 按屏幕 x 坐标更新分界位置 */
+    _setCompareByX(clientX) {
+      const rect = this.canvasRect
+      const left = rect ? rect.left : 0
+      const size = rect && rect.size > 0 ? rect.size : _upx2px(PREVIEW_CANVAS_RPX)
+      if (!size) return
+      const ratio = (clientX - left) / size
+      // 留 2% 余量，手柄不会被裁掉，也便于贴边
+      this.compareRatio = Math.max(0.02, Math.min(0.98, ratio))
+    },
+
+    onCompareStart(e) {
+      this.isComparing = true
+      this._measureCanvas()
+      const t = (e && e.touches && e.touches[0]) || null
+      if (t) this._setCompareByX(t.clientX)
+    },
+
+    onCompareMove(e) {
+      if (!this.isComparing) return
+      const t = (e && e.touches && e.touches[0]) || null
+      if (t) this._setCompareByX(t.clientX)
+    },
+
+    onCompareEnd() {
+      this.isComparing = false
+    },
+
+    /**
+     * H5 桌面端 fallback：拖动期间把 move/up 挂到 window。
+     * 指针一旦移出 2rpx 宽的分界线，元素上的 mousemove 就收不到了，
+     * 会导致「按住后一离开细线就卡住」。window 监听才能全程跟手。
+     */
+    onCompareMouseDown(e) {
+      this.isComparing = true
+      this._measureCanvas()
+      this._setCompareByX(e.clientX)
+      // #ifdef H5
+      this._attachCompareWindowListeners()
+      // #endif
+    },
+
+    onCompareMouseMove(e) {
+      if (!this.isComparing) return
+      this._setCompareByX(e.clientX)
+    },
+
+    onCompareMouseUp() {
+      if (!this.isComparing) return
+      this.isComparing = false
+      // #ifdef H5
+      this._detachCompareWindowListeners()
+      // #endif
+    },
+
+    // #ifdef H5
+    _attachCompareWindowListeners() {
+      if (this._compareBound) return
+      this._compareBound = true
+      this._compareMoveHandler = (e) => this._setCompareByX(e.clientX)
+      this._compareUpHandler = () => {
+        this.isComparing = false
+        this._detachCompareWindowListeners()
+      }
+      window.addEventListener('mousemove', this._compareMoveHandler)
+      window.addEventListener('mouseup', this._compareUpHandler)
+    },
+
+    _detachCompareWindowListeners() {
+      if (!this._compareBound) return
+      this._compareBound = false
+      window.removeEventListener('mousemove', this._compareMoveHandler)
+      window.removeEventListener('mouseup', this._compareUpHandler)
+      this._compareMoveHandler = null
+      this._compareUpHandler = null
+    },
+    // #endif
+
+    /** 关闭对比时清理未结束的拖动，避免残留 window 监听 */
+    onToggleCompare() {
+      this.compareEnabled = !this.compareEnabled
+      if (!this.compareEnabled) {
+        this.isComparing = false
+        // #ifdef H5
+        this._detachCompareWindowListeners()
+        // #endif
+      }
+    },
+
     // ==================== 状态 C：实时预览 ====================
     onSelectBgColor(color) {
       // 选「无（transparent）」表示清除底色
@@ -569,28 +777,148 @@ export default {
     },
 
     // ==================== 状态 C：物体调整（D2） ====================
+    /**
+     * 两指中点（供捏合缩放锚点补偿用）。
+     * 缩放时若不做补偿，物体只会以「画布中心」为锚点缩放，
+     * 手指按在哪就必然漂移——这是图片编辑器最常见的体验缺陷。
+     */
+    _touchMid(touches) {
+      const x = (touches[0].clientX + touches[1].clientX) / 2
+      const y = (touches[0].clientY + touches[1].clientY) / 2
+      return { x, y }
+    },
+
+    /** 两指间距（捏合基准距离） */
+    _touchDist(touches) {
+      const dx = touches[0].clientX - touches[1].clientX
+      const dy = touches[0].clientY - touches[1].clientY
+      return Math.sqrt(dx * dx + dy * dy)
+    },
+
     onTouchStart(e) {
-      if (!e || !e.touches || e.touches.length !== 1) return
-      this.isDragging = true
-      const touch = e.touches[0]
-      this.dragStartX = touch.clientX
-      this.dragStartY = touch.clientY
-      this.objectStartX = this.objectX
-      this.objectStartY = this.objectY
+      const touches = (e && e.touches) || []
+
+      // 双指：进入捏合缩放，记录初始距离 / 中点 / 当时的缩放与位移
+      if (touches.length === 2) {
+        this.isPinching = true
+        this.isDragging = false
+        this._measureCanvas()
+        this.pinchStartDist = this._touchDist(touches)
+        const mid = this._touchMid(touches)
+        this.pinchStartMidX = mid.x
+        this.pinchStartMidY = mid.y
+        this.pinchStartScale = this.objectScale
+        this.objectStartX = this.objectX
+        this.objectStartY = this.objectY
+        return
+      }
+
+      // 单指：仅在未处于捏合态时才开始拖动。
+      // ⚠️ 捏合结束切回单指时 touches.length 会从 2 变 1，
+      //    若不置 isPinching=false，单指拖动会一直不响应。
+      if (touches.length === 1 && !this.isPinching) {
+        this.isDragging = true
+        const touch = touches[0]
+        this.dragStartX = touch.clientX
+        this.dragStartY = touch.clientY
+        this.objectStartX = this.objectX
+        this.objectStartY = this.objectY
+      }
     },
 
     onTouchMove(e) {
-      if (!this.isDragging || !e || !e.touches || e.touches.length !== 1) return
-      const touch = e.touches[0]
+      const touches = (e && e.touches) || []
+
+      // 双指捏合：以中点为锚点缩放
+      if (touches.length === 2 && this.isPinching) {
+        const startDist = this.pinchStartDist || 0
+        if (startDist <= 0) return
+        const ratio = this._touchDist(touches) / startDist
+        const newScale = Math.max(
+          MIN_OBJECT_SCALE,
+          Math.min(MAX_OBJECT_SCALE, this.pinchStartScale * ratio)
+        )
+
+        // 锚点补偿：让「起始中点下的那个像素」在缩放前后停在同一屏幕位置。
+        // 推导（画布相对坐标，物体基准尺寸恰好等于画布，故物体中心 C 恒为 0）：
+        //   屏幕映射  M = p*S + T        （p 为未缩放的物体坐标，T 为位移）
+        //   起始      M0 = p0*S0 + T0     →  p0 = (M0 - T0)/S0
+        //   缩放后要求 p0 仍在 M1 下      M1 = p0*S1 + T1
+        //   代入化简（k = S1/S0）：  T1 = k*T0 + M1 - k*M0
+        // 退化校验：k=1 时 T1 = T0 + (M1-M0)，即纯跟手平移，行为不变。
+        // 全部量统一为 px（位移 data 存 rpx，进出各换算一次）
+        const k = newScale / (this.pinchStartScale || 1)
+        const t0x = this.objectStartX / RPX_PER_PX
+        const t0y = this.objectStartY / RPX_PER_PX
+        const rect = this.canvasRect || { left: 0, top: 0, size: _upx2px(Math.min(PREVIEW_CANVAS_RPX, 720)) }
+        const m0x = this.pinchStartMidX - rect.left
+        const m0y = this.pinchStartMidY - rect.top
+        const mid = this._touchMid(touches)
+        const m1x = mid.x - rect.left
+        const m1y = mid.y - rect.top
+
+        this.objectScale = newScale
+        this.objectX = (k * t0x + m1x - k * m0x) * RPX_PER_PX
+        this.objectY = (k * t0y + m1y - k * m0y) * RPX_PER_PX
+        this._applyBounds()
+        return
+      }
+
+      if (!this.isDragging || touches.length !== 1) return
+      const touch = touches[0]
       const dx = touch.clientX - this.dragStartX
       const dy = touch.clientY - this.dragStartY
-      // rpx ≈ px × 2（uni-app 750rpx 设计稿下）
-      this.objectX = this.objectStartX + dx * 2
-      this.objectY = this.objectStartY + dy * 2
+      this.objectX = this.objectStartX + dx * RPX_PER_PX
+      this.objectY = this.objectStartY + dy * RPX_PER_PX
+      this._applyBounds()
     },
 
-    onTouchEnd() {
+    onTouchEnd(e) {
+      const touches = (e && e.touches) || []
+      // 还有手指留在屏幕上（2→1）时不要急着收尾，等最后一根抬起再重置
+      if (touches.length > 0) return
+      // ⚠️ 必须彻底清理手势状态，否则下一次单指拖动会被误判成缩放
+      //    （Cropper.js #161 同类问题）
       this.isDragging = false
+      this.isPinching = false
+      this.pinchStartDist = 0
+      this.pinchStartMidX = 0
+      this.pinchStartMidY = 0
+      this.pinchStartScale = 1
+    },
+
+    /**
+     * 边界约束：物体小于画布时锁死居中（不可拖），大于画布时把位移夹在溢出范围内。
+     * 不加这个约束，用户可以把主体拖出画布外且看不到「去哪了」。
+     */
+    _applyBounds() {
+      const maxOffsetRpx = this._maxOffsetRpx()
+      this.objectScale = Math.max(MIN_OBJECT_SCALE, Math.min(MAX_OBJECT_SCALE, this.objectScale))
+      if (maxOffsetRpx <= 0) {
+        // 物体未超出画布 → 无可拖动空间，锁死居中
+        this.objectX = 0
+        this.objectY = 0
+        return
+      }
+      this.objectX = Math.max(-maxOffsetRpx, Math.min(maxOffsetRpx, this.objectX))
+      this.objectY = Math.max(-maxOffsetRpx, Math.min(maxOffsetRpx, this.objectY))
+    },
+
+    /**
+     * 当前缩放下允许的最大位移（rpx），返回 0 表示物体恰好等于画布、无可拖空间。
+     *
+     * 物体层基准尺寸 = 画布（object-layer__img 铺满画布），缩放后实际尺寸 = 画布 × scale：
+     *   · scale < 1：物体小于画布 → 可在画布内自由摆放，范围 = (画布 - 物体)/2
+     *   · scale = 1：物体等于画布 → 无空间，锁死居中
+     *   · scale > 1：物体大于画布 → 只能平移，且不能拖到露出画布外空白，范围 = (物体 - 画布)/2
+     * 两侧统一为 画布 × |1 - scale| / 2。
+     *
+     * ⚠️ 不可写成 max(0, scale-1)：那会在 scale<1 时直接锁死，
+     *    导致「先缩小、再把主体挪到想要的位置」这条最自然的操作路径失效。
+     */
+    _maxOffsetRpx() {
+      const scale = this.objectScale || 1
+      return (PREVIEW_CANVAS_RPX * Math.abs(1 - scale)) / 2
     },
 
     // H5 桌面端 fallback：uni-app 编译到 H5 时，鼠标拖动不会触发 touch* 事件
@@ -606,8 +934,9 @@ export default {
       if (!this.isDragging) return
       const dx = e.clientX - this.dragStartX
       const dy = e.clientY - this.dragStartY
-      this.objectX = this.objectStartX + dx * 2
-      this.objectY = this.objectStartY + dy * 2
+      this.objectX = this.objectStartX + dx * RPX_PER_PX
+      this.objectY = this.objectStartY + dy * RPX_PER_PX
+      this._applyBounds()
     },
 
     onMouseEnd() {
@@ -621,7 +950,8 @@ export default {
         ? e.detail.value
         : (e && e.target && e.target.value != null ? e.target.value : null)
       const v = raw != null ? Number(raw) : 100
-      this.objectScale = Math.max(0.1, Math.min(3.0, v / 100))
+      this.objectScale = Math.max(MIN_OBJECT_SCALE, Math.min(MAX_OBJECT_SCALE, v / 100))
+      this._applyBounds()
     },
 
     resetObject() {
@@ -649,6 +979,9 @@ export default {
       this.compositeOnCanvas()
         .then((dataUrl) => {
           // #ifdef H5
+          // ⚠️ H5 这里刻意不走 fileAction.downloadOutput：dataUrl 是 canvas 合成出的
+          //    内存 data URL，不是网络地址；uni.downloadFile 只接受网络/本地路径。
+          //    <a download> 是触发浏览器存盘 data URL 的唯一方式。
           const a = document.createElement('a')
           a.href = dataUrl
           a.download = (this.uploadedFileName && this.uploadedFileName.replace(/\.[^.]+$/, '')) || 'image-bg-remover'
@@ -659,17 +992,11 @@ export default {
           document.body.removeChild(a)
           // #endif
           // #ifndef H5
-          // 非 H5 端：直接把 transparentPng 走 uni.downloadFile 触发系统下载/保存
-          uni.downloadFile({
+          // 非 H5 端 canvas 合成未实现，退回下载远端透明原图（走统一出口）
+          downloadOutput({
             url: this.transparentPng,
-            success: (res) => {
-              if (res.statusCode === 200) {
-                uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-              } else {
-                uni.showToast({ title: '下载失败', icon: 'none' })
-              }
-            },
-            fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
+            name: (this.uploadedFileName && this.uploadedFileName.replace(/\.[^.]+$/, '')) || 'image-bg-remover.png',
+            kind: 'image'
           })
           // #endif
           uni.hideLoading()
@@ -823,28 +1150,15 @@ export default {
     },
 
     /**
-     * 兜底：合成失败时退回直接下载原图
+     * 兜底：合成失败时退回直接下载原图。
+     * 走 fileAction 统一下载出口（跨端策略 + 403 过期提示都在那一处维护）。
      */
     _fallbackDownload() {
-      // #ifdef H5
-      const a = document.createElement('a')
-      a.href = this.transparentPng
-      a.download = this.uploadedFileName || 'image-bg-remover.png'
-      a.target = '_blank'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      // #endif
-      // #ifndef H5
-      uni.downloadFile({
+      downloadOutput({
         url: this.transparentPng,
-        success: (res) => {
-          if (res.statusCode === 200) {
-            uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-          }
-        }
+        name: (this.uploadedFileName && this.uploadedFileName.replace(/\.[^.]+$/, '')) || 'image-bg-remover.png',
+        kind: 'image'
       })
-      // #endif
     },
 
     onReset() {
@@ -862,6 +1176,13 @@ export default {
       this.objectY = 0
       this.objectScale = 1
       this.isDragging = false
+      // 重置对比滑块（新图没有可对比的旧状态）
+      this.compareEnabled = false
+      this.compareRatio = 0.5
+      this.isComparing = false
+      // #ifdef H5
+      this._detachCompareWindowListeners()
+      // #endif
     }
   }
 }
@@ -877,6 +1198,8 @@ export default {
 
 /* ============ 顶栏 ============ */
 .topbar {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex;
   align-items: center;
   height: 88rpx;
@@ -1046,17 +1369,12 @@ export default {
 
 /* ============ 状态 C：实时预览 ============ */
 .state-c {
-  .compare-preview {
-    display: flex;
-    gap: 16rpx;
-    margin-bottom: 24rpx;
-  }
-
+  /* 单列成果图：不再并排展示原图，画布占满宽度并适当加高 */
   .preview-box {
-    flex: 1;
     background: #FFFFFF;
     border-radius: 24rpx;
     padding: 16rpx;
+    margin-bottom: 24rpx;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 
     &__label {
@@ -1067,7 +1385,7 @@ export default {
     }
     &__canvas {
       width: 100%;
-      height: 300rpx;
+      height: 720rpx;
       border-radius: 16rpx;
       overflow: hidden;
       background: #F1F5F9;
@@ -1232,6 +1550,91 @@ export default {
       width: 100%;
       height: 100%;
       pointer-events: none;
+    }
+  }
+
+  /* ============ 对比滑块：左原图 / 右去背景 ============ */
+  /* 对比层盖在画布左侧，只露出 compareRatio 宽度；内部宽度等于整个画布，
+     保证原图与右侧编辑结果的比例严格一致（不随分界线移动而被压缩）。 */
+  .compare-layer {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &__inner {
+      position: absolute;
+      left: 0; top: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    &__img {
+      width: 100%;
+      height: 100%;
+      /* 与 .object-layer__img 同步同一套 transform，原图与成果图始终对齐 */
+    }
+  }
+
+  .compare-divider {
+    /* 手柄用 absolute 定位到中心，分界线自身需作为定位上下文 */
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2rpx;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 1rpx rgba(0, 0, 0, 0.18);
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* ⚠️ 这里必须允许命中：手势绑在本容器上，pointer-events:none 会让手柄完全拖不动。
+        视觉上仍是 2rpx 细线，但用不可见的宽命中区（::before）扩大可点范围。 */
+    pointer-events: auto;
+    touch-action: none;
+    cursor: ew-resize;
+
+    /* 扩大命中区：左右各 24rpx 透明可点区域，视觉无变化但好按 */
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      left: -24rpx;
+      width: 50rpx;
+    }
+    &--active { box-shadow: 0 0 0 2rpx rgba(59, 130, 246, 0.6); }
+
+    &__handle {
+      /* 分界线只有 2rpx 宽，手柄靠 absolute 定位到中心，
+         否则 margin-left 会把手柄整体推到分界线左边 */
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 64rpx;
+      height: 64rpx;
+      border-radius: 50%;
+      background: #FFFFFF;
+      box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      cursor: ew-resize;
+      user-select: none;
+      -webkit-user-drag: none;
+      svg {
+        width: 32rpx;
+        height: 32rpx;
+        fill: none;
+        stroke: #374151;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
     }
   }
 

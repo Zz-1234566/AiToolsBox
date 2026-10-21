@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-一个面向移动端 / H5 的 AI 工具箱 App，当前已实现 **8 个工具**：文档提取、录音转写、会议纪要、重点提取、工作总结、周报生成（AI 办公），以及证件照换背景色、图片背景去除（本地 ONNX 抠图，不走云端 AI）。加工层工具调用 MiniMax 文本模型 M2.7（OpenAI 兼容协议），多模态与语音识别用 M3 / asr-1.0，结果支持 SSE 流式打字机效果。各工具可被编排成**工作流流水线**一次跑完。
+一个面向移动端 / H5 的 AI 工具箱 App，当前已实现 **7 个工具**：文档提取、录音转写、会议纪要、重点提取、工作总结、周报生成（AI 办公），以及图片背景去除（本地 ONNX 抠图，不走云端 AI）。加工层工具调用 MiniMax 文本模型 M2.7（OpenAI 兼容协议），多模态与语音识别用 M3 / asr-1.0，结果支持 SSE 流式打字机效果。各工具可被编排成**工作流流水线**一次跑完。
 
 ## 技术栈
 
@@ -181,16 +181,16 @@ AI 办公类工具划分为两层，**目的是让每个工具都能作为工作
 | `doc-keypoint-extract` | 重点提取 | AI办公助手 | 加工 | 文本 | 文本 | `POST /api/ai-office/document-summary/text-stream`（SSE，纯文字） |
 | `work-summary` | 工作总结 | AI办公助手 | 加工 | 文本 | 文本 | `POST /api/ai-office/work-summary/stream`（SSE） |
 | `weekly-report` | 周报生成 | AI办公助手 | 加工 | 文本 | 文本 | `POST /api/ai-office/weekly-report/stream`（SSE） |
-| `id-photo-bg-change` | 证件照换背景色 | 图片创意工具 | 本地推理 | 图片 | 图片 | `POST /api/ai-office/id-photo-bg-change`（ONNX 离线抠图 + 底色合成） |
 | `image-bg-remover` | 图片背景去除 | 图片创意工具 | 本地推理 | 图片 | 图片 / 透明底 PNG | `POST /api/ai-office/image-bg-remover`（3 种模式合一：去背景 / 换背景 / 保留主体） |
 
-> 8 个工具分属 2 个分类：AI办公助手 6 个 + 图片创意工具 2 个。
+> 7 个工具分属 2 个分类：AI办公助手 6 个 + 图片创意工具 1 个。
 > 图片类工具**不调用任何云端 AI**，由后端 ONNX Runtime 本地 CPU 推理完成（见「图片工具与本地模型」）。
 
 ### 已下线的工具（`dr=1`，保留可回滚）
 
 `ocr-recognize`（能力并入 `doc-to-text`）、`ai-file-reader`（多模态与「加工层只吃文本」冲突）、
-图片创意 4 个与效率小工具 3 个（未实现）。`init.sql` 中仍保留它们的 INSERT 再置 `dr=1`，
+`id-photo-bg-change`（证件照换背景色：产品上已下线，端点与前端入口均已移除，能力被 `image-bg-remover` 的
+`color` 模式完全覆盖）、图片创意 3 个与效率小工具 3 个（未实现）。`init.sql` 中仍保留部分工具的 INSERT 再置 `dr=1`，
 是历史顺序的产物，不代表可用。
 
 ### 文档提取的三条通道
@@ -275,8 +275,8 @@ AI 办公类工具划分为两层，**目的是让每个工具都能作为工作
 
 ### 图片工具与本地 ONNX 模型
 
-`id-photo-bg-change`（证件照换背景色）和 `image-bg-remover`（图片背景去除）
-**不调用云端 AI**，由后端 ONNX Runtime 做 CPU 离线推理，需要随包携带 **1 个**模型文件。
+`image-bg-remover`（图片背景去除）**不调用云端 AI**，由后端 ONNX Runtime 做 CPU 离线推理，
+需要随包携带 **1 个**模型文件。
 
 | 项 | 值 |
 |---|---|
@@ -301,11 +301,17 @@ ONNX 版由社区转换而来。三个可行来源：
    <https://github.com/ZHKKKe/MODNet/tree/master/onnx>
 3. **官方仓库** —— <https://github.com/ZHKKKe/MODNet>（Apache-2.0，含论文与 Colab 清单）
 
-#### 两个工具共用一个模型
+#### 合成模式
 
-`id-photo-bg-change` 与 `image-bg-remover` 走的是**同一个** `SegmentationServiceImpl`、
-同一个 `OrtSession`、同一份 `segmentation.model-path`。两者差别只在**后处理合成策略**
-（前者固定换红/蓝/白底，后者 3 模式：透明 / 换底色 / 换背景图），抠图环节完全共用。
+`image-bg-remover` 一个端点承担 3 种模式，由请求参数 `mode` 决定：
+
+| mode | 行为 | 输出 |
+|---|---|---|
+| `transparent` | 单纯去背景（默认） | 透明底 PNG |
+| `color` | 换底色（红 / 蓝 / 白） | PNG |
+| `image` | 换自定义背景图 | JPG |
+
+抠图（ONNX 推理）环节三种模式完全共用，只有后处理合成策略不同。
 
 > ⚠️ **不要用 `u2netp.onnx` 顶替。** `SegmentationServiceImpl` 的预处理严格对齐 MODNet
 > （固定除以 255、mean/std 均为 0.5），而 U²-Net 用的是「整图 maxPix 做除数」那一套。
@@ -347,7 +353,7 @@ ONNX 版由社区转换而来。三个可行来源：
 | 历史记录 | `/api/history` | 工具调用历史（主表 + 明细 + 文件） |
 | 提示词 | `/api/prompt` | 系统提示词查询 + 用户自定义提示词 CRUD + AI 生成 |
 | 收藏 | `/api/favorite` | 工具/提示词收藏（`sys_user_favorite`，DDL 见 `sql/init.sql`） |
-| 图片处理 | `/api/ai-office/id-photo-bg-change`<br>`/api/ai-office/image-bg-remover` | 人像分割（本地 ONNX 离线推理） |
+| 图片处理 | `/api/ai-office/image-bg-remover` | 人像分割（本地 ONNX 离线推理） |
 | 文件 | `/api/file/upload` | 通用文件上传（COS / 本地，按 `prefix` 分目录） |
 
 ## 用户角色与权限

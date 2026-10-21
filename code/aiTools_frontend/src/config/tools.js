@@ -11,7 +11,7 @@ export const CATEGORIES = [
   },
   {
     code: '图片创意工具',
-    tools: ['id-photo-bg-change', 'image-bg-remover']
+    tools: ['image-bg-remover']
   }
 ]
 
@@ -143,36 +143,6 @@ export const TOOLS = {
       file:   { token: true, file: { type: 'single', min: 1, error: '请先上传文件' } },
       text:   { unsupported: true, error: '该工具请上传文件' },
       image:  { unsupported: true, error: '该工具请上传文件（图片请直接上传）' },
-    }
-  },
-  'id-photo-bg-change': {
-    name: '证件照换背景色', icon: 'bg-color', category: '图片创意工具', realized: true,
-    inputLabel: '证件照',
-    // 注意：不要加 pureConvert —— tool-common.vue 的 isPureConvert 区块会再渲染一套上传卡，与本页 UI 重复
-    desc: '上传一张人像证件照，AI 自动抠出人像并合成红 / 蓝 / 白底证件照。',
-    inputTypes: ['image'], defaultInput: 'image', fileType: 'image',
-    fileRule: {
-      accept: '.jpg,.jpeg,.png,.bmp',
-      maxCount: 1,
-      maxTotalSize: 20 * 1024 * 1024,
-      title: '上传证件照',
-      desc: '支持 JPG、JPEG、PNG、BMP · 单张 20MB',
-      uploadType: 'file',
-      apiPath: '/api/ai-office/id-photo-bg-change'
-    },
-    uploadTitle: '点击上传证件照', uploadDesc: '支持 JPG、PNG、BMP · 单张不超过 20MB',
-    // 底色选项（value 对应后端 bgColor 入参）
-    bgColorOptions: [
-      { value: 'red',   label: '红色', hex: '#EF4444' },
-      { value: 'blue',  label: '蓝色', hex: '#3B82F6' },
-      { value: 'white', label: '白色', hex: '#FFFFFF' }
-    ],
-    defaultBgColor: 'red',
-    actionText: '生成证件照', resultTitle: '换背景结果', resultPlaceholder: '生成结果将在这里显示...',
-    validateRules: {
-      image:  { token: true, file: { type: 'single', min: 1, error: '请先上传证件照' } },
-      file:   { unsupported: true, error: '该工具请上传图片（jpg/png/bmp）' },
-      text:   { unsupported: true, error: '该工具请上传图片' },
     }
   },
   'image-bg-remover': {

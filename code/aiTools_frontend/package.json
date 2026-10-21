@@ -4,13 +4,13 @@
   "description": "AI 聚合工具箱 - 移动端",
   "main": "main.js",
   "scripts": {
-    "dev:app": "uni",
+    "dev:app": "uni -p app",
     "dev:custom": "uni -p",
-    "dev:h5": "uni",
-    "dev:h5:ssr": "uni --ssr",
-    "build:app": "uni build",
-    "build:h5": "uni build",
-    "build:h5:ssr": "uni build --ssr"
+    "dev:h5": "uni -p h5",
+    "dev:h5:ssr": "uni -p h5 --ssr",
+    "build:app": "uni build -p app",
+    "build:h5": "uni build -p h5",
+    "build:h5:ssr": "uni build -p h5 --ssr"
   },
   "dependencies": {
     "@dcloudio/uni-app": "3.0.0-5010520260709002",

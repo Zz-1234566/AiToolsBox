@@ -268,11 +268,7 @@ INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `componen
 VALUES ('ocr-recognize', 'AI办公助手', '智能识别', 'office', '发票、名片、文字识别', '', 5, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
 
--- 图片创意工具（sort_no 6-9）
-INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
-VALUES ('id-photo-bg-change', '图片创意工具', '证件照换背景色', 'image', '红蓝白底自由切换', '', 6, 1, 0)
-ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
-
+-- 图片创意工具（sort_no 7-9）
 INSERT INTO `sys_aitools_tool` (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `sort_no`, `status`, `dr`)
 VALUES ('portrait-bg-replace', '图片创意工具', '人像换背景图', 'image', 'AI 抠图替换背景', '', 7, 1, 0)
 ON DUPLICATE KEY UPDATE `tool_name` = VALUES(`tool_name`), `tool_type` = VALUES(`tool_type`), `sort_no` = VALUES(`sort_no`);
@@ -438,7 +434,6 @@ DEALLOCATE PREPARE stmt;
 UPDATE `sys_aitools_tool` SET `sort_no` = 3  WHERE `tool_code` = 'weekly-report';
 UPDATE `sys_aitools_tool` SET `sort_no` = 4  WHERE `tool_code` = 'meeting-minutes';
 UPDATE `sys_aitools_tool` SET `sort_no` = 5  WHERE `tool_code` = 'ocr-recognize';
-UPDATE `sys_aitools_tool` SET `sort_no` = 6  WHERE `tool_code` = 'id-photo-bg-change';
 UPDATE `sys_aitools_tool` SET `sort_no` = 7  WHERE `tool_code` = 'portrait-bg-replace';
 UPDATE `sys_aitools_tool` SET `sort_no` = 8  WHERE `tool_code` = 'image-compress';
 UPDATE `sys_aitools_tool` SET `sort_no` = 9  WHERE `tool_code` = 'qr-code-gen';
@@ -573,7 +568,6 @@ UPDATE `sys_aitools_tool` SET `input_type` = 'text',      `output_type` = 'text'
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'text' WHERE `tool_code` = 'ocr-recognize';
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'text' WHERE `tool_code` = 'bank-receipt-recognize';
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'text' WHERE `tool_code` = 'invoice-recognize';
-UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'image' WHERE `tool_code` = 'id-photo-bg-change';
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'image' WHERE `tool_code` = 'portrait-bg-replace';
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'image' WHERE `tool_code` = 'image-compress';
 UPDATE `sys_aitools_tool` SET `input_type` = 'text',      `output_type` = 'image' WHERE `tool_code` = 'qr-code-gen';
@@ -616,6 +610,10 @@ UPDATE `sys_ai_prompt` SET `tool_code` = 'doc-keypoint-extract' WHERE `tool_code
 --   ocr-recognize      能力并入 doc-to-text
 --   ai-file-reader     多模态，与加工层定位冲突
 --   图片创意 / 效率小工具  一直未实现（realized: false），无后端接口
+--   id-photo-bg-change 产品上已下线（端点与前端入口均已移除，只保留 image-bg-remover）：
+--                      其 INSERT 已从本文件删除（新装环境不会建这行），
+--                      但**仍保留此处的 dr=1**，用于把已部署环境里残留的那行也一并下线；
+--                      新装环境执行到这里是空操作。
 UPDATE `sys_aitools_tool` SET `dr` = 1
 WHERE `tool_code` IN (
     'ocr-recognize', 'ai-file-reader', 'id-photo-bg-change',

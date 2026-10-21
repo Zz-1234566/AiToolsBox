@@ -62,7 +62,7 @@ export function initTheme() {
   return isDark
 }
 
-export function applyTheme(isDark) {
+function applyTheme(isDark) {
   setCSSVars(isDark ? darkVars : lightVars)
   updateTabBarStyle(isDark)
 }
@@ -70,8 +70,4 @@ export function applyTheme(isDark) {
 export function toggleTheme(isDark) {
   uni.setStorageSync(STORAGE_KEY, isDark ? 1 : '')
   applyTheme(isDark)
-}
-
-export function getIsDarkTheme() {
-  return !!uni.getStorageSync(STORAGE_KEY)
 }

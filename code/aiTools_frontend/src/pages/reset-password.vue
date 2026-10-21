@@ -90,6 +90,7 @@
 <script setup>
 import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { sendCodeApi, resetPasswordApi } from '@/api/user'
+import { safeBack } from '@/utils/pageTransition'
 
 const form = ref({
   email: '',
@@ -222,13 +223,12 @@ const handleSubmit = async () => {
   }
 }
 
+/**
+ * 返回登录页：用项目统一的 safeBack（栈底时自动 reLaunch），
+ * 与 forget.vue / login.vue 等保持同一套返回语义。
+ */
 const goToLogin = () => {
-  const pages = getCurrentPages()
-  if (pages.length > 1) {
-    uni.navigateBack()
-  } else {
-    uni.reLaunch({ url: '/pages/login' })
-  }
+  safeBack('/pages/login')
 }
 </script>
 

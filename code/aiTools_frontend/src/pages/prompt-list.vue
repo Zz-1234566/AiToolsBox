@@ -346,6 +346,8 @@ const onDelete = (item) => {
 }
 
 .pl-head {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex;
   align-items: center;
   gap: 8rpx;

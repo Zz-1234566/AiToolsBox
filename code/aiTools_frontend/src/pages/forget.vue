@@ -45,6 +45,7 @@
 <script setup>
 import { ref, nextTick } from 'vue'
 import { findAccountApi } from '@/api/user'
+import { safeBack } from '@/utils/pageTransition'
 
 const email = ref('')
 const loading = ref(false)
@@ -94,13 +95,13 @@ const goToLogin = () => {
   goBack()
 }
 
+/**
+ * 返回登录页：用项目统一的 safeBack，而不是手写栈判断。
+ * H5 端 navigateBack 走 history.back()，栈空时（刷新本页）既不报错也不触发
+ * fail，手写判断容易漏；safeBack 内部已处理（栈底 → reLaunch）。
+ */
 const goBack = () => {
-  const pages = getCurrentPages()
-  if (pages.length > 1) {
-    uni.navigateBack()
-  } else {
-    uni.reLaunch({ url: '/pages/login' })
-  }
+  safeBack('/pages/login')
 }
 </script>
 

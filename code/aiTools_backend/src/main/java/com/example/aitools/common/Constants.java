@@ -90,10 +90,6 @@ public class Constants {
     public static final java.util.Set<String> ALLOWED_AUDIO_EXTENSIONS =
             java.util.Set.of("mp3", "wav", "m4a", "aac", "flac", "ogg", "amr");
 
-    /** 证件照白名单：id-photo-bg-change 工具用（jpg/png/bmp，不含 gif/webp） */
-    public static final java.util.Set<String> ALLOWED_ID_PHOTO_EXTENSIONS =
-            java.util.Set.of("jpg", "jpeg", "png", "bmp");
-
     /** 支持的存储前缀（目录）：头像 / AI 图片 / 去背景 / 通用用户文件区 / 工具产物，空串表示根目录 */
     public static final java.util.Set<String> ALLOWED_FILE_PREFIXES =
             java.util.Set.of("", "avatar", "ai-image", "ai-bg", "file", "tool-output");

@@ -18,16 +18,40 @@
       "image": "/static/logo.png",
       "imagePath": "/static/logo.png"
     },
-    "modules": {},
+    "modules": {
+      "Camera": {
+        "description": "用于拍照、从相册选择图片与保存图片到相册"
+      },
+      "VideoPlayer": {
+        "description": "用于播放工作流产物中的视频"
+      }
+    },
+    "safearea": {
+      "background": "#FFFFFF",
+      "bottom": {
+        "offset": "auto"
+      }
+    },
     "distribute": {
       "android": {
+        "packagename": "com.example.aitools",
         "permissions": [
           "<uses-permission android:name=\"android.permission.INTERNET\" />",
           "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" />",
           "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />"
         ]
       },
-      "ios": {},
+      "ios": {
+        "dSYMs": false,
+        "idfa": false,
+        "NSAllowsArbitraryLoads": true,
+        "NSAllowsArbitraryLoadsInWebContent": true,
+        "privacyDescription": {
+          "NSCameraUsageDescription": "用于拍摄人像照片以进行去背景处理",
+          "NSPhotoLibraryUsageDescription": "用于从相册选择图片以进行去背景处理",
+          "NSPhotoLibraryAddUsageDescription": "用于把处理结果保存到相册"
+        }
+      },
       "sdkConfigs": {}
     }
   },

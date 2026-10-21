@@ -96,6 +96,7 @@ import {
   deleteUserAiModel,
   setDefaultUserAiModel,
 } from '@/api/aiModel.js'
+import { safeBack } from '@/utils/pageTransition'
 
 const models = ref([])
 const loading = ref(false)
@@ -127,8 +128,13 @@ const onCapChange = (e) => {
   form.capability = capOptions[e.detail.value].value
 }
 
+/**
+ * 返回：用项目的 safeBack。
+ * H5 端 navigateBack 走 history.back()，页面栈为空时（刷新本页 / 热更新重载后）
+ * 既不报错也不触发 fail，点返回会完全没反应；safeBack 主动判断栈深度并 reLaunch 兜底。
+ */
 const goBack = () => {
-  uni.navigateBack({ delta: 1, fail: () => uni.switchTab({ url: '/pages/my' }) })
+  safeBack('/pages/my')
 }
 
 const loadList = async () => {
@@ -203,6 +209,8 @@ onMounted(loadList)
 .page { min-height: 100vh; background: #F9FAFB; padding-bottom: 0; }
 
 .topbar {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex; align-items: center; height: 88rpx; padding: 0 24rpx; background: #fff;
   border-bottom: 1rpx solid #F3F4F6;
   &__back { width: 60rpx; height: 60rpx; @include btn-base; color: #1F2937; }

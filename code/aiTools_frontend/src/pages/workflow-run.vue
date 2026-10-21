@@ -1,5 +1,10 @@
 <template>
   <view class="wfr-page">
+    <!-- App 端 SSE 传输组件（视图层发起 XHR）；H5 端用原生 XHR，不需要此组件 -->
+    <!-- #ifdef APP-PLUS -->
+    <sse-renderjs />
+    <!-- #endif -->
+
     <!-- 顶栏：返回 + 工作流名 + 说明（navigationStyle:custom，必须自绘返回入口） -->
     <view class="wfr-topbar">
       <view class="wfr-topbar__back" hover-class="wfr-topbar__back--tap" aria-label="返回" @click="goBack">
@@ -261,11 +266,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import MarkdownView from '@/components/MarkdownView.vue'
 import WfIcon from '@/components/WfIcon.vue'
+import SseRenderjs from '@/components/sse-renderjs/sse-renderjs.vue'
 import { BASE_URL } from '@/config/env'
+import { streamRaw } from '@/api/stream'
 import { toolListApi } from '@/api/prompt'
 import {
   workflowDetailApi, workflowRunApi, workflowRunDetailApi
@@ -707,7 +714,29 @@ const loadWorkflow = async (id) => {
   nodes.value = (wf && wf.nodes) || []
 }
 
+/**
+ * 页面级状态重置：A 运行记录 → 返回 → B 运行记录时 keep-alive 会复用组件，
+ * onLoad 不再触发，若不清空 logs / outputs / 节点状态就会叠加上一条的数据
+ * （pushLog 内部是 concat，不清必然累积）。
+ */
+const resetPageState = () => {
+  stopTimer()
+  if (xhr) { try { xhr.abort() } catch (e) { /* ignore */ } xhr = null }
+  logs.value = []
+  outputs.value = []
+  runResult.value = null
+  runAlert.value = ''
+  fatalError.value = ''
+  localInputs.value = {}
+  inputFileNames.value = null
+  wfName.value = ''
+  wfDesc.value = ''
+  nodes.value = []
+  runningNow.value = false
+}
+
 const init = async () => {
+  resetPageState()
   loading.value = true
   try {
     await loadTools()
@@ -765,12 +794,60 @@ const init = async () => {
   }
 }
 
+// 上次初始化用的路由参数，onShow 时比对是否需要重新初始化（keep-alive 复用兜底）
+let lastInitKey = ''
+
 onLoad((options) => {
   mode.value = (options && options.mode) || 'run'
   workflowId.value = (options && options.workflowId) || ''
   runId.value = (options && options.runId) || ''
+  lastInitKey = `${mode.value}#${workflowId.value}#${runId.value}`
   init()
 })
+
+/**
+ * keep-alive 复用兜底：A 运行记录 → 返回 → B 运行记录时 onLoad 不再触发。
+ *
+ * ⚠️ 与 tool-common 同一个坑：uni-h5 的 KeepAlive key 是 `path + getStateId()`，
+ *    **不含 query**，同路径不同 query 会复用同一实例；且页面实例持有的
+ *    options 是旧值，在 onShow 里读会拿到过期参数。
+ *    所以用 hashchange 事件驱动，拿到新 query 再比对决定是否重新 init。
+ */
+const routeHash = ref(typeof location !== 'undefined' ? location.hash : '')
+
+const parseHashQuery = (h) => {
+  const q = (h || '').split('?')[1] || ''
+  const out = {}
+  q.split('&').forEach(kv => {
+    if (!kv) return
+    const i = kv.indexOf('=')
+    const k = i > 0 ? kv.slice(0, i) : kv
+    const v = i > 0 ? decodeURIComponent(kv.slice(i + 1)) : ''
+    if (k) out[k] = v
+  })
+  return out
+}
+
+const applyRouteAndInit = (h) => {
+  const opt = parseHashQuery(h)
+  const key = `${opt.mode || 'run'}#${opt.workflowId || ''}#${opt.runId || ''}`
+  if (key === lastInitKey) return
+  lastInitKey = key
+  mode.value = opt.mode || 'run'
+  workflowId.value = opt.workflowId || ''
+  runId.value = opt.runId || ''
+  init()
+}
+
+// #ifdef H5
+const onHashChange = () => { routeHash.value = location.hash || '' }
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', onHashChange)
+  onUnmounted(() => window.removeEventListener('hashchange', onHashChange))
+}
+// #endif
+
+watch(routeHash, (h) => applyRouteAndInit(h))
 
 onUnmounted(() => { stopTimer(); if (xhr) { try { xhr.abort() } catch (e) { /* ignore */ } } })
 
@@ -922,8 +999,7 @@ const startSync = async (inputs) => {
 const startStream = (inputs) => {
   batchRun.value = false
   streamMode.value = true
-  const token = uni.getStorageSync('token')
-  const url = BASE_URL + `/api/workflow/${workflowId.value}/run/stream`
+  const url = BASE_URL() + `/api/workflow/${workflowId.value}/run/stream`
 
   // 每个文件的显示名（按源节点输入顺序，取用户上传时的文件名）
   const fileNames = []
@@ -933,6 +1009,8 @@ const startStream = (inputs) => {
 
   let consumed = 0
   let buffer = ''
+  // 最后一次收到的累计全文：流结束时用它冲掉不完整的尾部帧
+  let lastText = ''
   /** 是否已收到过任何 SSE 帧：用于区分「连不上（可降级）」与「流中断（不可重试）」 */
   let receivedAnyFrame = false
 
@@ -1049,46 +1127,50 @@ const startStream = (inputs) => {
     }
   }
 
-  xhr = new XMLHttpRequest()
-  xhr.open('POST', url, true)
-  xhr.setRequestHeader('Content-Type', 'application/json')
-  if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token)
-
-  xhr.onprogress = () => feed(xhr.responseText)
-  xhr.onload = () => {
-    if (xhr.status >= 400) {
-      // 建连/鉴权等在收到任何帧之前就失败 → 降级到同步接口。
-      // 已经推过 node_start 才失败说明流中断，重试会重复执行，故不自动重试。
-      if (!receivedAnyFrame && xhr.status !== 401 && xhr.status !== 403) {
-        fallbackToSync(inputs, `实时进度不可用（${xhr.status}）`)
+  // 传输层统一走 api/stream.js 的 streamRaw：
+  // H5 走原生 XHR，App 走视图层 renderjs（逻辑层无 XMLHttpRequest）。
+  // 本页的帧协议是 JSON（run_start / node_start / chunk…）而非 SSE 事件，
+  // 所以不共用 createSseEventParser，沿用本页自己的 feed() 解析。
+  const cancel = streamRaw({
+    url,
+    data: { inputs, inputFileNames: inputFileNames.value || null },
+    onData: (text) => {
+      lastText = text
+      feed(text)
+    },
+    onDone: () => {
+      // 结束前补一次全文，冲掉不完整的尾部帧
+      feed(lastText, true)
+      stopTimer()
+    },
+    onError: (err) => {
+      const status = (err && err.status) || 0
+      const message = (err && err.message) || '网络异常'
+      if (status >= 400) {
+        // 建连/鉴权等在收到任何帧之前就失败 → 降级到同步接口。
+        // 已经推过 node_start 才失败说明流中断，重试会重复执行，故不自动重试。
+        if (!receivedAnyFrame && status !== 401 && status !== 403) {
+          fallbackToSync(inputs, `实时进度不可用（${status}）`)
+          return
+        }
+        stopTimer()
+        runAlert.value = message
+        pushLog(message, 'err', { i: '✕' })
+        return
+      }
+      // 一个帧都没收到 = 连不上，降级；已经收到帧 = 传输中断，不重试（避免重复执行）
+      if (!receivedAnyFrame) {
+        fallbackToSync(inputs, '实时进度不可用')
         return
       }
       stopTimer()
-      let msg = '请求失败（' + xhr.status + '）'
-      try {
-        const body = JSON.parse(xhr.responseText || '{}')
-        if (body && body.message) msg = body.message
-      } catch (e) { /* ignore */ }
-      runAlert.value = msg
-      pushLog(msg, 'err', { i: '✕' })
-      return
+      runAlert.value = '网络异常，运行中断'
+      pushLog('网络异常，运行中断', 'err', { i: '✕' })
     }
-    feed(xhr.responseText, true)
-    stopTimer()
-  }
-  xhr.onerror = () => {
-    // 一个帧都没收到 = 连不上，降级；已经收到帧 = 传输中断，不重试（避免重复执行）
-    if (!receivedAnyFrame) {
-      fallbackToSync(inputs, '实时进度不可用')
-      return
-    }
-    stopTimer()
-    runAlert.value = '网络异常，运行中断'
-    pushLog('网络异常，运行中断', 'err', { i: '✕' })
-  }
+  })
+  // 保存取消函数（onUnmounted / resetRunState 用它中断请求）
+  xhr = { abort: cancel }
   startTimer()
-  // ⚠️ inputFileNames 字段名必须与后端 WorkflowRunRequest.inputFileNames 一致，否则静默失效
-  xhr.send(JSON.stringify({ inputs, inputFileNames: inputFileNames.value || null }))
 }
 
 /* ==================== 历史回放日志 ==================== */
@@ -1151,6 +1233,8 @@ const buildDetailLogs = (data) => {
 
 /* ===== 顶栏 ===== */
 .wfr-topbar {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex;
   align-items: center;
   gap: 20rpx;

@@ -53,7 +53,11 @@
               </view>
             </view>
             <text class="hist-card__line">输入：{{ inputLine(item) }}</text>
-            <text class="hist-card__line">结果：{{ item.status === 1 ? brief(item.outputContent) : (item.errorMsg || '处理失败') }}</text>
+            <!-- 产物按类型分情况：文本截断展示；图片/音视频/文件显示图标 + 文件名，
+                 避免把 COS 签名 URL 当正文铺出来。判定统一走 utils/fileAction。 -->
+            <text class="hist-card__line">
+              结果：{{ item.status === 1 ? outputLine(item) : (item.errorMsg || '处理失败') }}
+            </text>
             <text class="hist-card__time">{{ formatTime(item.createTime) }}</text>
           </view>
         </view>
@@ -77,6 +81,7 @@ import { historyListApi, historyDeleteApi, historyClearAllApi } from '@/api/hist
 import { requireLogin } from '@/utils/auth'
 import { safeBack } from '@/utils/pageTransition'
 import { isFileUrl, extensionOf, fileKeyOf, fileNameFromUrl, isAudioExt } from '@/utils/fileDisplayName'
+import { outputKindOf, outputBrief, outputIcon } from '@/utils/fileAction'
 
 const loading = ref(false)
 const loadingMore = ref(false)
@@ -116,6 +121,19 @@ const inputLine = (item) => {
   const name = (meta && meta.fileName) || fileNameFromUrl(raw) || '查看文件'
   const prefix = isAudioExt(extensionOf(name)) ? '🎵 ' : ''
   return prefix + (name.length > 24 ? name.slice(0, 24) + '…' : name)
+}
+
+/**
+ * 「结果」一行：按产物类型分情况展示。
+ * - 文本（AI 摘要 / 纪要 / 提取文本）：截断显示，与历史详情页口径一致；
+ * - 图片 / 音视频 / 文件：显示「图标 + 文件名」，不铺 COS 签名 URL。
+ * 整卡仍然跳详情页，列表页不做下载（见下方注释）。
+ */
+const outputLine = (item) => {
+  const out = item && item.outputContent
+  const kind = outputKindOf(out)
+  if (kind === 'text') return brief(out)
+  return `${outputIcon(out)} ${outputBrief(out, 24)}`
 }
 
 /** 工具图标类型（按 aiCode 粗分，与设计稿渐变对应） */
@@ -276,6 +294,8 @@ const onClearAll = () => {
 }
 
 .hist-head {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex;
   align-items: center;
   gap: 8rpx;

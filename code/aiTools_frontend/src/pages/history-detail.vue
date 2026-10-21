@@ -63,7 +63,63 @@
       <view class="hd-block">
         <text class="hd-block__title">结果</text>
         <view v-if="statusOk" class="hd-box">
-          <block v-if="item.outputContent">
+          <!-- 可视产物（图片 / 音频 / 视频等）：直接内联展示，不再把 URL 当文本铺出来 -->
+          <view v-if="visualResult" class="hd-visual">
+            <view
+              v-if="visualResult.kind === 'image'"
+              class="hd-visual__media"
+              @click="onVisualTap"
+            >
+              <image
+                :src="visualResult.url"
+                mode="widthFix"
+                class="hd-visual__img"
+              />
+            </view>
+            <!-- 音频：uni-h5 未导出 Audio 组件，内联播放器无法跨端编译；
+                 统一走「文件行 + 点击试听」（复用输入文件那套 downloadAndOpen）。 -->
+            <view
+              v-else-if="visualResult.kind === 'audio'"
+              class="hd-inputfile"
+              hover-class="hd-inputfile--hover"
+              @click="onVisualTap"
+            >
+              <text class="hd-inputfile__icon">🎵</text>
+              <view class="hd-inputfile__name">
+                <text class="hd-inputfile__base">{{ visualResult.name }}</text>
+              </view>
+              <text class="hd-inputfile__action">试听</text>
+            </view>
+            <view
+              v-else-if="visualResult.kind === 'video'"
+              class="hd-visual__media"
+              @click="onVisualTap"
+            >
+              <video
+                :src="visualResult.url"
+                controls
+                class="hd-visual__video"
+              ></video>
+            </view>
+            <!-- 通用文件（pdf 等）：给图标 + 文件名 + 打开入口 -->
+            <view v-else class="hd-inputfile" hover-class="hd-inputfile--hover" @click="onVisualTap">
+              <text class="hd-inputfile__icon">{{ fileIcon(visualResult.ext) }}</text>
+              <view class="hd-inputfile__name">
+                <text class="hd-inputfile__base">{{ visualResult.name }}</text>
+              </view>
+              <text class="hd-inputfile__action">打开</text>
+            </view>
+            <!-- 图片 / 视频下方补一行文件名 + 操作入口；
+                 音频与通用文件已自带文件行，无需重复 -->
+            <view
+              v-if="visualResult.kind === 'image' || visualResult.kind === 'video'"
+              class="hd-visual__foot"
+            >
+              <text class="hd-visual__name">{{ visualResult.name }}</text>
+              <text class="hd-visual__actions" @click="onVisualTap">{{ visualResult.action }}</text>
+            </view>
+          </view>
+          <block v-else-if="item.outputContent">
             <scroll-view v-if="isLong(item.outputContent)" scroll-y class="hd-box__scroll">
               <MarkdownView class="hd-md" :source="item.outputContent" />
             </scroll-view>
@@ -108,10 +164,10 @@
         </view>
       </view>
 
-      <!-- 操作 -->
+      <!-- 操作：文本产物走「复制结果」，可视产物走「下载产物」 -->
       <view class="hd-actions">
-        <view class="hd-btn" @click="onCopyResult">
-          <text>复制结果</text>
+        <view class="hd-btn" @click="onPrimaryAction">
+          <text>{{ primaryActionText }}</text>
         </view>
         <view class="hd-btn hd-btn--primary" @click="onReuse">
           <text>再次使用</text>
@@ -131,6 +187,7 @@ import { requireLogin } from '@/utils/auth'
 import { safeBack } from '@/utils/pageTransition'
 import { copyRaw } from '@/utils/clipboard'
 import { isFileUrl, extensionOf, fileKeyOf, fileNameFromUrl, isPlayableExt, isAudioExt } from '@/utils/fileDisplayName'
+import { outputKindOf, outputIcon, primaryActionLabel, downloadOutput, previewOutput } from '@/utils/fileAction'
 import MarkdownView from '@/components/MarkdownView.vue'
 
 const loading = ref(false)
@@ -180,47 +237,51 @@ const inputFile = computed(() => {
 const inputFileAction = computed(() => (inputFile.value && inputFile.value.playable ? '试听' : '下载'))
 
 /**
- * 输入文件点击：
- * - 音频：先下载到临时路径再 playVoice（小程序端 playVoice 只吃本地路径，直接传网络地址会失败），
- *   且 openDocument 不支持音频，试听体验明显更好；
- * - 其余：uni.downloadFile + uni.openDocument。
+ * 「结果」是否为可直接观看的产物。
+ *
+ * 图片类工具（image-bg-remover 等）的 output_content 存的就是产物 URL，
+ * 之前按文本渲染会把一长串 COS 签名地址直接显示出来，用户什么也看不到。
+ * 判空与 inputFile 同构：只认整串 URL，不误伤正文里内嵌的链接文本。
+ *
+ * 类型判定统一走 utils/fileAction（outputKindOf），本页不再自维护扩展名数组。
  */
+const visualResult = computed(() => {
+  const raw = item.value && item.value.outputContent
+  if (!raw) return null
+  const s = String(raw).trim()
+  if (!isFileUrl(s)) return null
+  const name = fileNameFromUrl(s)
+  const kind = outputKindOf(s)
+  if (kind === 'text') return null
+  return {
+    url: s,
+    ext: extensionOf(name),
+    name: name || '产物文件',
+    kind,
+    action: kind === 'audio' ? '试听' : kind === 'image' ? '查看原图' : kind === 'video' ? '播放' : '打开'
+  }
+})
+
+/** 产物点击：图片全屏预览，视频由页面内控件播放，音频下载后试听，其余下载后打开 */
+const onVisualTap = () => {
+  const v = visualResult.value
+  if (!v) return
+  previewOutput({ url: v.url, name: v.name, kind: v.kind })
+}
+
+/** 输入文件点击：复用 fileAction 的统一下载/预览（与结果产物同一套跨端策略） */
 const onInputFileTap = () => {
   const f = inputFile.value
   if (!f || !f.url) {
     uni.showToast({ title: '文件链接不可用', icon: 'none' })
     return
   }
-  if (fileLoading.value) return
-  fileLoading.value = true
-  uni.showLoading({ title: f.playable ? '加载中…' : '下载中…', mask: true })
-  uni.downloadFile({
-    url: f.url,
-    success: (res) => {
-      // COS 私有签名 URL 有效期约 5 分钟，过期返回 403
-      if (res.statusCode !== 200) {
-        uni.showToast({ title: '下载失败（链接可能已过期）', icon: 'none' })
-        return
-      }
-      if (f.playable) {
-        uni.playVoice({
-          src: res.tempFilePath,
-          fail: () => uni.showToast({ title: '该音频无法播放', icon: 'none' })
-        })
-      } else {
-        uni.openDocument({
-          filePath: res.tempFilePath,
-          showMenu: true,
-          fail: () => uni.showToast({ title: '无法预览该文件', icon: 'none' })
-        })
-      }
-    },
-    fail: () => uni.showToast({ title: '下载失败', icon: 'none' }),
-    complete: () => {
-      uni.hideLoading()
-      fileLoading.value = false
-    }
-  })
+  if (f.playable) {
+    // 音频：openDocument 不支持音频，走「下载 + 试听」而非直接打开
+    downloadOutput({ url: f.url, name: f.base + f.suffix, kind: 'audio' }, { toast: false })
+    return
+  }
+  downloadOutput({ url: f.url, name: f.base + f.suffix, kind: outputKindOf(f.url) })
 }
 
 const getToolName = (it) => it.toolName || it.aiCode || '未知工具'
@@ -270,7 +331,22 @@ onLoad((option) => {
   fetchDetail(option.id, option.aiCode)
 })
 
-const onCopyResult = () => {
+/**
+ * 主操作按钮：产物是文本 → 复制结果；产物是图片/文件等 → 下载。
+ * 文案随产物类型变化，避免「复制结果」复制出一张图片链接的误解。
+ */
+const primaryActionText = computed(() => {
+  const v = visualResult.value
+  if (!statusOk.value || !v) return '复制结果'
+  return primaryActionLabel(v.url)
+})
+
+const onPrimaryAction = () => {
+  const v = visualResult.value
+  if (statusOk.value && v) {
+    downloadOutput({ url: v.url, name: v.name, kind: v.kind })
+    return
+  }
   const text = item.value && (statusOk.value ? item.value.outputContent : (item.value.errorMsg || ''))
   copyRaw(text, '', '没有可复制的内容')
 }
@@ -286,24 +362,13 @@ const onReuse = () => {
   uni.navigateTo({ url: `/pages/tool-common?id=${code}&historyId=${item.value.id}` })
 }
 
-/** 打开附件（文件落库未实现，当前不会触发；后端补齐 key + 签名后可用） */
+/** 打开附件（files 当前恒为空，后端补齐 key + 签名后自动可用；实现走 fileAction 统一出口） */
 const onOpenFile = (f) => {
   if (!f || !f.fileUrl) {
     uni.showToast({ title: '文件链接不可用', icon: 'none' })
     return
   }
-  // 签名 URL 需重新签发（后端在查询时实时生成），此处直接使用
-  // #ifdef H5
-  window.open(f.fileUrl, '_blank')
-  // #endif
-  // #ifndef H5
-  uni.downloadFile({
-    url: f.fileUrl,
-    success: (res) => {
-      if (res.statusCode === 200) uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-    }
-  })
-  // #endif
+  downloadOutput({ url: f.fileUrl, name: f.fileName })
 }
 </script>
 
@@ -318,6 +383,8 @@ const onOpenFile = (f) => {
 
 /* 头部 */
 .hd-head {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex;
   align-items: center;
   gap: 8rpx;
@@ -408,6 +475,54 @@ const onOpenFile = (f) => {
 }
 .hd-box__text--error { color: #DC2626; }
 .hd-box__empty { font-size: 26rpx; color: #9CA3AF; }
+
+/* 可视产物（图片 / 音频 / 视频 / 通用文件） */
+.hd-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.hd-visual__media {
+  width: 100%;
+  border-radius: 16rpx;
+  overflow: hidden;
+  background: #F9FAFB;
+}
+/* 图片用棋盘格底衬出透明区域（抠图产物常见透明 PNG） */
+.hd-visual__img {
+  display: block;
+  width: 100%;
+  background-color: #F9FAFB;
+  background-image:
+    linear-gradient(45deg, #E5E7EB 25%, transparent 25%),
+    linear-gradient(-45deg, #E5E7EB 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #E5E7EB 75%),
+    linear-gradient(-45deg, transparent 75%, #E5E7EB 75%);
+  background-size: 24rpx 24rpx;
+  background-position: 0 0, 0 12rpx, 12rpx -12rpx, -12rpx 0;
+}
+.hd-visual__media--audio {
+  padding: 16rpx;
+}
+.hd-visual__audio { width: 100%; }
+.hd-visual__video { width: 100%; height: 400rpx; display: block; }
+.hd-visual__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding-top: 4rpx;
+}
+.hd-visual__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 24rpx;
+  color: #6B7280;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.hd-visual__actions { font-size: 24rpx; color: #2563EB; flex-shrink: 0; }
 
 /* 输入文件（只展示文件名，不暴露签名 URL） */
 .hd-inputfile {

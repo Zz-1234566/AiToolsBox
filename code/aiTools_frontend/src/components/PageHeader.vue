@@ -14,7 +14,7 @@
 </template>
 
 <script setup>
-import { switchTab } from '@/utils/pageTransition'
+import { safeBack } from '@/utils/pageTransition'
 
 const props = defineProps({
   title: {
@@ -27,15 +27,13 @@ const props = defineProps({
   }
 })
 
+/**
+ * 返回：复用项目统一的 safeBack（本组件被 6 个页面使用，不允许再自带一套）。
+ * safeBack 内部会判 getCurrentPages().length，栈底时改走 reLaunch，
+ * 避免 H5 刷新本页后点返回没反应。
+ */
 const onBack = () => {
-  // H5 模式下 navigateBack 依赖 fail 兜底不可靠（H5 走 history.back()，浏览器栈空时不报错也不走 fail），
-  // 必须主动判断栈深度：栈底时（H5 刷新/直接打开非 tabBar 页面）切到首页 tabBar
-  const pages = getCurrentPages()
-  if (pages.length > 1) {
-    uni.navigateBack({ delta: 1 })
-  } else {
-    switchTab('/pages/index')
-  }
+  safeBack('/pages/index')
 }
 </script>
 

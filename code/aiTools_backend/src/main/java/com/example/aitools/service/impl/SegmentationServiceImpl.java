@@ -210,7 +210,7 @@ public class SegmentationServiceImpl implements SegmentationService {
 
     @Override
     public SegmentResult changeBackground(byte[] foregroundImage, String backgroundColor) {
-        // 复用证件照换色的纯色合成（与 id-photo-bg-change 同款输出：TYPE_INT_RGB PNG）
+        // 纯色合成的快捷入口：输出 TYPE_INT_RGB PNG
         return removeBackground(foregroundImage, backgroundColor);
     }
 

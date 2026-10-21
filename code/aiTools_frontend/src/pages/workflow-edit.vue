@@ -129,7 +129,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { toolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
 import { workflowSaveApi, workflowDetailApi } from '@/api/workflow'
@@ -406,13 +406,25 @@ const save = async () => {
  */
 const goBack = () => safeBack('/pages/workflow')
 
-onLoad(async (opt) => {
+/**
+ * 页面初始化（onLoad 与 keep-alive 复用共用）。
+ * @param {Object} opt 路由参数 { workflowId }
+ */
+const initPageState = async (opt = {}) => {
+  // 清空上一条工作流的残留：editingId 决定 isNew（新建态 vs 编辑态），
+  // 不重置会出现「新建 → 返回 → 点另一条编辑，却仍显示新建页且带着上一条 name」。
+  editingId.value = ''
+  form.name = ''
+  form.description = ''
+  form.nodes = []
+  pickedNames.value = {}
+
   try {
     const res = await toolListApi()
     tools.value = (res && res.data) || []
   } catch (e) { /* ignore */ }
 
-  if (opt && opt.workflowId) {
+  if (opt.workflowId) {
     editingId.value = opt.workflowId
     try {
       const res = await workflowDetailApi(opt.workflowId)
@@ -441,7 +453,49 @@ onLoad(async (opt) => {
   } else {
     addNode()
   }
+}
+
+// 上次初始化用的 workflowId，onShow 时比对是否需要重新初始化（keep-alive 复用兜底）
+let lastInitId = ''
+onLoad(async (opt) => {
+  lastInitId = (opt && opt.workflowId) || ''
+  await initPageState(opt || {})
 })
+
+/**
+ * keep-alive 复用兜底：从「新建 → 返回 → 点另一条编辑」这类路径进来时，
+ * onLoad 不再触发，editingId / form 会留着上一条工作流的数据。
+ *
+ * ⚠️ 同一个坑（与 tool-common / workflow-run 相同）：uni-h5 KeepAlive key 不含 query，
+ *    同路径不同 query 复用同一实例，且页面实例持有的 options 是旧值，
+ *    在 onShow 里读会拿到过期参数。必须用 hashchange 事件拿新 query。
+ */
+const routeHash = ref(typeof location !== 'undefined' ? location.hash : '')
+
+const applyRouteAndInit = async (h) => {
+  const q = (h || '').split('?')[1] || ''
+  let workflowId = ''
+  q.split('&').forEach(kv => {
+    if (!kv) return
+    const i = kv.indexOf('=')
+    const k = i > 0 ? kv.slice(0, i) : kv
+    const v = i > 0 ? decodeURIComponent(kv.slice(i + 1)) : ''
+    if (k === 'workflowId') workflowId = v
+  })
+  if (workflowId === lastInitId) return
+  lastInitId = workflowId
+  await initPageState({ workflowId })
+}
+
+// #ifdef H5
+const onHashChange = () => { routeHash.value = location.hash || '' }
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', onHashChange)
+  onUnmounted(() => window.removeEventListener('hashchange', onHashChange))
+}
+// #endif
+
+watch(routeHash, (h) => { applyRouteAndInit(h) })
 </script>
 
 <style lang="scss" scoped>
@@ -454,6 +508,8 @@ onLoad(async (opt) => {
 }
 
 .wfe-topbar {
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
+  padding-top: var(--status-bar-height, 0px);
   display: flex;
   align-items: center;
   height: 88rpx;

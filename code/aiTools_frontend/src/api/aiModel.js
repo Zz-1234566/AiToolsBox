@@ -46,7 +46,7 @@ export const setDefaultUserAiModel = (id) => {
 
 /**
  * 工具 → 必需 capability 映射（前端默认映射，后端仍会再校验一次）。
- * id-photo-bg-change 不调 LLM，不返回 capability。
+ * 不在表内的工具（如走本地 ONNX 的 image-bg-remover）不调 LLM，无需 capability。
  */
 export const TOOL_CAPABILITY_MAP = {
   'work-summary': 'text',
@@ -57,7 +57,6 @@ export const TOOL_CAPABILITY_MAP = {
   'audio-transcribe': 'asr',
   'ocr-recognize': 'ocr',
   'ocr-recognition': 'ocr',
-  'id-photo-bg-change': null,   // ONNX 分割，不调 LLM
 }
 
 /**

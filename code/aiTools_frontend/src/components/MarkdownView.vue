@@ -3,20 +3,28 @@
     <!-- 渲染模式切换靠 :key 强制整块重挂载：
          纯文本 ↔ 富文本的根节点同名（都是 view），不带 key 时 Vue 会原地 patch 复用节点，
          导致浏览器不重新解析 innerHTML、样式错乱；显式给不同 key 可保证销毁重建。 -->
-    <!-- 推字阶段（streaming=true）：只渲染转义后的纯文本，不做任何 markdown 解析 -->
-    <view
+    <!-- 推字阶段（streaming=true）：只渲染**原始纯文本**，不做任何 markdown 解析。
+         用 <text> 而非 v-html：
+           - v-html 注入的是 HTML 字符串，与最终态的 mp-html 属于两套渲染管线，
+             切换瞬间可能出现排版跳变、清洗口径也不一致；
+           - 推字内容本身是纯文本，用 <text> 插值由 Vue 自动转义，
+             不产生任何 HTML，最安全；
+           - 换行靠 .markdown-view__plain 的 white-space: pre-wrap 保留。
+         ⚠️ 官方兼容表：v-html 在 H5 / App 端均支持，仅小程序不支持。
+            本组件最终态在 App 端用 mp-html（需 rich-text 节点），
+            推字态统一用 <text>，两端管线一致。 -->
+    <text
       v-if="streaming"
       :key="'plain'"
       class="markdown-view__plain"
-      v-html="plainHtml"
-    ></view>
+    >{{ source }}</text>
     <template v-else>
       <!-- #ifdef H5 -->
       <!-- H5：v-html 注入 DOMPurify 白名单清洗后的 HTML -->
       <view :key="'rich'" class="markdown-body" v-html="h5Html"></view>
       <!-- #endif -->
       <!-- #ifndef H5 -->
-      <!-- 非 H5（App / 小程序）：无 v-html，用 mp-html 渲染同一份 HTML 字符串 -->
+      <!-- 非 H5（App / 小程序）：用 mp-html 渲染同一份 HTML 字符串 -->
       <mp-html
         :key="'rich'"
         :content="richHtml"
@@ -117,8 +125,7 @@ const safeHtml = computed(() => sanitizeHtml(renderedHtml.value))
 const h5Html = computed(() => safeHtml.value || escapePlainText(props.source))
 // 非 H5：清洗按设计不返回 HTML，回退为解析后的 HTML 字符串交给 mp-html
 const richHtml = computed(() => safeHtml.value || renderedHtml.value)
-// 推字阶段：只做转义，不解析 markdown
-const plainHtml = computed(() => escapePlainText(props.source))
+// 注：推字阶段直接用 {{ source }} 插值（Vue 自动转义），不再需要 plainHtml
 // 主题类名（供 styles/markdown.css 中的深色主题覆盖）
 const themeClass = computed(() => (props.theme === 'dark' ? 'markdown-view--dark' : 'markdown-view--light'))
 </script>

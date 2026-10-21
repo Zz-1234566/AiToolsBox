@@ -4,11 +4,12 @@
  */
 
 import { fileDisplayName as sharedFileDisplayName } from './fileDisplayName'
+import { downloadOutput, previewOutput as previewOne } from './fileAction'
 
 /* ==================== 节点图标（填充式，与既有节点卡同一套风格） ==================== */
 
 /** 后端 icon 标识 → 24x24 SVG path（与 ToolIcon 保持同一套线性图标风格） */
-export const NODE_ICON_PATHS = {
+const NODE_ICON_PATHS = {
   'file-text': 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm0 7V3.5L18.5 9H14z',
   'mic': 'M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 006 6.92V21h2v-3.08A7 7 0 0019 11h-2z',
   'meeting': 'M12 22a10 10 0 100-20 10 10 0 000 20zm0-16a8 8 0 110 16 8 8 0 010-16zm-1 3v6l5 3 1-1.7-4-2.4V9h-2z',
@@ -66,7 +67,7 @@ export const STROKE_ICONS = {
  *   sm=20  正文行内图标（卡片、列表、产物缩略图里的图标）
  *   md=24  顶栏 / 主操作图标（返回等主交互，顶栏热区 64rpx≈32px）
  */
-export const ICON_SIZE_TOKENS = {
+const ICON_SIZE_TOKENS = {
   xs: 13,
   sm: 20,
   md: 24
@@ -144,25 +145,17 @@ export const nodeNameOf = (nodeId, nr, nodeRef, ctx = {}) => {
 /** 文件显示名：兼容 {name,url} 与纯 url 字符串（实现已收敛到 utils/fileDisplayName.js 供历史页共用） */
 export const fileDisplayName = sharedFileDisplayName
 
-/** 点击文件：跳下载（H5 新窗口打开签名 URL，App 下载后打开文档） */
+/**
+ * 点击文件：跳下载。实现已收敛到 utils/fileAction.js（全局唯一出口），
+ * 本函数只做参数适配，保留是为了不改 workflow-run / workflow 的调用点。
+ */
 export const openFile = (f) => {
   const url = typeof f === 'string' ? f : (f && (f.url || f.fileUrl))
   if (!url) {
     uni.showToast({ title: '文件链接不可用', icon: 'none' })
     return
   }
-  // #ifdef H5
-  window.open(url, '_blank')
-  // #endif
-  // #ifndef H5
-  uni.downloadFile({
-    url,
-    success: (res) => {
-      if (res.statusCode === 200) uni.openDocument({ filePath: res.tempFilePath, showMenu: true })
-    },
-    fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
-  })
-  // #endif
+  downloadOutput({ url })
 }
 
 /* ==================== 产物 ==================== */
@@ -172,10 +165,10 @@ export const outputTypeLabel = (t) => ({
   1: '文本', 2: '图片', 3: '视频', 4: '音频', 5: '文件'
 }[t] || '文件')
 
-/** 图片产物放大预览（uni.previewImage 跨端通用） */
+/** 图片产物放大预览（实现收敛到 utils/fileAction.js 的 previewOutput） */
 export const previewOutput = (o) => {
   if (!o || !o.fileUrl) return
-  uni.previewImage({ urls: [o.fileUrl], current: o.fileUrl })
+  previewOne({ url: o.fileUrl })
 }
 
 /* ==================== 输入快照 ==================== */
@@ -242,7 +235,7 @@ export const parseInputSnapshot = (raw, nameMap) => {
  * @param {*} ms 原始值（可能是 number / 字符串数字 / null / undefined）
  * @returns {Number|null} 可解析成有限数字则返回该数字，否则返回 null（数据缺失）
  */
-export const parseDuration = (ms) => {
+const parseDuration = (ms) => {
   if (ms === null || ms === undefined || ms === '') return null
   const n = typeof ms === 'number' ? ms : Number(ms)
   return Number.isFinite(n) && n >= 0 ? n : null
