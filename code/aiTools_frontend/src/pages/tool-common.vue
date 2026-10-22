@@ -1,6 +1,6 @@
 <template>
   <!-- 顶部导航 -->
-  <view class="topbar">
+  <view class="topbar" :style="themeStyle">
     <view class="topbar__back" hover-class="topbar__back--hover" aria-label="返回" @click="goBack">
       <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
     </view>
@@ -11,7 +11,7 @@
   <sse-renderjs />
   <!-- #endif -->
 
-  <scroll-view scroll-y class="page-content">
+  <scroll-view scroll-y class="page-content" :style="themeStyle">
     <!-- Hero（左右布局） -->
     <section class="hero-tool">
       <view class="hero-tool__icon">
@@ -272,7 +272,7 @@
   </scroll-view>
 
   <!-- 底部按钮 -->
-  <view class="bottom-action">
+  <view class="bottom-action" :style="themeStyle">
     <!-- 流式进行中：按钮变为「停止」，可中途中止请求（此前 :disabled=loading 导致无法停止） -->
     <button
       v-if="loading && streamCancel"
@@ -298,6 +298,7 @@
 
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { BASE_URL } from '@/config/env'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
@@ -464,6 +465,10 @@ const onFilePickerClick = () => {
           fileName: (files[i] && files[i].name) || p.split('/').pop() || ('图片' + (i + 1)),
           path: p, size: (files[i] && files[i].size) || 0
         })))
+      },
+      fail: () => {
+        // 用户取消或权限被拒时给出反馈，避免「点了没反应」
+        uni.showToast({ title: '未选择图片', icon: 'none' })
       }
     })
     return
@@ -2338,12 +2343,12 @@ svg {
 
 /* ============ 工具详情页新样式（一比一复刻 mockup） ============ */
 .topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 0 24rpx` 简写会重置 padding-top。 */
+  padding: var(--status-bar-height, 0px) 24rpx 0;
   display: flex;
   align-items: center;
   height: 88rpx;
-  padding: 0 24rpx;
   background: var(--bg-card, #FFFFFF);
   border-bottom: 1rpx solid var(--divider-color, #F0F0F0);
 }

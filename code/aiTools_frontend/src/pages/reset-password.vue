@@ -239,7 +239,9 @@ const goToLogin = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: $spacing-lg;
+  /* App 端刘海屏：顶部避让状态栏（H5 端该变量为 0）。
+     ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
+  padding: var(--status-bar-height, 0px) $spacing-lg $spacing-lg;
 }
 
 .reset-card {

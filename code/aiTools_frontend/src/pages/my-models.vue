@@ -8,7 +8,7 @@
       <text class="topbar__title">我的 AI 模型</text>
     </view>
 
-    <scroll-view scroll-y class="content">
+    <scroll-view scroll-y class="content" :style="{ '--kb': keyboardHeight + 'px' }">
       <!-- 顶部说明：复用 redesign-card -->
       <view class="redesign-card notice">
         <text class="notice__title">BYOK（Bring Your Own Key）</text>
@@ -52,11 +52,13 @@
       <view class="redesign-card form-card">
         <view class="form-row">
           <text class="form-row__label">模型编码 *</text>
-          <input class="form-row__input" v-model="form.modelCode" placeholder="如 glm-4-flash / deepseek-chat" />
+          <input class="form-row__input" v-model="form.modelCode" placeholder="如 glm-4-flash / deepseek-chat"
+                 :cursor-spacing="24" />
         </view>
         <view class="form-row">
           <text class="form-row__label">API Key *</text>
-          <input class="form-row__input" v-model="form.apiKey" password placeholder="只在这里输入，仅写入本次保存" />
+          <input class="form-row__input" v-model="form.apiKey" password placeholder="只在这里输入，仅写入本次保存"
+                 :cursor-spacing="24" />
         </view>
         <view class="form-row">
           <text class="form-row__label">能力 *</text>
@@ -69,11 +71,13 @@
         </view>
         <view class="form-row">
           <text class="form-row__label">别名</text>
-          <input class="form-row__input" v-model="form.nickname" placeholder="如 我的 GLM / 公司 DeepSeek" />
+          <input class="form-row__input" v-model="form.nickname" placeholder="如 我的 GLM / 公司 DeepSeek"
+                 :cursor-spacing="24" />
         </view>
         <view class="form-row">
           <text class="form-row__label">API URL（可选）</text>
-          <input class="form-row__input" v-model="form.apiUrl" placeholder="留空走系统默认" />
+          <input class="form-row__input" v-model="form.apiUrl" placeholder="留空走系统默认"
+                 :cursor-spacing="24" />
         </view>
         <view class="form-row form-row--inline">
           <text class="form-row__label">设为默认</text>
@@ -97,10 +101,20 @@ import {
   setDefaultUserAiModel,
 } from '@/api/aiModel.js'
 import { safeBack } from '@/utils/pageTransition'
+import { useKeyboardHeight } from '@/utils/keyboardHeight'
 
 const models = ref([])
 const loading = ref(false)
 const saving = ref(false)
+
+/**
+ * 键盘高度（App 端）。
+ * iOS webview 不因键盘弹起而 resize，键盘会盖住页面底部 →
+ * 「保存」按钮（在输入框下方）被挡住。
+ * 这里量出键盘高度，给滚动内容加同等底部内边距，
+ * 凭空多出一段可滚动空间，用户就能把「保存」按钮滚到键盘上方。
+ */
+const { keyboardHeight } = useKeyboardHeight()
 
 const capOptions = [
   { value: 'text',   label: '文本生成' },
@@ -209,14 +223,21 @@ onMounted(loadList)
 .page { min-height: 100vh; background: #F9FAFB; padding-bottom: 0; }
 
 .topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
-  display: flex; align-items: center; height: 88rpx; padding: 0 24rpx; background: #fff;
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 0 24rpx` 这类简写会重置 padding-top，
+        把状态栏避让覆盖成 0（此行原本与 padding-top 同行，最隐蔽）。 */
+  padding: var(--status-bar-height, 0px) 24rpx 0;
+  display: flex; align-items: center; height: 88rpx; background: #fff;
   border-bottom: 1rpx solid #F3F4F6;
   &__back { width: 60rpx; height: 60rpx; @include btn-base; color: #1F2937; }
   &__title { flex: 1; text-align: center; font-size: 32rpx; font-weight: 600; color: #0f172a; }
 }
-.content { padding-bottom: 60rpx; }
+.content {
+  /* App 端键盘高度（px）：iOS webview 不因键盘 resize，键盘盖住页面底部 →
+     「保存」按钮被挡。这里加同等底部内边距，多出一段可滚动空间，
+     用户可把按钮滚到键盘上方。H5/小程序该变量为 0，行为不变。 */
+  padding-bottom: calc(60rpx + var(--kb, 0px));
+}
 
 // 复用 redesign-card（背景白 + 圆角 24rpx + 轻阴影）—— 不 import，全局类在 scoped 不生效
 .redesign-card {

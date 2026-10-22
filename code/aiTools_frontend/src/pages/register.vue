@@ -242,7 +242,9 @@ const goBack = () => safeBack('/pages/login')
 .auth-wrap {
   min-height: 100vh;
   background: #fff;
-  padding: 0 40rpx 48rpx;
+  /* App 端刘海屏：顶部避让状态栏（H5 端该变量为 0）。
+     ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
+  padding: var(--status-bar-height, 0px) 40rpx 48rpx;
   box-sizing: border-box;
 }
 

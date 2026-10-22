@@ -96,6 +96,11 @@ const chooseAvatar = () => {
         uploading.value = false
         uni.hideLoading()
       }
+    },
+    fail: () => {
+      // 用户取消或权限被拒时给出反馈，避免「点了没反应」
+      uploading.value = false
+      uni.showToast({ title: '未选择图片', icon: 'none' })
     }
   })
 }

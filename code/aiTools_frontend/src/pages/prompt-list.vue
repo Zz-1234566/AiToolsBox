@@ -68,12 +68,24 @@
     </block>
 
     <!-- 新增/编辑弹层 -->
-    <view v-if="showModal" class="modal-mask" @click="closeModal">
+    <!--
+      --kb：App 端键盘高度（px，由 utils/keyboardHeight.js 提供）。
+      弹层是 position:fixed，iOS webview 不因键盘弹起而 resize，
+      用 --kb 把弹层抬到键盘上方，保证输入框与「保存/取消」始终可见可点。
+      H5/小程序该变量为 0，行为与原来一致。
+    -->
+    <view v-if="showModal" class="modal-mask" :style="{ '--kb': keyboardHeight + 'px' }" @click="closeModal">
       <view class="modal-card" @click.stop>
         <text class="modal-title">{{ modalTitle }}</text>
 
         <text class="modal-label">名称</text>
-        <input class="modal-input" v-model="modalName" placeholder="给提示词起个名字" placeholder-class="pl-ph" :maxlength="32" />
+        <!--
+          adjust-position=false：弹层自己按键盘高度抬升（--kb），
+          若再让页面自动上顶会叠加成「弹层被顶飞」。
+          cursor-spacing：光标与键盘保持 24px 间距，避免贴边。
+        -->
+        <input class="modal-input" v-model="modalName" placeholder="给提示词起个名字" placeholder-class="pl-ph" :maxlength="32"
+               :adjust-position="false" :cursor-spacing="24" />
 
         <text class="modal-label">类型</text>
         <view class="modal-seg">
@@ -82,7 +94,8 @@
         </view>
 
         <text class="modal-label">内容</text>
-        <textarea class="modal-textarea" v-model="modalText" placeholder="请输入提示词内容..." placeholder-class="pl-ph" :maxlength="2000" />
+        <textarea class="modal-textarea" v-model="modalText" placeholder="请输入提示词内容..." placeholder-class="pl-ph" :maxlength="2000"
+                  :adjust-position="false" :cursor-spacing="24" />
 
         <view class="modal-actions">
           <view class="modal-btn" @click="closeModal">取消</view>
@@ -102,8 +115,16 @@ import { promptListApi, promptAddApi, promptUpdateApi, promptDeleteApi, toolList
 import { requireLogin, isAdmin } from '@/utils/auth'
 import { safeBack } from '@/utils/pageTransition'
 import { REALIZED_TOOLS, TOOLS } from '@/config/tools'
+import { useKeyboardHeight } from '@/utils/keyboardHeight'
 
 const loading = ref(false)
+/**
+ * 键盘高度（App 端）。
+ * 新增/编辑弹层是 position:fixed，iOS webview 不因键盘弹起而 resize，
+ * 弹层会被键盘盖住 → 输入框打不了字、「保存」点不到。
+ * 这里量出键盘高度，把弹层整体抬到键盘上方（CSS 变量 --kb）。
+ */
+const { keyboardHeight } = useKeyboardHeight()
 /** 当前用户是否管理员（仅控制前端显隐，权限由后端校验） */
 const adminMode = ref(false)
 const promptList = ref([])
@@ -346,12 +367,12 @@ const onDelete = (item) => {
 }
 
 .pl-head {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 32rpx 32rpx 16rpx` 简写会重置 padding-top。 */
+  padding: calc(var(--status-bar-height, 0px) + 32rpx) 32rpx 16rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  padding: 32rpx 32rpx 16rpx;
 }
 .pl-back {
   width: 64rpx;
@@ -521,13 +542,21 @@ const onDelete = (item) => {
   display: flex;
   align-items: flex-end;
   z-index: 1000;
+  /* App 端键盘高度（px）：把弹层抬到键盘上方。
+     iOS webview 不因键盘 resize，fixed 弹层会停在底部被键盘盖住 →
+     输入框打不了字、「保存」点不到。H5/小程序该变量为 0，行为不变。 */
+  padding-bottom: var(--kb, 0px);
 }
 .modal-card {
   width: 100%;
   background: #fff;
   border-radius: 32rpx 32rpx 0 0;
-  padding: 40rpx 32rpx 48rpx;
+  /* App 端 iOS 底部 Home 指示条安全区（对齐 tool-common.vue:3197 的项目范式） */
+  padding: 40rpx 32rpx calc(48rpx + env(safe-area-inset-bottom, 0rpx));
   box-sizing: border-box;
+  /* 键盘弹起时可用高度变小，弹层不能超出屏幕顶部 */
+  max-height: calc(100vh - var(--kb, 0px));
+  overflow-y: auto;
 }
 .modal-title {
   display: block;

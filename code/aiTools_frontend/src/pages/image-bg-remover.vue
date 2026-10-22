@@ -229,13 +229,31 @@
       </view>
 
     </scroll-view>
+
+    <!-- ============ App 端合成画布（离屏） ============ -->
+    <!--
+      用途：App 端把「透明 PNG + 底色/背景图 + 缩放位移」合成一张图并存相册。
+      为什么必须有：H5 走 DOM canvas，App 端逻辑层无 document，只能用 uni canvas。
+      为什么 hidpi="false"：hidpi 默认按设备像素比放大 backing store，
+      3000×2000 的画布在 3x 机上会变成 9000×6000（≈216MB）→ 极易 OOM。
+      关掉后 backing store = 逻辑尺寸，配合 destWidth/destHeight 输出尺寸可控。
+    -->
+    <!-- #ifndef H5 -->
+    <canvas
+      canvas-id="composeCanvasApp"
+      id="composeCanvasApp"
+      class="compose-canvas"
+      hidpi="false"
+      :style="{ width: canvasW + 'px', height: canvasH + 'px' }"
+    ></canvas>
+    <!-- #endif -->
   </view>
 </template>
 
 <script>
 import { imageBgRemover, pollBatchCompleted } from '@/api/image-bg-remover'
 import { safeBack } from '@/utils/pageTransition'
-import { downloadOutput } from '@/utils/fileAction'
+import { downloadOutput, saveLocalImageToAlbum, downloadToLocalPath } from '@/utils/fileAction'
 
 // 与后端 SegmentationController.ALLOWED_IMAGE_EXTS / ALLOWED_IMAGE_TYPES 保持同步：
 // jpg / jpeg / png / bmp / gif。webp 等不在白名单内的格式直接前端拦截，
@@ -293,6 +311,10 @@ export default {
       compareEnabled: false,
       compareRatio: 0.5,      // 分界线位置 0~1
       isComparing: false,
+
+      // App 端合成画布尺寸（px）：随透明 PNG 的原始尺寸设置，供 canvas 元素绑定
+      canvasW: 0,
+      canvasH: 0,
       // H5 window 监听句柄（非响应式，避免每次拖动触发重渲染）
       _compareBound: false,
       _compareMoveHandler: null,
@@ -990,17 +1012,17 @@ export default {
           document.body.appendChild(a)
           a.click()
           document.body.removeChild(a)
+          uni.hideLoading()
+          uni.showToast({ title: '已开始下载', icon: 'success' })
           // #endif
           // #ifndef H5
-          // 非 H5 端 canvas 合成未实现，退回下载远端透明原图（走统一出口）
-          downloadOutput({
-            url: this.transparentPng,
-            name: (this.uploadedFileName && this.uploadedFileName.replace(/\.[^.]+$/, '')) || 'image-bg-remover.png',
-            kind: 'image'
-          })
-          // #endif
+          // App 端：compositeOnCanvas 返回的是**合成图的本地临时文件路径**
+          // （canvasToTempFilePath 产出），直接存相册。
+          // ⚠️ 不能在这里弹「下载完成」：存相册是异步的，提前弹会变成虚假成功提示。
+          //    成功/失败提示由 fileAction.saveLocalImageToAlbum 的回调给出。
           uni.hideLoading()
-          uni.showToast({ title: '下载完成', icon: 'success' })
+          saveLocalImageToAlbum(dataUrl)
+          // #endif
         })
         .catch((err) => {
           console.error('[image-bg-remover] canvas 合成失败:', err)
@@ -1087,11 +1109,124 @@ export default {
       })()
       // #endif
       // #ifndef H5
-      // 非 H5 端：uni.createCanvasContext + toTempFilePath 可合成，但 uni-app 跨端兼容复杂；
-      // 此处不合成，return transparentPng 字符串，onDownload 的 #ifndef H5 分支会
-      // 走 uni.downloadFile 保存原透明 PNG（用户可后续自行合成）。
-      // 注意：必须 resolve 而非 reject，否则外层 catch 会再次触发 _fallbackDownload。
-      return Promise.resolve(this.transparentPng || '')
+      // App 端：逻辑层没有 document，无法用 DOM canvas，改用 uni canvas
+      // （createCanvasContext + canvasToTempFilePath，官方支持 App 端）。
+      // 几何口径与 H5 分支**完全一致**：画布 = 透明 PNG 原始尺寸，
+      // 前景按 objectScale 缩放、按 objectX/objectY（rpx）位移。
+      return this._compositeOnAppCanvas()
+      // #endif
+    },
+
+    /**
+     * App 端 canvas 合成：透明 PNG + 底色/背景图 → 临时文件路径。
+     *
+     * 与 H5 的差异只在 API（uni canvas vs DOM canvas），几何口径刻意保持一致，
+     * 保证「同一张图在 H5 与 App 下载出来的结果相同」。
+     *
+     * 关键约束（uni canvas 与 DOM canvas 的差异）：
+     * - drawImage 只接受**本地路径**，网络图要先 downloadFile 到临时文件；
+     * - 画布尺寸由 canvas 元素的 style 决定，而尺寸绑定的是响应式数据
+     *   → 改完必须等 DOM 更新（$nextTick）才能 createCanvasContext 并绘制；
+     * - canvasToTempFilePath 产出临时文件路径，再由调用方存相册。
+     *
+     * @returns {Promise<String>} 合成图的临时文件路径
+     */
+    async _compositeOnAppCanvas() {
+      // #ifndef H5
+      // 1) 前景（透明 PNG）：网络 URL → 本地临时文件（canvas 只认本地路径）
+      const objPath = await this._downloadToLocalPath(this.transparentPng)
+      if (!objPath) throw new Error('下载透明底图失败')
+
+      // 2) 取原始尺寸：画布按原始尺寸，与 H5 分支一致（不按预览框尺寸）
+      const objInfo = await this._getImageInfo(objPath)
+      const W = objInfo.width || 800
+      const H = objInfo.height || 800
+
+      // 3) 背景图（可选）：网络地址同样先转本地；拉取失败降级为「只画底色/透明」
+      let bgPath = ''
+      let bgW = 0
+      let bgH = 0
+      if (this.bgImage) {
+        const bgInfo = await this._getImageInfo(this.bgImage)
+        bgW = bgInfo.width || 0
+        bgH = bgInfo.height || 0
+        const local = await this._downloadToLocalPath(this.bgImage)
+        if (local) bgPath = local
+      }
+
+      // 4) 设置画布尺寸并等 DOM 生效（尺寸绑定的是响应式数据）
+      this.canvasW = W
+      this.canvasH = H
+      await this.$nextTick()
+
+      // 5) 绘制
+      const ctx = uni.createCanvasContext('composeCanvasApp', this)
+      // 5.1 画背景
+      if (this.currentBgColor && this.currentBgColor !== 'transparent') {
+        ctx.setFillStyle(this.currentBgColor)
+        ctx.fillRect(0, 0, W, H)
+      } else if (bgPath && bgW && bgH) {
+        // aspectFit(contain) 居中，与 H5 分支一致
+        const bgFit = Math.min(W / bgW, H / bgH)
+        const drawW = bgW * bgFit
+        const drawH = bgH * bgFit
+        ctx.drawImage(bgPath, (W - drawW) / 2, (H - drawH) / 2, drawW, drawH)
+      }
+      // 5.2 画前景：画布 = 物体原始尺寸，物体本身 1:1，只受 objectScale 影响
+      const finalW = W * this.objectScale
+      const finalH = H * this.objectScale
+      // rpx → px：与 H5 分支同一系数（画布宽度 / 750）
+      const rpxToPx = W / 750
+      const finalX = (W - finalW) / 2 + this.objectX * rpxToPx
+      const finalY = (H - finalH) / 2 + this.objectY * rpxToPx
+      ctx.drawImage(objPath, finalX, finalY, finalW, finalH)
+
+      // 6) 落盘导出（必须在 draw 的回调里，绘制完成后才能取到像素）
+      return new Promise((resolve, reject) => {
+        ctx.draw(false, () => {
+          uni.canvasToTempFilePath({
+            canvasId: 'composeCanvasApp',
+            x: 0,
+            y: 0,
+            width: W,
+            height: H,
+            destWidth: W,
+            destHeight: H,
+            success: (res) => resolve(res.tempFilePath),
+            fail: (err) => reject(new Error('导出合成图失败：' + ((err && err.errMsg) || '未知错误')))
+          }, this)
+        })
+      })
+      // #endif
+    },
+
+    /**
+     * 把网络地址取到本地路径（App 端 canvas 画网络图的前置步骤）。
+     * 统一走 fileAction.downloadToLocalPath（公共能力唯一出口）。
+     */
+    _downloadToLocalPath(url) {
+      // #ifndef H5
+      return downloadToLocalPath(url)
+      // #endif
+    },
+
+    /**
+     * 取图片尺寸（App 端 canvas 需要原始像素尺寸来定画布大小）。
+     * 失败返回空对象，由调用方走默认尺寸。
+     */
+    _getImageInfo(src) {
+      // #ifndef H5
+      return new Promise((resolve) => {
+        if (!src) {
+          resolve({})
+          return
+        }
+        uni.getImageInfo({
+          src,
+          success: (info) => resolve(info || {}),
+          fail: () => resolve({})
+        })
+      })
       // #endif
     },
 
@@ -1198,12 +1333,12 @@ export default {
 
 /* ============ 顶栏 ============ */
 .topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 0 24rpx` 简写会重置 padding-top。 */
+  padding: var(--status-bar-height, 0px) 24rpx 0;
   display: flex;
   align-items: center;
   height: 88rpx;
-  padding: 0 24rpx;
   background: #fff;
   border-bottom: 1rpx solid #F3F4F6;
   &__back {
@@ -1217,6 +1352,15 @@ export default {
 .page-content {
   flex: 1;
   padding: 24rpx 32rpx 64rpx;
+}
+
+/* App 端合成用离屏画布：移出可视区但保留尺寸（display:none 会让画布不可绘制） */
+.compose-canvas {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  pointer-events: none;
+  opacity: 0;
 }
 
 /* ============ 状态 A：上传 + 去背景 ============ */

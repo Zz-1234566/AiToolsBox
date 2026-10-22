@@ -1,5 +1,5 @@
 <template>
-  <view class="markdown-view" :class="themeClass">
+  <view class="markdown-view" :class="themeClass" :style="themeStyle">
     <!-- 渲染模式切换靠 :key 强制整块重挂载：
          纯文本 ↔ 富文本的根节点同名（都是 view），不带 key 时 Vue 会原地 patch 复用节点，
          导致浏览器不重新解析 innerHTML、样式错乱；显式给不同 key 可保证销毁重建。 -->
@@ -49,6 +49,7 @@
  * 渲染链路：markdown-it 解析（utils/markdown）→ DOMPurify 清洗（H5）→ v-html / mp-html
  * 渲染模式切换由组件内部处理（:key 重挂载），外部无需再传 renderKey。
  */
+import { themeStyle } from '@/utils/theme'
 import { computed } from 'vue'
 import { renderMarkdown, sanitizeHtml } from '@/utils/markdown'
 

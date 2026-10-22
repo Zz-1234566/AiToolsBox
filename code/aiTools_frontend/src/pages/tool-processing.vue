@@ -1,5 +1,5 @@
 <template>
-  <view class="page page--no-tabbar">
+  <view class="page page--no-tabbar" :style="themeStyle">
     <!-- 顶栏：返回 + 标题 + 收藏 -->
     <view class="topbar">
       <view class="topbar__back" @click="goBack">
@@ -77,6 +77,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
@@ -132,12 +133,12 @@ const cancelProcess = () => {
 
 /* ===== Topbar ===== */
 .topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 0 24rpx` 简写会重置 padding-top。 */
+  padding: var(--status-bar-height, 0px) 24rpx 0;
   display: flex;
   align-items: center;
   height: 88rpx;
-  padding: 0 24rpx;
   background: var(--bg-card, #FFFFFF);
   border-bottom: 1rpx solid var(--border-light, #F3F4F6);
   position: relative;

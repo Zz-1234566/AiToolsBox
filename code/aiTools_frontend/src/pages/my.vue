@@ -1,5 +1,5 @@
 <template>
-  <view class="page page--no-tabbar" style="padding-bottom: 0;">
+  <view class="page page--no-tabbar" :style="[themeStyle, { paddingBottom: '0' }]">
     <!-- Hero：大居中头像 + 用户名 + @uid -->
     <section class="me-hero" @click="goToProfile">
       <view class="avatar avatar--xl" style="background: linear-gradient(135deg, #93C5FD, #3B82F6);">
@@ -45,6 +45,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 
@@ -93,6 +94,11 @@ onShow(() => {
 .page {
   min-height: 100vh;
   background: var(--bg-page, #F9FAFB);
+  /* App 端自绘导航栏（navigationStyle: custom）：顶部避让状态栏/刘海。
+     uni 注入 --status-bar-height，H5 端为 0，不影响布局。
+     放在 .page 而非 .me-hero，是为了让渐变背景延伸到状态栏下方、
+     内容（头像）却被正确推下去。 */
+  padding-top: var(--status-bar-height, 0px);
 }
 
 /* ===== Hero ===== */

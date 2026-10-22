@@ -1,5 +1,5 @@
 <template>
-  <view class="wfr-page">
+  <view class="wfr-page" :style="themeStyle">
     <!-- App 端 SSE 传输组件（视图层发起 XHR）；H5 端用原生 XHR，不需要此组件 -->
     <!-- #ifdef APP-PLUS -->
     <sse-renderjs />
@@ -266,6 +266,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import MarkdownView from '@/components/MarkdownView.vue'
@@ -1146,24 +1147,28 @@ const startStream = (inputs) => {
     onError: (err) => {
       const status = (err && err.status) || 0
       const message = (err && err.message) || '网络异常'
-      if (status >= 400) {
-        // 建连/鉴权等在收到任何帧之前就失败 → 降级到同步接口。
-        // 已经推过 node_start 才失败说明流中断，重试会重复执行，故不自动重试。
-        if (!receivedAnyFrame && status !== 401 && status !== 403) {
-          fallbackToSync(inputs, `实时进度不可用（${status}）`)
-          return
-        }
-        stopTimer()
-        runAlert.value = message
-        pushLog(message, 'err', { i: '✕' })
-        return
-      }
-      // 一个帧都没收到 = 连不上，降级；已经收到帧 = 传输中断，不重试（避免重复执行）
-      if (!receivedAnyFrame) {
+      // 【降级重试的边界】只有「请求压根没到达服务端」才允许降级重跑。
+      //
+      // status === 0：网络层失败（连不上 / 建连中断），服务端**没有**收到并执行本次运行
+      //   → 降级到同步接口是安全的，不会重复计费。
+      //
+      // status >= 400：服务端**已经收到请求**。此时若再调一次同步接口，等于把同一个
+      //   工作流跑第二遍 —— 重复计费 + 耗时翻倍。特别是 5xx：后端 AI 调用内部抛异常
+      //   就会返 500，此时降级重跑必然重复调用 AI。故一律**不重试**，直接显示真实错误。
+      //
+      // receivedAnyFrame：已收到过帧 = 服务端已在执行，中断更不能重试。
+      if (status === 0 && !receivedAnyFrame) {
         fallbackToSync(inputs, '实时进度不可用')
         return
       }
       stopTimer()
+      if (status >= 400) {
+        // HTTP 错误：显示后端返回的真实文案（已由 api/stream.js 从 Result.message 提取）
+        runAlert.value = message
+        pushLog(message, 'err', { i: '✕' })
+        return
+      }
+      // status === 0 但已收到过帧 = 传输中途断开，服务端已在执行，不重试
       runAlert.value = '网络异常，运行中断'
       pushLog('网络异常，运行中断', 'err', { i: '✕' })
     }
@@ -1233,12 +1238,12 @@ const buildDetailLogs = (data) => {
 
 /* ===== 顶栏 ===== */
 .wfr-topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 24rpx 32rpx` 简写会重置 padding-top。 */
+  padding: calc(var(--status-bar-height, 0px) + 24rpx) 32rpx 24rpx;
   display: flex;
   align-items: center;
   gap: 20rpx;
-  padding: 24rpx 32rpx;
   background: #fff;
   border-bottom: 2rpx solid #F3F4F6;
 }

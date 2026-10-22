@@ -147,6 +147,85 @@ export const downloadOutput = (target, opts = {}) => {
 }
 
 /**
+ * 把**本地临时文件**（canvas 合成产物等）保存到系统相册。
+ *
+ * 【为什么单独提供】
+ * `downloadOutput` 走的是「URL → downloadFile → 相册」链路，
+ * 但 canvas 合成出来的图**本来就在本地**（canvasToTempFilePath 的 tempFilePath），
+ * 再走一遍 downloadFile 既多余又会失败（本地路径不是网络地址）。
+ * 故提供本函数作为「本地图片 → 相册」的唯一出口。
+ *
+ * 【提示时机】
+ * 成功/失败提示都在**回调里**弹 —— 调用方若在调用后立刻弹「下载完成」，
+ * 会变成虚假成功提示（下载其实还没结束，甚至可能失败）。
+ *
+ * @param {String} filePath 本地文件路径（canvasToTempFilePath 产出）
+ * @param {Object} [opts]   { successText?, failText? } 自定义提示文案
+ */
+export const saveLocalImageToAlbum = (filePath, opts = {}) => {
+  // #ifdef H5
+  // H5 端没有相册概念，交给调用方走 <a download>；此处不处理
+  return
+  // #endif
+
+  // #ifndef H5
+  if (!filePath) {
+    uni.showToast({ title: '文件链接不可用', icon: 'none' })
+    return
+  }
+  uni.saveImageToPhotosAlbum({
+    filePath,
+    success: () => uni.showToast({ title: opts.successText || '已保存到相册', icon: 'success' }),
+    fail: (err) => {
+      const msg = (err && err.errMsg) || ''
+      // 权限被拒要给明确提示（用户点了没反应是最难排查的体验）
+      const text = /auth|deny|permission/i.test(msg)
+        ? '保存失败：请授予相册权限'
+        : (opts.failText || '保存失败，可长按图片另存')
+      uni.showToast({ title: text, icon: 'none' })
+    }
+  })
+  // #endif
+}
+
+/**
+ * 把**网络资源**取到本地临时路径（不弹提示、不落相册）。
+ *
+ * 【用途】
+ * App 端 canvas 的 `drawImage` 只接受**本地路径**，
+ * 画网络图（如后端返回的 COS 签名 URL）必须先落到本地。
+ * H5 端对应的是 `blob:` / `data:` 方案（见 image-bg-remover.vue 的 `_toLocalImageUrl`），
+ * 两端在此收敛成同一个语义：**给我一个能画进 canvas 的本地路径**。
+ *
+ * 【与 downloadOutput 的区别】
+ * `downloadOutput` 是「下载产物给用户」（带提示、落相册/打开文件）；
+ * 本函数只是取资源（无提示、无用户可见副作用），失败返回空串由调用方降级。
+ *
+ * @param {String} url 网络地址（本地路径会原样返回）
+ * @returns {Promise<String>} 本地临时路径；失败返回空串
+ */
+export const downloadToLocalPath = (url) => {
+  // #ifdef H5
+  // H5 端画网络图用 blob/data URL，无需下载到临时文件
+  return Promise.resolve(url || '')
+  // #endif
+
+  // #ifndef H5
+  if (!url) return Promise.resolve('')
+  if (!/^https?:/i.test(url)) return Promise.resolve(url)
+  return new Promise((resolve) => {
+    uni.downloadFile({
+      url,
+      success: (res) => {
+        resolve(res.statusCode === 200 ? res.tempFilePath : '')
+      },
+      fail: () => resolve('')
+    })
+  })
+  // #endif
+}
+
+/**
  * 产物预览：图片全屏预览、视频/音频交给页面内控件，其余先下载再打开。
  * 与 downloadOutput 分开——「看」和「存」是两种用户意图。
  */

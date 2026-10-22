@@ -184,7 +184,9 @@ const onCancel = (item) => {
   padding-bottom: 40rpx;
 }
 
-.fav-head { padding: 32rpx 32rpx 16rpx; }
+/* App 端自绘导航栏（navigationStyle: custom）：顶部避让状态栏/刘海。
+   ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
+.fav-head { padding: calc(32rpx + var(--status-bar-height, 0px)) 32rpx 16rpx; }
 .fav-head__title { font-size: 48rpx; font-weight: 700; color: #111827; }
 
 .fav-tabs {

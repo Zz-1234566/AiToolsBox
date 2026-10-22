@@ -1,5 +1,5 @@
 <template>
-  <view class="wfedit-page">
+  <view class="wfedit-page" :style="themeStyle">
     <!-- 顶栏 -->
     <view class="wfe-topbar">
       <view class="wfe-back" @click="goBack"><text class="wfe-back__icon">‹</text></view>
@@ -129,6 +129,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { toolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
@@ -508,12 +509,12 @@ watch(routeHash, (h) => { applyRouteAndInit(h) })
 }
 
 .wfe-topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 0 24rpx` 简写会重置 padding-top。 */
+  padding: var(--status-bar-height, 0px) 24rpx 0;
   display: flex;
   align-items: center;
   height: 88rpx;
-  padding: 0 24rpx;
   background: #fff;
 }
 .wfe-back { width: 64rpx; }

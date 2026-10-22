@@ -1,5 +1,5 @@
 <template>
-  <view class="page page--no-tabbar">
+  <view class="page page--no-tabbar" :style="themeStyle">
     <!-- 顶栏：返回 + 标题 + 搜索按钮 -->
     <view class="topbar topbar--border">
       <view class="topbar__back" hover-class="topbar__back--hover" aria-label="返回" @click="goBack">
@@ -68,6 +68,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
@@ -181,13 +182,14 @@ const goSearch = () => {
 
 /* ===== Topbar ===== */
 .topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：若这里写 `padding: 0 32rpx`，
+        简写会重置 padding-top，把上面声明的状态栏避让覆盖成 0。 */
+  padding: var(--status-bar-height, 0px) 32rpx 0;
   display: flex;
   align-items: center;
   position: relative;
   height: 88rpx;
-  padding: 0 32rpx;
   background: var(--bg-card, #FFFFFF);
 }
 .topbar--border {

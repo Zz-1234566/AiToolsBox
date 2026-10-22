@@ -78,6 +78,32 @@ const createSseEventParser = ({ onChunk, onMarker, onError } = {}) => {
 }
 
 /**
+ * 从错误响应体里提取后端返回的真实文案。
+ *
+ * 后端统一返回 { code, message, data }（common/Result），
+ * 5xx 时 message 是可展示的中文文案（如「系统内部错误」）；
+ * 非 JSON 响应体（如 nginx 502/504 的 HTML 错误页）解析失败 → 退回通用兜底文案。
+ *
+ * 为什么要透传真实文案：workflow-run 依赖 status 区分「能否降级重试」，
+ * 而用户看到的应该是服务端到底报了什么，而不是笼统的「实时进度不可用」。
+ *
+ * @param {String} body  错误响应体原文（xhr.responseText）
+ * @param {Number} status HTTP 状态码
+ * @returns {String} 可直接展示的文案
+ */
+const extractErrorMessage = (body, status) => {
+  const fallback = '请求失败（' + status + '）'
+  if (!body) return fallback
+  try {
+    const data = JSON.parse(body)
+    if (data && typeof data.message === 'string' && data.message) return data.message
+  } catch (e) {
+    // 非 JSON 响应体（如网关 HTML 错误页），用兜底文案
+  }
+  return fallback
+}
+
+/**
  * 原始流传输（H5 走 XHR，App 走视图层 renderjs）。
  *
  * 只负责「把 HTTP 响应体按增量喂给调用方」，**不解析任何协议**：
@@ -123,7 +149,9 @@ const streamRawH5 = (options) => {
         if (options.onError) options.onError({ message: '未登录', status: 401 })
         return
       }
-      if (options.onError) options.onError({ message: '请求失败（' + xhr.status + '）', status: xhr.status })
+      // 透传服务端真实文案（后端 Result.message），便于调用方按 status 决定是否重试
+      const message = extractErrorMessage(xhr.responseText, xhr.status)
+      if (options.onError) options.onError({ message, status: xhr.status })
       return
     }
     if (options.onData) options.onData(xhr.responseText || '')
@@ -155,9 +183,13 @@ const streamRawApp = (options) => {
       if (options.onDone) options.onDone()
     },
     onError: (err) => {
-      // err 统一形状：{ message, status }（视图层回传）或 Error（H5 侧兜底）
+      // err 统一形状：{ message, status, body }（视图层回传）或 Error（H5 侧兜底）
       const status = (err && err.status) || 0
-      const message = (err && err.message) || String(err || '请求失败')
+      const body = (err && err.body) || ''
+      // 有响应体时优先取后端 Result.message 的真实文案（与 H5 分支同一 helper，口径一致）
+      const message = body
+        ? extractErrorMessage(body, status)
+        : ((err && err.message) || String(err || '请求失败'))
       // 401：token 过期，清除登录态并跳登录（与 H5 分支口径一致）
       if (status === 401) {
         handleAuthError('登录已过期，请重新登录')

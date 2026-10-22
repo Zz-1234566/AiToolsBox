@@ -1,5 +1,5 @@
 <template>
-  <view v-if="requiredCapability" class="model-picker">
+  <view v-if="requiredCapability" class="model-picker" :style="themeStyle">
     <text class="model-picker__label">AI 模型</text>
     <picker
       v-if="filtered.length > 0"
@@ -32,6 +32,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, computed, watch, onMounted } from 'vue'
 import { listUserAiModels, filterModelsByTool, TOOL_CAPABILITY_MAP } from '../api/aiModel.js'
 import WfIcon from './WfIcon.vue'

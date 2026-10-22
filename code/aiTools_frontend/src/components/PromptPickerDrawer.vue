@@ -1,5 +1,5 @@
 <template>
-  <view v-if="show" class="prompt-drawer-mask" @click="close">
+  <view v-if="show" class="prompt-drawer-mask" :style="themeStyle" @click="close">
     <view class="prompt-drawer" @click.stop>
       <!-- 顶部 header -->
       <view class="prompt-drawer__header">
@@ -99,6 +99,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, computed, watch } from 'vue'
 
 const props = defineProps({

@@ -294,12 +294,13 @@ const onClearAll = () => {
 }
 
 .hist-head {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0） */
-  padding-top: var(--status-bar-height, 0px);
+  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
+     ⚠️ 必须用四值简写：`padding: 32rpx 32rpx 16rpx` 简写会重置 padding-top，
+        把状态栏避让覆盖掉。 */
+  padding: calc(var(--status-bar-height, 0px) + 32rpx) 32rpx 16rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  padding: 32rpx 32rpx 16rpx;
 }
 .hist-back {
   width: 64rpx;

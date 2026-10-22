@@ -1,5 +1,5 @@
 <template>
-  <view class="page">
+  <view class="page" :style="themeStyle">
     <!-- Hero 区（设计稿：渐变 + 立方体 + 搜索框） -->
     <section class="hero">
       <view class="hero__decoration">
@@ -97,6 +97,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
@@ -191,7 +192,9 @@ onShow(() => {
 .hero {
   position: relative;
   background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
-  padding: 32rpx 32rpx 40rpx;
+  /* App 端自绘导航栏（navigationStyle: custom）：顶部避让状态栏/刘海。
+     放在 .hero 而非 .page，是为了让渐变背景延伸到屏幕顶端、状态栏文字仍清晰。 */
+  padding: calc(32rpx + var(--status-bar-height, 0px)) 32rpx 40rpx;
   overflow: hidden;
 }
 .hero__decoration {

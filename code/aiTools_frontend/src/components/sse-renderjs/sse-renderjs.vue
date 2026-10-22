@@ -83,8 +83,14 @@ export default {
       xhr.onload = () => {
         if (xhr.status >= 400) {
           // 非 2xx：响应体是错误 JSON，不是 SSE 流
-          // 把状态码一并回传，逻辑层据此区分 401（登录过期）与其他错误
-          this._emit('onRawError', { reqId: reqId, message: '请求失败（' + xhr.status + '）', status: xhr.status })
+          // 把状态码与响应体一并回传，逻辑层据此区分 401（登录过期）与其他错误，
+          // 并能透传后端 Result.message 的真实文案（App 端与 H5 端口径一致）
+          this._emit('onRawError', {
+            reqId: reqId,
+            message: '请求失败（' + xhr.status + '）',
+            status: xhr.status,
+            body: xhr.responseText || ''
+          })
           return
         }
         // 结束前再补一次全文，确保尾部事件不丢
@@ -183,10 +189,14 @@ export default {
       emitSseEvent(p.reqId, 'done', null)
     },
 
-    /** 流出错（status 为 HTTP 状态码，可能为 0） */
+    /** 流出错（status 为 HTTP 状态码，可能为 0；body 为错误响应体原文） */
     onRawError(p) {
       if (!p) return
-      emitSseEvent(p.reqId, 'error', { message: p.message || '请求失败', status: p.status || 0 })
+      emitSseEvent(p.reqId, 'error', {
+        message: p.message || '请求失败',
+        status: p.status || 0,
+        body: p.body || ''
+      })
     },
 
     /** 请求被主动中止（不算错误） */

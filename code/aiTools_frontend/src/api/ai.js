@@ -31,11 +31,17 @@ export const uploadFileApi = (filePath, prefix = 'avatar') => {
  */
 const batchCreate = (url, files, fields = {}) => {
   return new Promise((resolve, reject) => {
-    // 提取原生 File / 临时路径
+    // 提取可上传的文件条目。
+    // 三种来源：
+    //   - H5 原生 File 对象：{ file } → 直接用（下方 H5 分支走 FormData）
+    //   - App/小程序 临时路径字符串：{ filePath } → 直接用
+    //   - App/小程序 选文件产生的对象：{ fileName, path, size } → 保留原对象，
+    //     其 path 字段即本地路径（App runtime 的 files 数组需要 uri）
     const fileItems = files.map((f) => {
-      if (f.file && typeof f.file === 'object') return f.file        // H5 原生 File
-      if (f.filePath) return f.filePath                              // 小程序/APP 临时路径
-      return f
+      if (f && f.file && typeof f.file === 'object') return f.file        // H5 原生 File
+      if (typeof f === 'string') return f                                // 直接就是路径
+      if (f && f.filePath) return f.filePath                            // { filePath } 形态
+      return f                                                        // { fileName, path, size } 形态
     }).filter(Boolean)
     if (!fileItems.length) {
       reject(new Error('请至少选择 1 个文件'))
@@ -93,19 +99,33 @@ const batchCreate = (url, files, fields = {}) => {
     xhr.send(formData)
     // #endif
     // #ifndef H5
-    // 小程序/APP：单次 uni.uploadFile 不支持同名多值，循环单文件提交后端（后端会拒）
-    // 临时方案：仅第 1 个文件生效；多文件场景请用户在 H5 测试
+    // 平台差异（官方《uni.uploadFile》原文）：
+    //   「App支持多文件上传，微信小程序只支持单文件上传，传多个文件需要反复调用本API」
+    //   files 参数的平台差异说明也只列了 App 与 H5。
+    //
+    // ① App：走 files 数组，一次请求把全部文件作为**多个同名 files 字段**提交。
+    //    runtime 实现（uni.runtime.esm.js）：
+    //      files.forEach(f => uploader.addFile(getRealPath(f.uri), { key: f.name || 'file' }))
+    //    → key 即 multipart 字段名，必须统一设为 'files'，
+    //      才能被后端 @RequestParam("files") List<MultipartFile> 收成列表。
+    //      （已实测：3 个同名 files 字段 → 后端 fileCount=3）
+    // ② 小程序：uploadFile 不支持 files 数组，且小程序端暂未开通 → 见下方分支。
+
+    // #ifdef APP-PLUS
     const token2 = uni.getStorageSync('token')
     const header2 = token2 ? { 'Authorization': 'Bearer ' + token2 } : {}
-    const formData2 = { ...fields }
-    fileItems.forEach((fp, i) => {
-      if (i === 0) formData2.files = fp
-    })
+    const uploadFiles = fileItems.map((f) => {
+      const uri = (f && (f.uri || f.path || f.filePath)) || ''
+      return { uri: uri, name: 'files' }
+    }).filter((f) => f.uri)
+    if (!uploadFiles.length) {
+      reject(new Error('没有可上传的文件'))
+      return
+    }
     uni.uploadFile({
       url: BASE_URL() + url,
-      filePath: fileItems[0],
-      name: 'files',
-      formData: formData2,
+      files: uploadFiles,
+      formData: { ...fields },
       header: header2,
       success: (res) => {
         try {
@@ -121,6 +141,40 @@ const batchCreate = (url, files, fields = {}) => {
       },
       fail: (err) => reject(err)
     })
+    return
+    // #endif
+
+    // #ifndef APP-PLUS
+    // ─────────────────────────────────────────────────────────────
+    // 小程序端：暂未开通，代码保留占位。
+    //
+    // 【平台限制】微信小程序 wx.uploadFile 只有 filePath（单文件），
+    //   无 files 数组 → 一次请求只能传 1 个文件。
+    //   （官方《uni.uploadFile》：「微信小程序只支持单文件上传，
+    //     传多个文件需要反复调用本API」）
+    //
+    // 【为何不实现「循环调用 uploadFile」】
+    //   后端一次 HTTP 请求 = 建一个 batchId = 立即跑批
+    //   （见 AiOfficeToolController#batchDocumentUpload）。
+    //   循环 N 次 → 会建 N 个任务、跑 N 遍 AI、产生 N 个 batchId，
+    //   前端需要同时轮询 N 个任务并合并结果（多游标 + 聚合器），
+    //   且并发占用线程池 N 倍（core=8，N 大时可能被 AbortPolicy 拒绝）、
+    //   结果顺序不保证。要真正支持需后端加「分片追加」端点
+    //   （建任务不跑 → 逐个追加 → 触发执行），属后端状态机改造。
+    //
+    // 【当前策略】小程序端统一提示「暂未开通」，不做半吊子实现，
+    //   避免用户以为文件已上传、后端却只收到部分。
+    //   待小程序端真正启用时，按上述「分片追加」方案统一实现，
+    //   App / H5 端不受影响（已用 files 数组 / FormData 一次传全）。
+    // ─────────────────────────────────────────────────────────────
+    uni.showModal({
+      title: '小程序端暂未开通',
+      content: '当前小程序端尚未开通文件上传能力，请使用 App 端或 H5 端。',
+      showCancel: false,
+      confirmText: '知道了'
+    })
+    reject(new Error('小程序端暂未开通文件上传'))
+    // #endif
     // #endif
   })
 }

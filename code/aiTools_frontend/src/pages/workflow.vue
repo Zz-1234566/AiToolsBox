@@ -1,5 +1,5 @@
 <template>
-  <view class="wf-page">
+  <view class="wf-page" :style="themeStyle">
     <!-- 头部 -->
     <view class="wf-head">
       <text class="wf-head__title">工作流</text>
@@ -65,7 +65,13 @@
     </view>
 
     <!-- ============ 运行弹窗：填源节点输入 ============ -->
-    <view v-if="runVisible" class="mask" @click="runVisible = false">
+    <!--
+      --kb：App 端键盘高度（px，由 utils/keyboardHeight.js 提供）。
+      弹层是 position:fixed，iOS webview 不会因键盘弹起而 resize，
+      用 --kb 把弹层抬到键盘上方，保证输入框与「开始运行」按钮始终可见可点。
+      H5/小程序该变量为 0，行为与原来一致。
+    -->
+    <view v-if="runVisible" class="mask" :style="{ '--kb': keyboardHeight + 'px' }" @click="runVisible = false">
       <view class="sheet" @click.stop>
         <text class="sheet__title">运行：{{ runTarget && runTarget.name }}</text>
         <text class="sheet__desc">请为以下起始节点提供输入</text>
@@ -80,8 +86,14 @@
                 <text v-if="n.description" class="run-node__desc">{{ n.description }}</text>
               </view>
             </view>
+            <!--
+              adjust-position=false：弹层自己按键盘高度抬升（--kb），
+              若再让页面自动上顶会叠加成「弹层被顶飞」。
+              cursor-spacing：光标与键盘保持 24px 间距，避免贴边。
+            -->
             <textarea v-if="isTextInput(n)" class="run-node__text" v-model="runInputs[n.nodeId].text"
-                      placeholder="请输入文本内容" placeholder-class="wfe-ph" :maxlength="5000" />
+                      placeholder="请输入文本内容" placeholder-class="wfe-ph" :maxlength="5000"
+                      :adjust-position="false" :cursor-spacing="24" />
             <view v-else class="run-node__file">
               <view class="file-pick" @click="pickFile(n)">选择文件</view>
               <text v-if="!runInputs[n.nodeId].files.length" class="file-name">未选择</text>
@@ -169,6 +181,7 @@
 </template>
 
 <script setup>
+import { themeStyle } from '@/utils/theme'
 import { ref, reactive, computed, nextTick } from 'vue'
 import { onShow, onHide, onUnload, onPageScroll } from '@dcloudio/uni-app'
 import { toolListApi } from '@/api/prompt'
@@ -180,10 +193,19 @@ import { setWorkflowRunTarget } from '@/utils/workflowRunContext'
 import {
   nodeIconPath, fileDisplayName, openFile, durationText
 } from '@/utils/workflowView'
+import { useKeyboardHeight } from '@/utils/keyboardHeight'
 
 const workflows = ref([])
 const loading = ref(false)
 const tools = ref([])
+
+/**
+ * 键盘高度（App 端）。
+ * 底部的「运行」弹层是 position:fixed，iOS webview 不会因键盘弹起而 resize，
+ * 弹层会被键盘盖住 → 输入框打不了字、「开始运行」点不到。
+ * 这里量出键盘高度，把弹层整体抬到键盘上方（CSS 变量 --kb）。
+ */
+const { keyboardHeight } = useKeyboardHeight()
 
 const runVisible = ref(false)
 const runTarget = ref(null)
@@ -604,7 +626,9 @@ const runFirstErr = (r) => {
 .wf-head {
   display: flex;
   align-items: center;
-  padding: 32rpx 32rpx 24rpx;
+  /* App 端自绘导航栏（navigationStyle: custom）：顶部避让状态栏/刘海。
+     ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
+  padding: calc(32rpx + var(--status-bar-height, 0px)) 32rpx 24rpx;
 }
 .wf-head__title {
   flex: 1;
@@ -688,13 +712,22 @@ const runFirstErr = (r) => {
   display: flex;
   align-items: flex-end;
   z-index: 1000;
+  /* App 端键盘高度（px）：把弹层抬到键盘上方。
+     iOS webview 不因键盘 resize，fixed 弹层会停在底部被键盘盖住 →
+     输入框打不了字、「开始运行」点不到。H5/小程序该变量为 0，行为不变。 */
+  padding-bottom: var(--kb, 0px);
 }
 .sheet {
   width: 100%;
   max-height: 85vh;
+  /* 键盘弹起时可用高度变小，弹层不能超出屏幕顶部。
+     ⚠️ 写在 85vh 之后以覆盖它（max-height 重复声明后者生效），
+        --kb 未定义时 calc(85vh - 0px) 与 85vh 等价。 */
+  max-height: calc(85vh - var(--kb, 0px));
   background: #fff;
   border-radius: 32rpx 32rpx 0 0;
-  padding: 40rpx 32rpx 48rpx;
+  /* App 端 iOS 底部 Home 指示条安全区（对齐 tool-common.vue:3197 的项目范式） */
+  padding: 40rpx 32rpx calc(48rpx + env(safe-area-inset-bottom, 0rpx));
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
