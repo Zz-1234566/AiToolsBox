@@ -1,5 +1,6 @@
 package com.example.aitools.service.impl;
 
+import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.AsrConfig;
 import com.example.aitools.config.CompressConfig;
@@ -329,7 +330,7 @@ public class FileCompressServiceImpl implements FileCompressService {
             }
             return true;
         } catch (IOException e) {
-            log.error("[Compress] ffmpeg 不可用: {}", e.getMessage());
+            log.error("[Compress] ffmpeg 不可用: {}", e.getMessage(), e);
             throw ErrorFactory.of(ResultCode.SERVICE_UNAVAILABLE, "音频压缩依赖的 ffmpeg 不可用");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -360,8 +361,10 @@ public class FileCompressServiceImpl implements FileCompressService {
 
     private String categoryOf(String filename) {
         String ext = extensionOf(filename);
+        if (Constants.IMAGE_EXTS.contains(ext)) {
+            return CAT_IMAGE;
+        }
         return switch (ext) {
-            case "jpg", "jpeg", "png", "bmp", "gif", "webp" -> CAT_IMAGE;
             case "mp3", "wav", "m4a", "aac", "flac", "ogg", "amr", "opus", "wma" -> CAT_AUDIO;
             default -> CAT_UNSUPPORTED;
         };

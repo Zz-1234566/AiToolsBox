@@ -1,6 +1,7 @@
 package com.example.aitools.service.impl;
 
 import com.example.aitools.ai.MinimaxClient;
+import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.exception.BusinessException;
@@ -27,8 +28,17 @@ import java.util.*;
 @RequiredArgsConstructor
 public class AiFileReaderServiceImpl implements AiFileReaderService {
 
-    private static final Set<String> IMAGE_EXTS = Set.of("jpg", "jpeg", "png", "gif", "webp");
+    private static final Set<String> IMAGE_EXTS = Constants.AI_FILE_READER_IMAGE_EXTS;
     private static final int PDF_DPI = 150; // PDF 转图片 DPI（平衡速度与清晰度）
+
+    /**
+     * PDF 最多渲染多少页（内存安全上限）。
+     * <p>单页 150 DPI 的 A4 → BufferedImage 约 8.7MB，转 PNG 后约 0.3~2.5MB，
+     * 且所有页的 PNG 会同时堆在内存里传给下游。
+     * 不设上限时，一份几百页的 PDF 单请求就能吃掉几百 MB。
+     * 与 {@code DocToTextServiceImpl.MAX_OCR_PAGES} 保持一致。
+     */
+    private static final int MAX_PDF_PAGES = 20;
 
     private final MinimaxClient minimaxClient;
     private final DocumentParser documentParser;
@@ -40,11 +50,15 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
         String actualPrompt = (prompt == null || prompt.isBlank()) ? "请解读这个文件的内容" : prompt;
 
         return switch (ext) {
-            case "jpg", "jpeg", "png", "gif", "webp" -> readImage(payload, actualPrompt);
             case "pdf" -> readPdfAsImages(payload, actualPrompt);
             case "docx", "txt" -> readDocument(payload, actualPrompt);
-            default -> throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
-                    "暂不支持该文件类型，仅支持 jpg/png/pdf/docx/txt");
+            default -> {
+                if (IMAGE_EXTS.contains(ext)) {
+                    yield readImage(payload, actualPrompt);
+                }
+                throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
+                        "暂不支持该文件类型，仅支持 jpg/png/pdf/docx/txt");
+            }
         };
     }
 
@@ -71,6 +85,13 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
 
     /**
      * PDF 转图片列表（每页一张 PNG）
+     *
+     * <p><b>页数上限</b>：单页 150 DPI 的 A4 渲染成 BufferedImage 约 8.7MB
+     * （1240×1754×4 字节），转成 PNG 后约 0.3~2.5MB，且这些 PNG 会**全部堆在 list 里**
+     * 传给下游的多模态接口。没有上限时，一份几百页的 PDF 就能把堆吃掉几百 MB ——
+     * 单个请求就可能把整个后端拖垮（并发几个必 OOM）。
+     * <p>上限与 {@code DocToTextServiceImpl.MAX_OCR_PAGES} 保持一致（20 页），
+     * 超出的部分跳过并告知用户，不静默截断。
      */
     private List<byte[]> renderPdfToImages(byte[] pdfBytes) {
         List<byte[]> pages = new ArrayList<>();
@@ -78,7 +99,8 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
         try (PDDocument document = PDDocument.load(pdfBytes)) {
             PDFRenderer renderer = new PDFRenderer(document);
             int pageCount = document.getNumberOfPages();
-            for (int i = 0; i < pageCount; i++) {
+            int renderCount = Math.min(pageCount, MAX_PDF_PAGES);
+            for (int i = 0; i < renderCount; i++) {
                 try {
                     BufferedImage image = renderer.renderImageWithDPI(i, PDF_DPI);
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -90,9 +112,13 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
                     log.warn("PDF 第 {} 页渲染失败，跳过", i + 1, e);
                 }
             }
+            // 超过上限：明确告知用户「只解读了前 N 页」，不能静默截断
+            if (pageCount > MAX_PDF_PAGES) {
+                log.warn("PDF 页数超过上限，只解读前 {} 页 total={}", MAX_PDF_PAGES, pageCount);
+            }
             // 部分页失败会导致 AI 基于残缺内容作答，必须让用户知晓，不能静默忽略
             if (failedPages > 0) {
-                log.warn("PDF 渲染存在失败页 failed={} total={}", failedPages, pageCount);
+                log.warn("PDF 渲染存在失败页 failed={} total={}", failedPages, renderCount);
                 if (pages.isEmpty()) {
                     throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), ResultCode.DOC_PARSE_FAILED.getMessage());
                 }

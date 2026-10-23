@@ -17,6 +17,24 @@ import java.util.List;
  * results 现在自动包含产物信息：调用方传入 {@link ToolOutputVO} 列表后，
  * 每个 item 同时携带「文件产物」字段（fileUrl/fileName/mimeType/width/height 等）
  * 与「处理结果」字段（status/output/errorMsg/costMs），前端无需二次请求即可渲染产物。
+ * <p>
+ * <b>item.index 的口径：统一 1-based</b>（与 {@link BatchFileResult#getIndex()} 一致）。
+ * 两条构造路径都遵守：
+ * <ul>
+ *   <li>主路径（result_summary 非空）：取 {@code BatchFileResult.index}（1-based）；</li>
+ *   <li>回退路径（result_summary 为空、按产物重建）：取产物的 {@code fileIndex + 1}
+ *       —— {@code fileIndex} 是该文件在**整批**中的 0-based 位置，
+ *       因此中间有文件失败时序号会留空档（如 [1/3]、[3/3]），能看出少了哪个。</li>
+ * </ul>
+ * 另有 {@code since} 参数，口径是**「已返回的条数」**（不是文件序号），
+ * 前端 {@code since += results.length} 与之对应。
+ * <p>
+ * <b>兼容层说明</b>：本类保留了 {@link #from(BatchTask)} 与 {@link #from(BatchTask, int)}
+ * 两个旧重载（已标 {@code @Deprecated}），供可能仍在调用它们的旧版 App 使用。
+ * 现役前端只走 {@code GET /api/ai-office/batch/{batchId}/completed}。
+ * <b>下线条件</b>：确认线上已无旧版 App 在调后，即可连同 Controller 里的
+ * {@code batch-stream} / {@code batch-status} 两个旧端点一起删除
+ * （需发版数据才能判定，代码里看不出来）。
  */
 @Data
 public class BatchStatusVO {
@@ -30,6 +48,11 @@ public class BatchStatusVO {
     private Integer processedIndex;
     private Integer status;
     private String statusLabel;
+    /**
+     * 任务级失败原因（如「服务重启导致任务中断，请重新提交」）。
+     * <p>成功时为 null。整批失败且没有任何单文件结果时，前端靠这个字段说明原因。
+     */
+    private String errorMsg;
     /** 本次返回的增量 items（since 之后），如果 since=0 则返回全部。
      *  每个 item 同时包含处理结果（status/output）和文件产物（fileUrl/mimeType/width/height） */
     private List<ResultItem> results;
@@ -79,14 +102,25 @@ public class BatchStatusVO {
         private Integer outputType;
     }
 
-    /** 旧接口：返回全部 results（兼容旧前端） */
+    /**
+     * 旧接口：返回全部 results（兼容旧前端）。
+     *
+     * @deprecated 现役前端只走 {@code GET /api/ai-office/batch/{batchId}/completed}
+     *     （即 {@link #from(BatchTask, int, List)}）。本重载零调用方，
+     *     保留仅为兼容可能仍在调用它的旧版 App —— **确认线上无旧版后即可删除**。
+     */
+    @Deprecated
     public static BatchStatusVO from(BatchTask t) {
         return from(t, 0, Collections.emptyList());
     }
 
     /**
-     * 旧接口：since 增量返回，产物列表为空（不补全 fileUrl 等文件信息）
+     * 旧接口：since 增量返回，产物列表为空（不补全 fileUrl 等文件信息）。
+     *
+     * @deprecated 同 {@link #from(BatchTask)}，零调用方，
+     *     确认线上无旧版 App 在调后即可删除。
      */
+    @Deprecated
     public static BatchStatusVO from(BatchTask t, int since) {
         return from(t, since, Collections.emptyList());
     }
@@ -119,6 +153,7 @@ public class BatchStatusVO {
         vo.processedIndex = t.getProcessedIndex() == null ? 0 : t.getProcessedIndex();
         vo.status = t.getStatus();
         vo.statusLabel = statusLabel(t.getStatus());
+        vo.errorMsg = t.getErrorMsg();
 
         List<ToolOutputVO> safeOutputs = outputs == null ? Collections.emptyList() : outputs;
         List<BatchFileResult> all = parseResults(t.getResultSummary());
@@ -128,10 +163,15 @@ public class BatchStatusVO {
         if (all.isEmpty() && !safeOutputs.isEmpty()) {
             List<ResultItem> items = new ArrayList<>(safeOutputs.size());
             for (int i = 0; i < safeOutputs.size(); i++) {
-                if (i < since) continue; // 增量裁剪
+                if (i < since) continue; // 增量裁剪（since = 前端已收到的条数）
                 ToolOutputVO o = safeOutputs.get(i);
                 ResultItem item = new ResultItem();
-                item.setIndex(i);
+                // 序号统一 1-based（与主路径 BatchFileResult.index 及本类 Javadoc 一致）。
+                // 优先取产物记录的 fileIndex（该文件在**整批**中的 0-based 位置），
+                // 这样中间若有文件失败，序号会留空档（如 [1/3]、[3/3]），能看出少了哪个；
+                // fileIndex 缺失时回退为「成功产物中的次序 + 1」。
+                Integer fileIdx = o.getFileIndex();
+                item.setIndex(fileIdx != null ? fileIdx + 1 : i + 1);
                 item.setStatus("ok"); // 落进 sys_tool_output 即视为成功
                 mergeOutput(item, o);
                 items.add(item);

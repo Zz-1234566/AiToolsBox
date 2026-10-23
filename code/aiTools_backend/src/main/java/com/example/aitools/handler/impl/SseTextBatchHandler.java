@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.function.Consumer;
+import com.example.aitools.common.ToolCodes;
 
 /**
  * 多文件 → SSE 长文本（ai-file-reader 等批量路径）
@@ -43,11 +44,11 @@ public class SseTextBatchHandler implements AiToolHandler {
                                              String promptFormat, String promptGenerate, Long promptId,
                                              String batchId) {
         return switch (toolCode) {
-            case "doc-keypoint-extract" -> aiOfficeToolService.aiDocumentSummaryBatchStream(
+            case ToolCodes.DOC_KEYPOINT_EXTRACT -> aiOfficeToolService.aiDocumentSummaryBatchStream(
                     userId, files, promptFormat, promptGenerate, promptId, batchId);
-            case "ocr-recognize" -> aiOfficeToolService.aiOcrBatchStream(
+            case ToolCodes.OCR_RECOGNIZE -> aiOfficeToolService.aiOcrBatchStream(
                     userId, files, promptFormat, promptGenerate, promptId, batchId);
-            case "ai-file-reader" -> aiOfficeToolService.aiFileReaderBatchStream(
+            case ToolCodes.AI_FILE_READER -> aiOfficeToolService.aiFileReaderBatchStream(
                     userId, files, promptFormat, batchId);
             default -> throw new BusinessException(
                     "toolCode=" + toolCode + " 不支持 sse-text-batch 处理方式");

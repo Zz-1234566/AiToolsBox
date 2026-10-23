@@ -33,6 +33,7 @@ import java.io.InputStream;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
+import com.example.aitools.common.MimeTypes;
 
 /**
  * 人像分割服务实现：本地 ONNX Runtime 加载 MODNet（modnet_photographic_portrait_matting），CPU 推理。
@@ -89,7 +90,7 @@ public class SegmentationServiceImpl implements SegmentationService {
     /** MODNet 标准差（R/G/B，归一化 0~1 空间），ZHKKKe/MODNet 官方预处理（=0.5/0.5/0.5） */
     private static final float[] STD = {0.5f, 0.5f, 0.5f};
 
-    private static final String OUTPUT_MIME = "image/png";
+    private static final String OUTPUT_MIME = MimeTypes.PNG;
 
     @Override
     public SegmentResult removeBackground(byte[] imageBytes, String backgroundColor) {
@@ -205,7 +206,7 @@ public class SegmentationServiceImpl implements SegmentationService {
             log.error("[image-bg-remover] 合成 JPG 编码失败", e);
             throw ErrorFactory.of(ResultCode.IMAGE_TOOL_FAILED);
         }
-        return new SegmentResult(baos.toByteArray(), W, H, "image/jpeg");
+        return new SegmentResult(baos.toByteArray(), W, H, MimeTypes.JPEG);
     }
 
     @Override

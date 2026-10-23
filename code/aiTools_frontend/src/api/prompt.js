@@ -1,4 +1,5 @@
 import { request } from './request'
+import { REALIZED_TOOLS } from '@/config/tools'
 
 // 我的提示词列表（按工具隔离，toolCode 为工具 code）
 export const promptListApi = (toolCode) => request({ url: '/api/prompt/list', method: 'GET', data: { toolCode } })
@@ -40,6 +41,27 @@ export const systemPromptDeleteApi = (id) => request({ url: `/api/prompt/system/
 
 // 工具列表（按 tool_type 分组，用于提示词管理页工具下拉）
 export const toolListApi = () => request({ url: '/api/prompt/tools', method: 'GET' })
+
+/**
+ * 「已实现」的工具列表 —— **工作流节点下拉专用**。
+ *
+ * <p>后端 /api/prompt/tools 只按 `status=1` + `dr=0` 过滤。若旧库漏跑下线脚本
+ * （init.sql 的 23.5 段 / migrate_remove_tools.sql），会返回一批已下线工具，
+ * 用户在工作流里选中它们 → 节点执行必然失败（「该工具暂未接入」）。
+ *
+ * <p>这里再按前端 {@code config/tools.js} 的已实现清单过滤一层兜底：
+ * 前端拿不到元信息的工具，节点也渲染不出来，不该出现在下拉里。
+ *
+ * <p>⚠️ 提示词管理页（prompt-list.vue）**不要**用这个 —— 那里需要看到
+ * 已下线工具的历史提示词，用原版 {@link toolListApi}。
+ *
+ * @returns {Promise<Object>} 结构与 request 相同，仅 data 被过滤
+ */
+export const realizedToolListApi = async () => {
+  const res = await toolListApi()
+  const list = (res && res.data) || []
+  return { ...res, data: list.filter((t) => REALIZED_TOOLS.includes(t.toolCode)) }
+}
 
 /**
  * AI 生成提示词：调后端文本模型按用户需求生成一段提示词

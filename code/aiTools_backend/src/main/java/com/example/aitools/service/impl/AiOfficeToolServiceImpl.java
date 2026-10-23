@@ -28,29 +28,18 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.function.Consumer;
+import com.example.aitools.common.ToolCodes;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
-    /** 工作总结工具编码 */
-    private static final String TOOL_CODE_WORK_SUMMARY = "work-summary";
 
-    /** 文档重点提取工具编码 */
-    private static final String TOOL_CODE_DOC_SUMMARY = "doc-keypoint-extract";
 
-    /** 周报生成工具编码 */
-    private static final String TOOL_CODE_WEEKLY_REPORT = "weekly-report";
 
-    /** 会议纪要工具编码 */
-    private static final String TOOL_CODE_MEETING_MINUTES = "meeting-minutes";
 
-    /** OCR 智能识别工具编码 */
-    private static final String TOOL_CODE_AI_OCR = "ocr-recognize";
 
-    /** AI 文件解读工具编码 */
-    private static final String TOOL_CODE_AI_FILE_READER = "ai-file-reader";
 
     /** 提示词用途：格式 */
     private static final String PROMPT_USE_FORMAT = "format";
@@ -108,14 +97,14 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiWorkSummary(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, String modelCode) {
         long start = System.currentTimeMillis();
-        Long toolId = findToolIdByCode(TOOL_CODE_WORK_SUMMARY);
+        Long toolId = findToolIdByCode(ToolCodes.WORK_SUMMARY);
         try {
-            String result = aiTextProcess(TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, modelCode));
+            String result = aiTextProcess(ToolCodes.WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, modelCode));
             long duration = System.currentTimeMillis() - start;
-            historyService.record(userId, toolId, null, TOOL_CODE_WORK_SUMMARY, content, result, 1, (int) duration);
+            historyService.record(userId, toolId, null, ToolCodes.WORK_SUMMARY, content, result, 1, (int) duration);
             return result;
         } catch (Exception e) {
-            historyService.record(userId, toolId, null, TOOL_CODE_WORK_SUMMARY, content, null, 0, null);
+            historyService.record(userId, toolId, null, ToolCodes.WORK_SUMMARY, content, null, 0, null);
             throw e;
         }
     }
@@ -135,7 +124,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
     @Override
     public String aiWorkSummaryStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, String modelCode, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, modelCode), onChunk);
+        return aiTextProcessStream(userId, ToolCodes.WORK_SUMMARY, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, modelCode), onChunk);
     }
 
     /**
@@ -154,7 +143,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     @Override
     public String aiDocKeypointTextStream(Long userId, String content, String promptFormat,
                                           String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_DOC_SUMMARY, content,
+        return aiTextProcessStream(userId, ToolCodes.DOC_KEYPOINT_EXTRACT, content,
                 promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
@@ -168,7 +157,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
     @Override
     public String aiWeeklyReportStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_WEEKLY_REPORT, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
+        return aiTextProcessStream(userId, ToolCodes.WEEKLY_REPORT, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
     /**
@@ -181,7 +170,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
     @Override
     public String aiMeetingMinutesStream(Long userId, String content, String promptFormat, String promptGenerate, Long promptId, String apiKey, Consumer<String> onChunk) {
-        return aiTextProcessStream(userId, TOOL_CODE_MEETING_MINUTES, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
+        return aiTextProcessStream(userId, ToolCodes.MEETING_MINUTES, content, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
     /**
@@ -197,15 +186,15 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
 
         long start = System.currentTimeMillis();
         // 查询文档重点提取工具 ID（按 tool_code = doc-keypoint-extract）
-        Long toolId = findToolIdByCode(TOOL_CODE_DOC_SUMMARY);
+        Long toolId = findToolIdByCode(ToolCodes.DOC_KEYPOINT_EXTRACT);
         String fileName = file.getOriginalFilename();
         // 先创建"处理中"历史记录，保证 AI 被调用后必有记录（文档名占位为输入）
-        Long historyId = historyService.createPendingHistory(userId, toolId, null, TOOL_CODE_DOC_SUMMARY, "上传文档：" + fileName);
+        Long historyId = historyService.createPendingHistory(userId, toolId, null, ToolCodes.DOC_KEYPOINT_EXTRACT, "上传文档：" + fileName);
         StringBuilder sb = new StringBuilder();
         try {
             String docText = documentParser.parse(file);
-            String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, TOOL_CODE_DOC_SUMMARY);
-            String generatePrompt = resolvePrompt(promptGenerate, promptId, PROMPT_USE_GENERATE, TOOL_CODE_DOC_SUMMARY);
+            String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, ToolCodes.DOC_KEYPOINT_EXTRACT);
+            String generatePrompt = resolvePrompt(promptGenerate, promptId, PROMPT_USE_GENERATE, ToolCodes.DOC_KEYPOINT_EXTRACT);
             validatePrompts(formatPrompt, generatePrompt);
             String systemPrompt = buildSystemPrompt(formatPrompt, docText);
             String userPrompt = generatePrompt + "\n\n文档内容：\n" + docText;
@@ -239,7 +228,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
         }
 
         long start = System.currentTimeMillis();
-        Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
+        Long toolId = findToolIdByCode(ToolCodes.OCR_RECOGNIZE);
         String fileName = file.getOriginalFilename();
         // OCR 与文本是两个独立 capability，统一用一个混合 key：OCR 优先 user_ocr，文本 user_text
         // 本次实现：只覆盖文本侧凭据；OCR key 仍走系统配置（避免两条线 key 不同时的复杂度）
@@ -248,7 +237,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
         }
         String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
-        return aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
+        return aiTextProcessStream(userId, ToolCodes.OCR_RECOGNIZE, input, promptFormat, promptGenerate, promptId, resolveTextCred(userId, apiKey, null), onChunk);
     }
 
     /**
@@ -267,7 +256,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
-        Long toolId = findToolIdByCode(TOOL_CODE_AI_OCR);
+        Long toolId = findToolIdByCode(ToolCodes.OCR_RECOGNIZE);
         int successCount = 0;
         int failCount = 0;
         int processedIndex = 0;
@@ -288,7 +277,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             } else {
                 long start = System.currentTimeMillis();
                 Long historyId = historyService.createPendingHistory(userId, toolId, null,
-                        TOOL_CODE_AI_OCR, "批量上传（" + (i + 1) + "/" + files.size() + "）：" + fileName);
+                        ToolCodes.OCR_RECOGNIZE, "批量上传（" + (i + 1) + "/" + files.size() + "）：" + fileName);
                 StringBuilder fileOut = new StringBuilder();
                 try {
                     String ocrText = ocrService.recognizeBytes(payload.getContent(), fileName);
@@ -296,7 +285,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                         throw ErrorFactory.of(ResultCode.OCR_FAILED, "未识别出文字，请换一张更清晰的图片");
                     }
                     String input = "上传图片：" + fileName + "\n\nOCR 识别结果：\n" + ocrText;
-                    aiTextProcessStream(userId, TOOL_CODE_AI_OCR, input, promptFormat, promptGenerate, promptId,
+                    aiTextProcessStream(userId, ToolCodes.OCR_RECOGNIZE, input, promptFormat, promptGenerate, promptId,
                             fileOut::append);
                     long duration = System.currentTimeMillis() - start;
                     fileOutput = fileOut.toString();
@@ -321,6 +310,11 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                 log.error("[B2-OCR] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
             }
             processedIndex++;
+            // 释放本文件的字节缓存：批量总大小上限 200MB，
+            // 不逐个释放的话 N 个文件的字节会同时驻留堆里（等于没做落盘优化）
+            if (payload != null) {
+                payload.release();
+            }
         }
 
         resultJson.append("]");
@@ -346,7 +340,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             throw ErrorFactory.of(ResultCode.FILE_TOO_LARGE, "单次最多上传 10 个文件");
         }
 
-        Long toolId = findToolIdByCode(TOOL_CODE_DOC_SUMMARY);
+        Long toolId = findToolIdByCode(ToolCodes.DOC_KEYPOINT_EXTRACT);
         int successCount = 0;
         int failCount = 0;
         int processedIndex = 0;
@@ -367,12 +361,12 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             } else {
                 long start = System.currentTimeMillis();
                 Long historyId = historyService.createPendingHistory(userId, toolId, null,
-                        TOOL_CODE_DOC_SUMMARY, "批量上传（" + (i + 1) + "/" + files.size() + "）：" + fileName);
+                        ToolCodes.DOC_KEYPOINT_EXTRACT, "批量上传（" + (i + 1) + "/" + files.size() + "）：" + fileName);
                 StringBuilder fileOut = new StringBuilder();
                 try {
                     String docText = documentParser.parse(payload.toMultipartFile());
-                    String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, TOOL_CODE_DOC_SUMMARY);
-                    String generatePrompt = resolvePrompt(promptGenerate, promptId, PROMPT_USE_GENERATE, TOOL_CODE_DOC_SUMMARY);
+                    String formatPrompt = resolvePrompt(promptFormat, promptId, PROMPT_USE_FORMAT, ToolCodes.DOC_KEYPOINT_EXTRACT);
+                    String generatePrompt = resolvePrompt(promptGenerate, promptId, PROMPT_USE_GENERATE, ToolCodes.DOC_KEYPOINT_EXTRACT);
                     validatePrompts(formatPrompt, generatePrompt);
                     String systemPrompt = buildSystemPrompt(formatPrompt, docText);
                     String userPrompt = generatePrompt + "\n\n文档内容：\n" + docText;
@@ -400,6 +394,11 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                 log.error("[B2-DOC] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
             }
             processedIndex++;
+            // 释放本文件的字节缓存：批量总大小上限 200MB，
+            // 不逐个释放的话 N 个文件的字节会同时驻留堆里（等于没做落盘优化）
+            if (payload != null) {
+                payload.release();
+            }
         }
 
         resultJson.append("]");
@@ -424,7 +423,8 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     private String safeErrorMessage(Exception e, String context) {
         if (e instanceof BusinessException) {
             // 业务异常本身就是面向用户的文案（如"暂不支持该文件类型…"）
-            log.warn("{} 业务失败: {}", context, e.getMessage());
+            // 带异常对象：业务异常也要留堆栈，否则「为什么失败」查不下去
+            log.warn("{} 业务失败: {}", context, e.getMessage(), e);
             return e.getMessage();
         }
         log.error("{} 处理异常", context, e);
@@ -597,6 +597,11 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
             } catch (Exception e) {
                 log.error("[B2-FILE] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
             }
+            // 释放本文件的字节缓存：批量总大小上限 200MB，
+            // 不逐个释放的话 N 个文件的字节会同时驻留堆里（等于没做落盘优化）
+            if (payload != null) {
+                payload.release();
+            }
         }
 
         resultJson.append("]");
@@ -671,6 +676,11 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
                 batchTaskService.appendItem(batchId, fileResultJson, fileOk);
             } catch (Exception e) {
                 log.error("[B2-ASR] appendItem 失败 batchId={} index={}", batchId, i + 1, e);
+            }
+            // 释放本文件的字节缓存：批量总大小上限 200MB，
+            // 不逐个释放的话 N 个文件的字节会同时驻留堆里（等于没做落盘优化）
+            if (payload != null) {
+                payload.release();
             }
         }
 

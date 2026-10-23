@@ -1,5 +1,6 @@
 package com.example.aitools.service.impl;
 
+import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.DocToTextResponse;
 import com.example.aitools.exception.BusinessException;
@@ -15,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Locale;
 import java.util.Set;
+import com.example.aitools.common.ToolCodes;
 
 /**
  * 文档转文本实现（纯解析，不调用 AI 大模型）。
@@ -43,11 +45,9 @@ public class DocToTextServiceImpl implements DocToTextService {
     /** 解析方式：腾讯云 OCR（图片直传 / 扫描件逐页渲染） */
     private static final String METHOD_OCR = "ocr";
 
-    /** 工具编码（与 sys_aitools_tool.tool_code 一致，用于写历史） */
-    private static final String TOOL_CODE_DOC_TO_TEXT = "doc-to-text";
 
     /** 图片扩展名（直送 OCR，不做文字层解析） */
-    private static final Set<String> IMAGE_EXTS = Set.of("png", "jpg", "jpeg", "bmp", "gif", "webp");
+    private static final Set<String> IMAGE_EXTS = Constants.IMAGE_EXTS;
 
     /** 文档扩展名（走文字层解析；docx / pdf 有各自专属分支，不在此列） */
     private static final Set<String> DOC_EXTS = Set.of("txt");
@@ -75,9 +75,9 @@ public class DocToTextServiceImpl implements DocToTextService {
         String ext = extensionOf(fileName);
         long start = System.currentTimeMillis();
 
-        Long toolId = aiPromptTemplateService.findToolIdByCode(TOOL_CODE_DOC_TO_TEXT);
+        Long toolId = aiPromptTemplateService.findToolIdByCode(ToolCodes.DOC_TO_TEXT);
         Long historyId = historyService.createPendingHistory(
-                userId, toolId, null, TOOL_CODE_DOC_TO_TEXT, "上传文件：" + fileName);
+                userId, toolId, null, ToolCodes.DOC_TO_TEXT, "上传文件：" + fileName);
 
         try {
             String text;

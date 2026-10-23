@@ -31,6 +31,10 @@ export const ERROR_CODE = {
   // 3xxxx 图片创意工具
   IMAGE_TOOL_FAILED: 30001,
   IMAGE_UNSUPPORTED: 30002,
+  SEGMENT_MODEL_UNAVAILABLE: 30003,
+  SEGMENT_INFER_FAILED: 30004,
+  SEGMENT_BAD_COLOR: 30005,
+  IMAGE_TOO_LARGE: 30006,
 
   // 4xxxx OCR 识别
   OCR_FAILED: 40001,
@@ -71,6 +75,13 @@ export const ERROR_CODE = {
 
 // 错误码对应的提示消息（后端 message 缺失时的兜底展示）
 export const ERROR_MESSAGE = {
+  // HTTP 语义码（后端直接用这些码返回的也要有兜底，
+  // 否则 message 缺失时用户只能看到「操作失败」）
+  [ERROR_CODE.UNAUTHORIZED]: '登录已过期，请重新登录',
+  [ERROR_CODE.FORBIDDEN]: '没有权限执行该操作',
+  [ERROR_CODE.NOT_FOUND]: '请求的内容不存在或已失效',
+  [ERROR_CODE.FAIL]: '操作失败，请稍后重试',
+
   [ERROR_CODE.USER_NOT_FOUND]: '用户不存在',
   [ERROR_CODE.PASSWORD_ERROR]: '密码错误',
   [ERROR_CODE.USER_DISABLED]: '用户已被禁用',
@@ -88,6 +99,10 @@ export const ERROR_MESSAGE = {
 
   [ERROR_CODE.IMAGE_TOOL_FAILED]: '图片处理失败，请稍后重试',
   [ERROR_CODE.IMAGE_UNSUPPORTED]: '仅支持图片格式',
+  [ERROR_CODE.SEGMENT_MODEL_UNAVAILABLE]: '去背景能力暂不可用，请稍后重试',
+  [ERROR_CODE.SEGMENT_INFER_FAILED]: '人像识别失败，请换一张正面清晰的证件照重试',
+  [ERROR_CODE.SEGMENT_BAD_COLOR]: '底色参数不合法',
+  [ERROR_CODE.IMAGE_TOO_LARGE]: '图片分辨率过大，请上传 4000 万像素以内的图片',
 
   [ERROR_CODE.OCR_FAILED]: '识别失败，请稍后重试',
   [ERROR_CODE.OCR_UNSUPPORTED]: '仅支持图片格式（PNG/JPG/JPEG/BMP）',

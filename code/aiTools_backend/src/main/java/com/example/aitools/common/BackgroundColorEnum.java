@@ -26,7 +26,11 @@ public enum BackgroundColorEnum {
     /** 白底（用于生活照/白底二寸） */
     WHITE("white", "白色", "#FFFFFF");
 
-    /** 未指定底色时的默认值 */
+    /**
+     * 未指定底色时的默认值。
+     * <p>用于「换底色」模式没传颜色时的兜底（红底证件照是最高频场景）。
+     * ⚠️ 当前无直接调用点，属预留的默认值 —— 不要当死代码删掉。
+     */
     public static final String DEFAULT_CODE = "red";
 
     private final String code;

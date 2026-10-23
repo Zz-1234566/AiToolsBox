@@ -39,12 +39,6 @@ public class Constants {
     /** Logical delete: deleted */
     public static final int DR_DELETED = 1;
 
-    /** Default page size */
-    public static final int DEFAULT_PAGE_SIZE = 10;
-
-    /** Max page size */
-    public static final int MAX_PAGE_SIZE = 100;
-
     // ==================== 批量任务（B2 多文件上传） ====================
 
     // ==================== 鉴权路径白名单（P0-A2 终极修复）====================
@@ -66,8 +60,6 @@ public class Constants {
             "/api/prompt/system/format"
     );
 
-    /** 单次批量最多文件数（与文件末尾的 BATCH_MAX_FILE_COUNT 重复，本处 P0 移除，避免编译错误） */
-
     /** 单文件大小上限（字节）：20MB（与 spring.servlet.multipart.max-file-size 保持一致） */
     public static final long BATCH_SINGLE_FILE_MAX_SIZE = 20L * 1024 * 1024;
 
@@ -76,15 +68,79 @@ public class Constants {
     /** 单文件大小上限：20MB */
     public static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
 
+    /**
+     * 「文件大小超过 N MB」的错误文案（按字节上限生成）。
+     *
+     * <p><b>为什么要这个方法</b>：文案里硬编码 "20MB" 时，改了
+     * {@link #MAX_FILE_SIZE} 文案不会跟着变 → 用户看到的提示与实际限制对不上
+     * （改大后仍提示 20MB，改小后仍提示 20MB）。全部走本方法即可保证同源。
+     *
+     * @param limitBytes 限制字节数
+     * @return 形如「文件大小不能超过20MB」的中文文案
+     */
+    public static String fileSizeLimitMessage(long limitBytes) {
+        return fileSizeLimitMessage("文件大小", limitBytes);
+    }
+
+    /**
+     * 同 {@link #fileSizeLimitMessage(long)}，但可指定主语。
+     *
+     * @param subject    主语，如「背景图」「批量文件总大小」
+     * @param limitBytes 限制字节数
+     * @return 形如「背景图不能超过20MB」的中文文案
+     */
+    public static String fileSizeLimitMessage(String subject, long limitBytes) {
+        return subject + "不能超过" + (limitBytes / 1024 / 1024) + "MB";
+    }
+
     /** 支持的文件扩展名（图片 + 文档 + 音频） */
     public static final java.util.Set<String> ALLOWED_FILE_EXTENSIONS =
             java.util.Set.of("jpg", "jpeg", "png", "gif", "webp", "pdf", "doc", "docx", "txt",
                     "mp3", "wav", "m4a", "aac", "flac", "ogg", "amr");
 
-    /** 文档类白名单：doc-to-text 工具用（txt/docx/pdf 走文字层，png/jpg/jpeg/bmp/gif/webp 走 OCR） */
+    // ==================== 图片扩展名（各工具支持范围不同，勿随意合并） ====================
+
+    /**
+     * 图片扩展名全集：jpg / jpeg / png / bmp / gif / webp。
+     *
+     * <p>用于 doc-to-text（图片直送 OCR）、文件压缩（图片通道）两条链路。
+     *
+     * <p><b>注意</b>：另有两个工具的支持范围**比本集小**，是有意为之，不是遗漏：
+     * {@link #SEGMENTATION_IMAGE_EXTS}（抠图，少 webp）、
+     * {@link #AI_FILE_READER_IMAGE_EXTS}（文件解读，少 bmp）。
+     */
+    public static final java.util.Set<String> IMAGE_EXTS =
+            java.util.Set.of("jpg", "jpeg", "png", "bmp", "gif", "webp");
+
+    /**
+     * 抠图工具（image-bg-remover）支持的图片扩展名：jpg / jpeg / png / bmp / gif。
+     *
+     * <p>比 {@link #IMAGE_EXTS} **少 webp** —— 前端 {@code image-bg-remover.vue} 的
+     * ALLOWED_EXTS 同样不含 webp，两处必须保持同步（改一处就要改另一处）。
+     */
+    public static final java.util.Set<String> SEGMENTATION_IMAGE_EXTS =
+            java.util.Set.of("jpg", "jpeg", "png", "bmp", "gif");
+
+    /**
+     * AI 文件解读（ai-file-reader）支持的图片扩展名：jpg / jpeg / png / gif / webp。
+     *
+     * <p>比 {@link #IMAGE_EXTS} **少 bmp** —— 该工具的能力范围是产品决策，
+     * 在产品拍板前保持既有行为不变。
+     */
+    public static final java.util.Set<String> AI_FILE_READER_IMAGE_EXTS =
+            java.util.Set.of("jpg", "jpeg", "png", "gif", "webp");
+
+    /**
+     * 文档类白名单：doc-to-text 工具用
+     * （txt/docx/pdf 走文字层，图片类走 OCR）。
+     *
+     * <p>图片部分由 {@link #IMAGE_EXTS} 派生，避免两处各写一份后漂移。
+     */
     public static final java.util.Set<String> ALLOWED_DOC_EXTENSIONS =
-            java.util.Set.of("pdf", "docx", "txt",
-                    "png", "jpg", "jpeg", "bmp", "gif", "webp");
+            java.util.stream.Stream.concat(
+                            java.util.stream.Stream.of("pdf", "docx", "txt"),
+                            IMAGE_EXTS.stream())
+                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     /** 音频类白名单：audio-transcribe 工具用（mp3/wav/m4a/aac/flac/ogg/amr） */
     public static final java.util.Set<String> ALLOWED_AUDIO_EXTENSIONS =
@@ -210,7 +266,33 @@ public class Constants {
     /** 单次批量上传文件数上限 */
     public static final int BATCH_MAX_FILE_COUNT = 10;
 
-    /** 单次批量上传总大小上限（字节）：200MB */
+    /**
+     * 批量上传临时目录名（位于系统临时目录下）。
+     * <p>批量文件先**流式落盘**到这里，异步任务再逐个读进内存处理 ——
+     * 避免 200MB 的整批字节同时驻留堆里（详见 BatchFilePayload 的类注释）。
+     */
+    public static final String BATCH_TEMP_DIR_NAME = "aitools-batch-upload";
+
+    /**
+     * 单次批量上传的**总大小**上限：200MB（批量 10 个文件 × 单文件 20MB）。
+     *
+     * <p>⚠️ 这个值必须与 {@code application.yml} 的
+     * {@code spring.servlet.multipart.max-request-size} 保持一致 ——
+     * multipart 的 {@code max-request-size} 是**整个请求**的硬上限，
+     * 超过时 Spring 在进入 Controller 之前就抛
+     * {@code MaxUploadSizeExceededException}，本常量对应的校验**根本走不到**。
+     *
+     * <p><b>三处必须同步</b>（任一小于实际值，用户就会遇到「前端放行、后端拒收」）：
+     * <ol>
+     *   <li>本常量；</li>
+     *   <li>{@code application.yml} 的 {@code max-request-size}；</li>
+     *   <li>前端 {@code config/tools.js} 的 {@code fileRule.maxTotalSize} 与文案。</li>
+     * </ol>
+     *
+     * <p><b>内存安全不靠这个上限</b>：批量文件先流式落盘（{@code BatchUploadService}），
+     * 再逐个读进内存处理，所以峰值堆 = 并发批量数 × 单文件大小（20MB），
+     * 与总大小上限无关。详见 {@code BatchFilePayload} 的类注释。
+     */
     public static final long BATCH_MAX_TOTAL_SIZE = 200L * 1024 * 1024;
 
     // ==================== 工作流 ====================

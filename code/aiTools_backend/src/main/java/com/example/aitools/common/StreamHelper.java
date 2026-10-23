@@ -41,7 +41,8 @@ public final class StreamHelper {
                 log.warn("SSE timeout complete failed", e);
             }
         });
-        emitter.onError(t -> log.warn("SSE emitter error: {}", t == null ? "unknown" : t.getMessage()));
+        // 带异常对象：SSE emitter 的错误往往带堆栈才有排查价值
+        emitter.onError(t -> log.warn("SSE emitter error: {}", t == null ? "unknown" : t.getMessage(), t));
         try {
             executor.execute(() -> {
                 try {

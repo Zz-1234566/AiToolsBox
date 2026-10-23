@@ -138,7 +138,7 @@ public class JwtUtil {
         } catch (Exception e) {
             // token 无效/过期属鉴权失败，必须 401；
             // 若冒泡会被兜底 handler 转成 500「系统内部错误」，前端不触发重新登录且污染监控
-            log.warn("token 解析失败（按未登录处理）: {}", e.getMessage());
+            log.warn("token 解析失败（按未登录处理）: {}", e.getMessage(), e);
             throw new BusinessException(ResultCode.UNAUTHORIZED);
         }
     }
@@ -171,21 +171,4 @@ public class JwtUtil {
         }
     }
 
-    /**
-     * 校验 Token 是否有效
-     *
-     * @param token JWT token
-     * @return true if valid
-     */
-    public boolean validateToken(String token) {
-        try {
-            parseToken(token);
-            return true;
-        } catch (Exception e) {
-            // P2-B6: 校验失败时记 warn（不是 debug）— 这是可疑事件
-            //   可能场景：伪造 token / 密钥已轮换 / 客户端用了旧 secret
-            log.warn("validateToken: parse failed (possible forged or stale token): {}", e.getMessage());
-            return false;
-        }
-    }
 }

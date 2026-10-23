@@ -37,6 +37,14 @@ import java.time.LocalDateTime;
 @TableName("sys_tool_output")
 public class ToolOutput implements Serializable {
 
+    /**
+     * 产物类型枚举（写入 sys_tool_output.output_type）。
+     *
+     * <p>⚠️ **当前只有 TYPE_IMAGE 有实际调用点**（图片类工具落库），
+     * 其余类型是预留位（文本类一般不入本表，音频/视频/普通文件能力尚未接入）。
+     * 它们**不是死代码**，是为「产物类型」这一维度预留的完整枚举 ——
+     * 新增产物类型时直接用，不要另起一套常量。
+     */
     /** 产物类型：文本（文本类一般不入本表，保留枚举完整性） */
     public static final int TYPE_TEXT = 1;
     /** 产物类型：图片 */

@@ -125,11 +125,6 @@ public class WorkflowValidator {
         return plan;
     }
 
-    /** 计算层数（保存工作流时写入冗余字段 max_depth） */
-    public int depthOf(List<WorkflowNode> nodes) {
-        return validateAndPlan(nodes).depth();
-    }
-
     private AiTool findByCode(String toolCode) {
         LambdaQueryWrapper<AiTool> w = new LambdaQueryWrapper<>();
         w.eq(AiTool::getToolCode, toolCode).last("LIMIT 1");

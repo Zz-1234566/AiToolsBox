@@ -14,6 +14,7 @@ import com.example.aitools.exception.BusinessException;
 import com.example.aitools.handler.HandlerFactory;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
+import com.example.aitools.service.BatchUploadService;
 import com.example.aitools.service.ModelCredentialResolver;
 import com.example.aitools.service.ToolOutputService;
 import com.example.aitools.vo.ToolOutputVO;
@@ -38,6 +39,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import com.example.aitools.common.ToolCodes;
 
 @RestController
 @RequestMapping("/api/ai-office")
@@ -48,6 +50,7 @@ public class AiOfficeToolController {
     private final AiOfficeToolService aiOfficeToolService;
     private final AuthUtil authUtil;
     private final BatchTaskService batchTaskService;
+    private final BatchUploadService batchUploadService;
     private final HandlerFactory handlerFactory;
     private final ModelCredentialResolver modelCredentialResolver;
     private final ToolOutputService toolOutputService;
@@ -115,7 +118,7 @@ public class AiOfficeToolController {
                                             HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         return StreamHelper.stream(streamExecutor, emitter ->
-                handlerFactory.get("sse-text-single").handleSingleText("meeting-minutes", userId,
+                handlerFactory.get("sse-text-single").handleSingleText(ToolCodes.MEETING_MINUTES, userId,
                         dto.getContent(),
                         dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId(),
                         StreamHelper.asChunkConsumer(emitter)));
@@ -129,7 +132,7 @@ public class AiOfficeToolController {
     public Result<String> meetingMinutesDecideRoute(@Valid @RequestBody AiWorkSummaryDTO dto) {
         // 路由决策同时考虑 promptFormat 和 promptGenerate（用户可能在提示词里明确要求 JSON/Markdown）
 String route = handlerFactory.get("sse-text-single").decideRoute(
-                "meeting-minutes", dto.getContent(), dto.getPromptFormat(), resolvePromptGenerate(dto), null);
+                ToolCodes.MEETING_MINUTES, dto.getContent(), dto.getPromptFormat(), resolvePromptGenerate(dto), null);
         log.info("[meeting-minutes/decide-route] route={}", route);
         return Result.success(route);
     }
@@ -143,7 +146,7 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
                                              HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
         String json = handlerFactory.get("json-single").handleSingleJson(
-                "meeting-minutes", userId, dto.getContent(),
+                ToolCodes.MEETING_MINUTES, userId, dto.getContent(),
                 dto.getPromptFormat(), resolvePromptGenerate(dto), dto.getPromptId());
         return Result.success(json);
     }
@@ -225,27 +228,23 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
         if (totalSize > Constants.BATCH_MAX_TOTAL_SIZE) {
             throw new com.example.aitools.exception.BusinessException(
-                    "批量文件总大小超过 " + (Constants.BATCH_MAX_TOTAL_SIZE / 1024 / 1024) + "MB");
+                    Constants.fileSizeLimitMessage("批量文件总大小", Constants.BATCH_MAX_TOTAL_SIZE));
         }
 
         // 1) 同步建任务（HTTP 必须立即返回 batchId，前端拿去轮询）
-        String batchId = batchTaskService.createTask(userId, "doc-keypoint-extract", files.size());
-        log.info("[B2] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
+        String batchId = batchTaskService.createTask(userId, ToolCodes.DOC_KEYPOINT_EXTRACT, files.size());
+        log.info("[B2-DOC] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
 
         // 2) 同步把 MultipartFile 读到 byte[]（避开 Tomcat 异步线程跑批时临时文件已被清理）
         java.util.List<BatchFilePayload> payloads;
         try {
-            payloads = files.stream().map(f -> {
-                try {
-                    return BatchFilePayload.from(f);
-                } catch (java.io.IOException e) {
-                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
-                }
-            }).toList();
+            // 流式落盘，**不把整批字节读进堆**：批量总大小上限 200MB，
+            // 全量进内存的话并发几个请求就能打满堆，把整个后端拖垮
+            payloads = batchUploadService.toPayloads(files);
         } catch (BusinessException e) {
             // 读文件失败：刚建的任务必须置为失败，否则永久停留在 PENDING，
             // 前端若已拿到 batchId 会一直轮询等不到终态，且任务表堆积孤儿数据
-            log.error("[B2] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
+            log.error("[B2-DOC] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
             safeFailBatch(batchId, files.size());
             throw e;  /* P2-B4 */
         }
@@ -254,25 +253,33 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         try {
             batchExecutor.execute(() -> {
             try {
-                batchTaskService.markRunning(batchId);
+                if (!batchTaskService.markRunning(batchId)) {
+                    // 任务行不存在 / 状态已不是 PENDING：不再跑 AI，避免做完的结果无处可写
+                    throw new IllegalStateException("批量任务状态推进失败，任务不存在或已非待处理状态");
+                }
                 com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiDocumentSummaryBatchStream(
                         userId, payloads, promptFormat, promptGenerate, promptId, batchId);
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
-                log.info("[B2] 批量任务完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
+                log.info("[B2-DOC] 批量任务完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
             } catch (Exception e) {
-                log.error("[B2] 批量任务异常 batchId={}", batchId, e);
+                log.error("[B2-DOC] 批量任务异常 batchId={}", batchId, e);
                 try {
-                    batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
+                    batchTaskService.failRemaining(batchId, files.size());
                 } catch (Exception ignore) {
                     // P2-B1: 不再静默吞，至少 log 出来便于排查（best-effort completeBatch，失败也不能让上层 catch 再抛）
-                    log.error("[B2] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
+                    log.error("[B2-DOC] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
                 }
+            } finally {
+                // 清理批量临时文件：必须在 finally 里，异常/线程被拒时也要清
+                batchUploadService.cleanup(payloads);
             }
             });
         } catch (RejectedExecutionException e) {
             // 线程池饱和：任务未启动，但 batchId 已经建出来了，不置失败前端会一直轮询等终态
-            log.error("[B2] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
+            log.error("[B2-DOC] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
             safeFailBatch(batchId, files.size());
+            // 任务没跑起来 → lambda 里的 finally 不会执行，临时文件要在这里清
+            batchUploadService.cleanup(payloads);
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
                     ResultCode.SERVICE_UNAVAILABLE.getMessage());
         }
@@ -303,26 +310,22 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
         if (totalSize > Constants.BATCH_MAX_TOTAL_SIZE) {
             throw new com.example.aitools.exception.BusinessException(
-                    "批量文件总大小超过 " + (Constants.BATCH_MAX_TOTAL_SIZE / 1024 / 1024) + "MB");
+                    Constants.fileSizeLimitMessage("批量文件总大小", Constants.BATCH_MAX_TOTAL_SIZE));
         }
 
-        String batchId = batchTaskService.createTask(userId, "ocr-recognize", files.size());
-        log.info("[OCR-B2] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
+        String batchId = batchTaskService.createTask(userId, ToolCodes.OCR_RECOGNIZE, files.size());
+        log.info("[B2-OCR] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
 
         // 同步阶段先把每个 MultipartFile 读到 byte[]（避开 Tomcat 异步线程跑批时临时文件已被清理）
         java.util.List<BatchFilePayload> payloads;
         try {
-            payloads = files.stream().map(f -> {
-                try {
-                    return BatchFilePayload.from(f);
-                } catch (java.io.IOException e) {
-                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
-                }
-            }).toList();
+            // 流式落盘，**不把整批字节读进堆**：批量总大小上限 200MB，
+            // 全量进内存的话并发几个请求就能打满堆，把整个后端拖垮
+            payloads = batchUploadService.toPayloads(files);
         } catch (BusinessException e) {
             // 读文件失败：刚建的任务必须置为失败，否则永久停留在 PENDING，
             // 前端若已拿到 batchId 会一直轮询等不到终态，且任务表堆积孤儿数据
-            log.error("[B2] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
+            log.error("[B2-OCR] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
             safeFailBatch(batchId, files.size());
             throw e;  /* P2-B4 */
         }
@@ -330,25 +333,32 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         try {
             batchExecutor.execute(() -> {
             try {
-                batchTaskService.markRunning(batchId);
+                if (!batchTaskService.markRunning(batchId)) {
+                    throw new IllegalStateException("批量任务状态推进失败，任务不存在或已非待处理状态");
+                }
                 com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiOcrBatchStream(
                         userId, payloads, promptFormat, promptGenerate, promptId, batchId);
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
-                log.info("[OCR-B2] 完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
+                log.info("[B2-OCR] 完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
             } catch (Exception e) {
-                log.error("[OCR-B2] 异常 batchId={}", batchId, e);
+                log.error("[B2-OCR] 异常 batchId={}", batchId, e);
                 try {
-                    batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
+                    batchTaskService.failRemaining(batchId, files.size());
                 } catch (Exception ignore) {
                     // P2-B1: 不再静默吞，至少 log 出来便于排查（best-effort completeBatch，失败也不能让上层 catch 再抛）
-                    log.error("[B2] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
+                    log.error("[B2-OCR] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
                 }
+            } finally {
+                // 清理批量临时文件：必须在 finally 里，异常/线程被拒时也要清
+                batchUploadService.cleanup(payloads);
             }
             });
         } catch (RejectedExecutionException e) {
             // 线程池饱和：任务未启动，但 batchId 已经建出来了，不置失败前端会一直轮询等终态
-            log.error("[OCR-B2] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
+            log.error("[B2-OCR] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
             safeFailBatch(batchId, files.size());
+            // 任务没跑起来 → lambda 里的 finally 不会执行，临时文件要在这里清
+            batchUploadService.cleanup(payloads);
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
                     ResultCode.SERVICE_UNAVAILABLE.getMessage());
         }
@@ -378,22 +388,18 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
         if (totalSize > Constants.BATCH_MAX_TOTAL_SIZE) {
             throw new com.example.aitools.exception.BusinessException(
-                    "批量文件总大小超过 " + (Constants.BATCH_MAX_TOTAL_SIZE / 1024 / 1024) + "MB");
+                    Constants.fileSizeLimitMessage("批量文件总大小", Constants.BATCH_MAX_TOTAL_SIZE));
         }
 
-        String batchId = batchTaskService.createTask(userId, "ai-file-reader", files.size());
+        String batchId = batchTaskService.createTask(userId, ToolCodes.AI_FILE_READER, files.size());
         log.info("[B2-FILE] 创建批量任务 batchId={} userId={} fileCount={}", batchId, userId, files.size());
 
         // 同步阶段先把每个 MultipartFile 读到 byte[]（避开 Tomcat 异步线程跑批时临时文件已被清理）
         java.util.List<BatchFilePayload> payloads;
         try {
-            payloads = files.stream().map(f -> {
-                try {
-                    return BatchFilePayload.from(f);
-                } catch (java.io.IOException e) {
-                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
-                }
-            }).toList();
+            // 流式落盘，**不把整批字节读进堆**：批量总大小上限 200MB，
+            // 全量进内存的话并发几个请求就能打满堆，把整个后端拖垮
+            payloads = batchUploadService.toPayloads(files);
         } catch (BusinessException e) {
             // 读文件失败：刚建的任务必须置为失败，否则永久停留在 PENDING，
             // 前端若已拿到 batchId 会一直轮询等不到终态，且任务表堆积孤儿数据
@@ -405,7 +411,9 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         try {
             batchExecutor.execute(() -> {
             try {
-                batchTaskService.markRunning(batchId);
+                if (!batchTaskService.markRunning(batchId)) {
+                    throw new IllegalStateException("批量任务状态推进失败，任务不存在或已非待处理状态");
+                }
                 com.example.aitools.dto.BatchProcessResult result = aiOfficeToolService.aiFileReaderBatchStream(
                         userId, payloads, prompt, batchId);
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
@@ -413,17 +421,22 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
             } catch (Exception e) {
                 log.error("[B2-FILE] 异常 batchId={}", batchId, e);
                 try {
-                    batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
+                    batchTaskService.failRemaining(batchId, files.size());
                 } catch (Exception ignore) {
                     // 不再静默吞，至少 log 出来便于排查（best-effort completeBatch，失败也不能让上层 catch 再抛）
                     log.error("[B2-FILE] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
                 }
+            } finally {
+                // 清理批量临时文件：必须在 finally 里，异常/线程被拒时也要清
+                batchUploadService.cleanup(payloads);
             }
             });
         } catch (RejectedExecutionException e) {
             // 线程池饱和：任务未启动，但 batchId 已经建出来了，不置失败前端会一直轮询等终态
             log.error("[B2-FILE] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
             safeFailBatch(batchId, files.size());
+            // 任务没跑起来 → lambda 里的 finally 不会执行，临时文件要在这里清
+            batchUploadService.cleanup(payloads);
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
                     ResultCode.SERVICE_UNAVAILABLE.getMessage());
         }
@@ -442,10 +455,10 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
         Long userId = authUtil.getUserIdFromRequest(request);
         BatchTask task = batchTaskService.getByBatchId(batchId);
         if (task == null) {
-            return Result.fail("任务不存在或已过期");
+            return Result.fail(ResultCode.NOT_FOUND.getCode(), "任务不存在或已过期");
         }
         if (!task.getUserId().equals(userId)) {
-            return Result.fail("无权访问此任务");
+            return Result.fail(ResultCode.FORBIDDEN.getCode(), "无权访问此任务");
         }
         // 按 batchId 反查 sys_tool_output，拼到 results 里（让前端一次拿到产物 fileUrl）
         List<ToolOutputVO> outputs = toolOutputService.listByBatchId(batchId);
@@ -453,6 +466,15 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
     }
 
     /** 兼容旧前端：批量任务 SSE 端点保留（仅做"补发已完成结果"），新前端可忽略 */
+    /**
+     * 旧端点：SSE 推送批量进度。
+     *
+     * @deprecated 现役前端**不消费任何 SSE 帧**，走纯轮询
+     *     {@code GET /api/ai-office/batch/{batchId}/completed}。
+     *     本端点零调用方，保留仅为兼容可能仍在调用它的旧版 App ——
+     *     **确认线上无旧版后即可删除**（需发版数据才能判定）。
+     */
+    @Deprecated
     @GetMapping(value = "/document-summary/batch-stream/{batchId}", produces = "text/event-stream;charset=UTF-8")
     public SseEmitter batchDocumentStream(@PathVariable("batchId") String batchId, HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);
@@ -484,6 +506,13 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
     }
 
     /** 兼容旧前端：批量任务状态查询（带 items 全量） */
+    /**
+     * 旧端点：查询批量任务状态。
+     *
+     * @deprecated 同 {@link #batchDocumentStream}，零调用方，
+     *     确认线上无旧版 App 在调后即可删除。
+     */
+    @Deprecated
     @GetMapping("/document-summary/batch-status/{batchId}")
     public Result<BatchStatusVO> batchStatus(@PathVariable("batchId") String batchId, HttpServletRequest request) {
         Long userId = authUtil.getUserIdFromRequest(request);

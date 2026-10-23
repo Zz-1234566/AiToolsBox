@@ -103,6 +103,13 @@ mvn spring-boot:run
 # 默认监听 http://localhost:8080
 ```
 
+> **生产环境请显式指定堆大小**（`-Xmx`），批量上传的并发上限是按堆大小算出来的：
+> ```bash
+> java -Xmx2g -jar aiTools_backend-1.0.0-SNAPSHOT.jar
+> ```
+> 默认 JVM 堆是物理内存的 1/4，容器里容易被算小，导致批量任务并发一高就 OOM。
+> 详见下方「批量上传的内存与并发」。
+
 ### 5. 启动前端
 
 **方式 A：HBuilderX（推荐）**
@@ -494,6 +501,95 @@ ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
 **实现要点**：阈值按 `String.length()`（UTF-16）判定，切分点用 `offsetByCodePoints` 求出，
 保证不从代理对中间切开产生乱码；超限追加「【内容过长，已截断】」标记。
 
+## 批量上传的内存与并发
+
+> 这一节解释「批量上传总大小 200MB」是怎么做到不把内存打爆的，
+> 以及**换机器 / 换堆大小后该改哪个配置**。
+
+### 问题的因果链
+
+早期实现里，这三件事是绑在一起的：
+
+```
+Tomcat 请求结束就清理 multipart 临时文件
+  → 异步跑批时读不到文件
+  → 被迫在 Controller 里把每个文件 getBytes() 全读进内存
+  → 10 个文件的字节同时驻留堆里
+  → 只能把总大小限在 20MB（否则并发几个就 OOM）
+```
+
+**实测（10 个 20MB 文件）**：整批同时驻留 = **+207.9MB 堆占用**；
+在 `-Xmx256m` 下跑 400MB 批量直接 `OutOfMemoryError: Java heap space`
+—— 受害的是**整个后端进程**，其他用户的功能一起挂。
+
+### 现在的做法：解开第一个环
+
+1. **流式落盘**：Controller 不再 `getBytes()`，由 `BatchUploadService` 用 4KB 缓冲
+   把文件复制到**我们自己的临时文件**（`java.io.tmpdir/aitools-batch-upload/`）。
+   异步任务读自己的文件，**不再依赖 Tomcat 的临时文件**（Tomcat 请求结束就删自己的）。
+2. **懒加载**：`payload.getContent()` 首次调用才读盘并缓存（同一文件只读一次）。
+3. **用完即释放**：批量循环处理完一个文件就 `payload.release()`。
+
+于是**峰值堆 = 并发批量数 × 单文件大小（20MB），与批量总大小（200MB）无关**。
+
+实测对比（`-Xmx256m`，20 个 20MB 文件 = 400MB 批量）：
+
+| | 旧方案 | 现方案 |
+|---|---|---|
+| 10×20MB 峰值堆 | +207.9 MB | **+32.2 MB** |
+| 256MB 堆跑 400MB 批量 | **OutOfMemoryError** | **跑通，峰值 +30 MB** |
+
+### 并发上限怎么算
+
+限的是**批量线程池的最大线程数**（`batch.max-concurrent-tasks`，默认 8）——
+不是队列长度。`ThreadPoolExecutor` 是「先入队、队满才扩线程」，
+不限 `maxPoolSize` 的话高负载下会自动涨到 16。
+
+单个重任务的峰值堆（2GB 堆口径）：
+
+| 项 | 大小 |
+|---|---|
+| 单文件字节（`max-file-size` 20MB） | 20.0 MB |
+| PDF 渲染单页 BufferedImage（150dpi A4） | 8.7 MB |
+| PDF 累计 PNG（上限 20 页，按照片页 2.5MB 估） | 50.0 MB |
+| 杂项（文本 / AI 缓冲 / JSON / 历史） | 5.0 MB |
+| **单任务峰值** | **83.7 MB** |
+
+预算：`2048MB 堆 − 800MB 预留`（GC 复制/晋升、元空间、线程栈、SSE 流式缓冲、
+非批量请求、Tomcat 缓冲）`= 1248MB` → 理论上限 `1248 / 83.7 ≈ 14.9`
+→ **取 2 倍安全系数 → 7~8 → 取 8**（8 × 83.7 = 670MB，占堆 32.7%）。
+
+**换堆大小后重算**：
+
+```
+并发 = (堆 - 800MB) / 83.7MB / 2
+```
+
+改 `application.yml` 的 `batch.max-concurrent-tasks`，并用 `-Xmx` 指定堆。
+
+### 相关的四处配置（必须同值）
+
+| 位置 | 值 | 含义 |
+|---|---|---|
+| `application.yml` → `spring.servlet.multipart.max-file-size` | 20MB | 单文件上限 |
+| `application.yml` → `spring.servlet.multipart.max-request-size` | 200MB | 整个上传请求上限 |
+| `application.yml` → `server.tomcat.max-swallow-size` | 200MB | 请求被拒时 Tomcat 要读完请求体，否则连接被重置 |
+| `Constants.BATCH_MAX_TOTAL_SIZE` | 200MB | 应用层总大小校验（multipart 之外再兜一层） |
+| 前端 `config/tools.js` → `fileRule.maxTotalSize` / `maxFileSize` | 200MB / 20MB | 前端提前拦截，避免传完才被拒 |
+
+> `server.tomcat.max-swallow-size` 最容易漏：Tomcat 默认只有 2MB，
+> 请求被拒时它不读完请求体，**连接会被直接重置** ——
+> 客户端看到 connection reset 而不是明确的 400 错误。
+
+### 临时文件
+
+- 位置：`java.io.tmpdir/aitools-batch-upload/`（文件名是 UUID，不用原始文件名）
+- 清理：异步任务 `finally` 里删；线程池拒绝时单独删；进程被 kill 的残留
+  由 `BatchTaskRecoveryJob` 定期扫（`batch.recovery.temp-file-retention-minutes`，默认 120 分钟）
+- ⚠️ **磁盘占用**：批量线程池队列深度 50，理论上排队中的任务各自占着
+  已落盘的文件（最坏 50 × 200MB ≈ 10GB）。实际占用取决于用户上传的文件大小，
+  部署时留意临时目录所在卷的剩余空间。
+
 ## ⚠️ 已知问题 / 待处理
 
 ### 1. COS 签名 URL 有效期偏短（工作流运行时可能失效）
@@ -563,13 +659,26 @@ ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
    或用 `plus.io` 自绘选择框读 `_doc` / `_downloads` / `_documents`
 3. 短期兜底：在 App 端给出明确提示文案，而不是静默失败
 
-### 5. `.doc` 文件被拒但报错文案暗示支持
+### 5. ~~`.doc` 文件被拒但报错文案暗示支持~~ ✅ **已过期，无需改**
 
-`Constants.ALLOWED_DOC_EXTENSIONS` 不含 `doc`，但 `DocToTextController` 的
-`FILE_UNSUPPORTED` 文案写了「仅支持 PDF/**DOC**/DOCX/TXT/JPG/PNG/BMP/WEBP/GIF」，
-且漏写 `JPEG`。用户传 `.doc` 会被拒却看到"支持 DOC"的提示。修文案或加解析支持，二选一。
+> 复核（2026-10-23）：后端文案已是「不支持的文件类型，仅支持 PDF/DOCX/TXT 或图片 PNG/JPG/JPEG/BMP/GIF/WEBP」，
+> **不含 DOC**，与 `Constants.ALLOWED_DOC_EXTENSIONS` 一致。此条无需处理。
 
-**降低优先级的原因**：文件类工具是少数，且规划中工具将逐步改为**前端解析后只传文本**，届时该表可能废弃。
+### 6. 交接报告遗留项的处置情况（2026-10-23 逐条核对）
+
+| 遗留项 | 状态 |
+|---|---|
+| 静默失败规范（禁裸 catch / 禁 `getMessage()` 直给前端 / 禁错误码字面量） | ✅ 已落 `code/AGENTS.md` §12.7（含 5 条自检命令），现存违规已全部修掉 |
+| 错误码覆盖收尾 | ✅ 前后端错误码一致性校验 **0 冲突** |
+| 前后端错误码一码两义（`10001` 同时表示「用户不存在」和「图片格式不支持」） | ✅ 已修，四处对齐为 `30002` / `80002` |
+| 统一文件选择组件 | ⏸ 未做（涉及多页面 UI + 需真机回归） |
+| 历史文件落库（`sys_aitools_history_file` 恒空） | ⏸ 未做（需一整条「上传 COS + 写表 + 读时签发」链路，建议独立立项） |
+| 状态快照（`userInfo.role` 不刷新） | ⏸ 未做（属产品行为决策）。后端登录响应**是**带 `role` 的，改角色后需重新登录 |
+| 跨端测试矩阵（H5 / 小程序 / App） | ⏸ 需真机与小程序开发者工具，本环境无法完成 |
+
+> 逐条明细见 `Desktop/项目问题报告/README.md` 的「交接报告里的遗留项」。
+>
+> 🔧 **本轮改动需要实机验证的部分 → `Desktop/项目问题报告/实机待测清单.md`**。
 
 ---
 

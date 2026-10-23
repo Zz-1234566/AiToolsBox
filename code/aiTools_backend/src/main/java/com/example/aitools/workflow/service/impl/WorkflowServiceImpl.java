@@ -376,7 +376,7 @@ public class WorkflowServiceImpl implements WorkflowService {
             emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter
                     .event().data(writeJson(payload)));
         } catch (Exception e) {
-            log.warn("[workflow] SSE 推送失败（客户端可能已断开）: {}", e.getMessage());
+            log.warn("[workflow] SSE 推送失败（客户端可能已断开）: {}", e.getMessage(), e);
         }
     }
 
@@ -491,6 +491,9 @@ public class WorkflowServiceImpl implements WorkflowService {
         vo.setTriggerTypeLabel("手动运行");
         if (workflowOutputService != null) {
             try {
+                // 【待办】这里恒为空：工作流来源的文件类产物尚未落库
+                //   （ToolOutputService.saveFileOutput 零调用方，接入点见 NodeExecutor 的逐文件循环）。
+                //   等那条链路接通后，本行才会返回真实产物列表。
                 vo.setOutputs(workflowOutputService.listByRunId(r.getRunId()));
             } catch (Exception e) {
                 // 产物查询失败不影响运行记录的正常展示

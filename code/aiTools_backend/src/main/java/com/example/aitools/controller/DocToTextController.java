@@ -47,7 +47,8 @@ public class DocToTextController {
                     "不支持的文件类型，仅支持 PDF/DOCX/TXT 或图片 PNG/JPG/JPEG/BMP/GIF/WEBP");
         }
         if (file.getSize() > Constants.MAX_FILE_SIZE) {
-            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                    Constants.fileSizeLimitMessage(Constants.MAX_FILE_SIZE));
         }
         return Result.success("转换成功", docToTextService.toText(userId, file));
     }

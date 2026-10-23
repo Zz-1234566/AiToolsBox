@@ -75,7 +75,7 @@ import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { favoriteListApi, favoriteRemoveApi } from '@/api/favorite'
 import { requireLogin } from '@/utils/auth'
-import { TOOLS } from '@/config/tools'
+import { TOOLS, toolDetailUrl } from '@/config/tools'
 
 const loading = ref(false)
 const list = ref([])
@@ -131,13 +131,9 @@ onShow(() => {
   fetchList()
 })
 
-/** 去使用：跳转到该工具详情页（image-bg-remolver 走专属页） */
-const SPECIAL_PAGES = {
-  'image-bg-remover': '/pages/image-bg-remover'
-}
+/** 去使用：跳转到该工具详情页（image-bg-remover 走专属页） */
 const openTool = (item) => {
-  const url = SPECIAL_PAGES[item.toolCode] || `/pages/tool-common?id=${item.toolCode}`
-  uni.navigateTo({ url })
+  uni.navigateTo({ url: toolDetailUrl(item.toolCode) })
 }
 
 /** 取消收藏工具 */

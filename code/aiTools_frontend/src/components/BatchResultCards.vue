@@ -2,14 +2,14 @@
   <view class="batch-cards">
     <view
       v-for="item in items"
-      :key="(item.index || 0) + '-' + item.fileName"
+      :key="(item.index ?? 0) + '-' + item.fileName"
       class="card"
       :class="{ 'card-failed': item.status === 'failed' }"
     >
       <!-- 头部：序号 + 文件名 + 状态徽标 + 复制全部按钮 -->
       <view class="card-header">
         <view class="card-title">
-          <text class="card-index">[{{ item.index || '?' }}/{{ total }}]</text>
+          <text class="card-index">[{{ item.index ?? '?' }}/{{ total }}]</text>
           <text class="card-filename">{{ item.fileName }}</text>
         </view>
         <view class="card-right">

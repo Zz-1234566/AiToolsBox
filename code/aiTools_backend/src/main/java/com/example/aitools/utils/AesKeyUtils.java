@@ -178,15 +178,4 @@ public final class AesKeyUtils {
         }
     }
 
-    /**
-     * 测试 / 单元测试用：注入密钥（仅供单元测试覆盖默认字段）。
-     * <p>
-     * 生产代码禁止调用；调用方需自行保证线程安全与生命周期。
-     */
-    public static void overrideForTest(byte[] keyBytes) {
-        if (keyBytes == null || keyBytes.length != KEY_LENGTH_BYTES) {
-            throw new IllegalArgumentException("测试密钥长度必须为 32 字节");
-        }
-        secretKey = new SecretKeySpec(keyBytes, "AES");
-    }
 }

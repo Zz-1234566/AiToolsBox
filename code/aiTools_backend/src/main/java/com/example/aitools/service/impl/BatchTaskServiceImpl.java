@@ -13,6 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,16 +43,37 @@ public class BatchTaskServiceImpl implements BatchTaskService {
         return task.getBatchId();
     }
 
+    /**
+     * PENDING -> RUNNING。
+     *
+     * <p><b>带状态守卫</b>：只有当前状态确实是 PENDING 才推进，返回值才有意义。
+     * 若不加守卫，已被判失败的任务（僵尸恢复扫描置 FAILED）会被重新拉回 RUNNING，
+     * 形成「恢复了又跑起来」的抖动。
+     *
+     * @return true=成功推进；false=任务不存在 / 状态已不是 PENDING
+     */
     @Override
     public boolean markRunning(String batchId) {
         LambdaUpdateWrapper<BatchTask> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(BatchTask::getBatchId, batchId)
+               .eq(BatchTask::getStatus, STATUS_PENDING)
                .set(BatchTask::getStatus, STATUS_RUNNING);
         return batchTaskMapper.update(null, wrapper) > 0;
     }
 
     @Override
     public void completeBatch(String batchId, int successCount, int failCount, String resultSummaryJson) {
+        completeBatch(batchId, successCount, failCount, resultSummaryJson, null);
+    }
+
+    /**
+     * 设置终态 + 汇总结果，可同时写入失败原因。
+     *
+     * @param errorMsg 失败原因（成功时传 null）
+     */
+    @Override
+    public void completeBatch(String batchId, int successCount, int failCount, String resultSummaryJson,
+                              String errorMsg) {
         int status;
         if (successCount == 0 && failCount > 0) {
             status = STATUS_FAILED;
@@ -66,8 +88,51 @@ public class BatchTaskServiceImpl implements BatchTaskService {
                .set(BatchTask::getSuccessCount, successCount)
                .set(BatchTask::getFailCount, failCount)
                .set(BatchTask::getResultSummary, resultSummaryJson)
+               .set(BatchTask::getErrorMsg, errorMsg)
                .set(BatchTask::getFinishedAt, LocalDateTime.now());
         batchTaskMapper.update(null, wrapper);
+    }
+
+    @Override
+    public void failRemaining(String batchId, int fileCount) {
+        failRemaining(batchId, fileCount, null);
+    }
+
+    @Override
+    public void failRemaining(String batchId, int fileCount, String errorMsg) {
+        BatchTask current = getByBatchId(batchId);
+        if (current == null) {
+            // 任务都不在了，没什么可保的；仍要把状态刷成失败，避免前端永远等不到终态
+            log.warn("[B2] failRemaining 任务不存在 batchId={}", batchId);
+            completeBatch(batchId, 0, Math.max(1, fileCount), "[]", errorMsg);
+            return;
+        }
+        int success = current.getSuccessCount() == null ? 0 : current.getSuccessCount();
+        int fail = current.getFailCount() == null ? 0 : current.getFailCount();
+        // 只把「还没处理完」的文件补成失败，已成功的保留
+        int remaining = Math.max(0, fileCount - success - fail);
+        // 原样保留已算好的 result_summary，不要用 "[]" 覆盖
+        String summary = current.getResultSummary();
+        if (summary == null || summary.isBlank()) {
+            summary = "[]";
+        }
+        log.warn("[B2] failRemaining 保留已有结果 batchId={} success={} fail={} 补失败={}",
+                batchId, success, fail, remaining);
+        completeBatch(batchId, success, fail + remaining, summary, errorMsg);
+    }
+
+    @Override
+    public List<BatchTask> listStaleTasks(java.util.Collection<Integer> statuses,
+                                          java.time.LocalDateTime before) {
+        if (statuses == null || statuses.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return batchTaskMapper.selectList(
+                new LambdaQueryWrapper<BatchTask>()
+                        .in(BatchTask::getStatus, statuses)
+                        .eq(BatchTask::getDr, 0)
+                        .lt(BatchTask::getUpdateTime, before)
+                        .orderByAsc(BatchTask::getUpdateTime));
     }
 
     /**

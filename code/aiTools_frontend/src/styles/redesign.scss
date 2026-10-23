@@ -1,32 +1,44 @@
 /**
  * 新设计稿共享样式（对应 design/mockup/css/redesign.css，1:1 复刻）
  * 换算：设计稿基于 375px 宽，uni-app 用 rpx（750rpx = 屏宽）→ 1px = 2rpx
+ *
+ * <p><b>取值约定</b>：能用 uni.scss 的设计 token 就用 token，不要写死数值 ——
+ * 本文件被 9 个页面 @import，改一处即可全局生效。
+ *
+ * <p>⚠️ 但有一类 token **故意没有用**：$bg-white / $bg-color / $text-secondary / $text-tertiary。
+ * 这几个在 {@code utils/theme.js} 里**运行时会被改写**（暗色主题下是另一组值，
+ * 例如 $text-tertiary 浅色是 #8E8B8B、暗色是 #6B6B6B），
+ * 换成 token 会让本页在浅色模式下也变色 —— 那是「让本页跟随主题」的独立需求，
+ * 不属于「消除硬编码」的范围，需要单独确认后再改。
+ *
+ * <p>（用到的 $gradient-* / $brand-* 不在 theme.js 的改写名单里，
+ * var() 恒取 fallback，渲染结果与写死完全一致。）
  */
 
 /* ---------- 工具渐变头像 ---------- */
 .tool-avatar {
   width: 88rpx;
   height: 88rpx;
-  border-radius: 24rpx;
+  border-radius: $radius-md;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.tool-avatar--text  { background: linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%); }
-.tool-avatar--doc   { background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%); }
-.tool-avatar--audio { background: linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); }
-.tool-avatar--image { background: linear-gradient(135deg, #C7D2FE 0%, #6366F1 100%); }
-.tool-avatar--ocr   { background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%); }
-.tool-avatar--code  { background: linear-gradient(135deg, #5EEAD4 0%, #14B8A6 100%); }
+.tool-avatar--text  { background: $gradient-text; }
+.tool-avatar--doc   { background: $gradient-ocr; }
+.tool-avatar--audio { background: $gradient-audio; }
+.tool-avatar--image { background: $gradient-image; }
+.tool-avatar--ocr   { background: $gradient-ocr; }
+.tool-avatar--code  { background: $gradient-code; }
 
-.ta-emoji { font-size: 40rpx; line-height: 1; }
+.ta-emoji { font-size: $spacing-5; line-height: 1; }
 
 /* ---------- 主色按钮 ---------- */
 .btn-solid {
   height: 96rpx;
-  border-radius: 9999rpx;
-  background: #3B82F6;
+  border-radius: $radius-pill;
+  background: $brand-primary;
   color: #fff;
   font-size: 32rpx;
   font-weight: 600;
@@ -35,7 +47,7 @@
   justify-content: center;
   width: 100%;
 }
-.btn-solid:active { background: #1D4ED8; }
+.btn-solid:active { background: $brand-primary-pressed; }
 .btn-solid--disabled { opacity: 0.5; }
 
 /* ---------- 空态 ---------- */
@@ -43,25 +55,25 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 64rpx 32rpx;
+  padding: $spacing-8 $spacing-4;
 }
 .redesign-empty__icon {
   width: 192rpx; height: 192rpx;
-  border-radius: 24rpx;
-  background: #EFF6FF;
+  border-radius: $radius-md;
+  background: $brand-primary-light;
   display: flex; align-items: center; justify-content: center;
-  margin-bottom: 32rpx;
+  margin-bottom: $spacing-4;
 }
 .redesign-empty__emoji { font-size: 88rpx; }
 .redesign-empty__text {
-  font-size: 28rpx; color: #9CA3AF; margin-bottom: 32rpx;
+  font-size: 28rpx; color: #9CA3AF; margin-bottom: $spacing-4;
 }
 
 /* ---------- 通用卡片 ---------- */
 .redesign-card {
   background: #fff;
-  border-radius: 24rpx;
-  padding: 32rpx;
+  border-radius: $radius-md;
+  padding: $spacing-4;
   box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
 }
 
@@ -70,8 +82,8 @@
   display: inline-flex;
   align-items: center;
   height: 44rpx;
-  padding: 0 16rpx;
-  border-radius: 8rpx;
+  padding: 0 $spacing-2;
+  border-radius: 8rpx;   // 8rpx 无对应 radius token（$radius-sm=16rpx），保持字面量
   background: #F9FAFB;
   color: #4B5563;
   font-size: 24rpx;

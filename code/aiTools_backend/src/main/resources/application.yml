@@ -1,5 +1,10 @@
 server:
   port: 8080
+  tomcat:
+    # 被拒绝的上传请求，Tomcat 仍需把已收到的请求体读完，
+    # 否则连接会被直接重置（客户端看到 connection reset 而不是明确的 400）。
+    # 默认 maxSwallowSize 只有 2MB，200MB 的请求被拒时必然重置连接。
+    max-swallow-size: 200MB
 
 spring:
   profiles:
@@ -8,8 +13,15 @@ spring:
     name: aiTools_backend
   servlet:
     multipart:
+      # 单文件上限 20MB（与 Constants.MAX_FILE_SIZE 保持一致）
       max-file-size: 20MB
-      max-request-size: 20MB
+      # 整个上传请求的上限 200MB（批量 10 个文件 × 20MB）
+      # ⚠️ 必须与 Constants.BATCH_MAX_TOTAL_SIZE 和前端 tools.js 的 fileRule.maxTotalSize 一致，
+      #    三处任一小于实际值，用户就会遇到「前端放行、后端拒收」。
+      # ⚠️ 内存安全靠的是「文件流式落盘 + 逐个文件读进内存处理」，
+      #    不是靠这个上限 —— 并发请求数才是堆占用的决定因素。
+      #    上传峰值堆 = 并发批量数 × 单文件大小（20MB），与总大小上限无关。
+      max-request-size: 200MB
 
 # MyBatis-Plus
 mybatis-plus:
@@ -35,3 +47,27 @@ jwt:
 # 文件存储
 file:
   upload-dir: uploads
+
+# 批量任务僵尸恢复（BatchTaskRecoveryJob）
+# 进程崩溃 / OOM 后，批量任务会永远停在 PENDING / RUNNING —— 数据库里没有「已死」状态，
+# 只有「没人再碰它了」。本组配置定义「多久没人碰 = 判定为僵死」。
+batch:
+  # 同时处理的重任务数上限（= 批量线程池的 maxPoolSize）。
+  # 按 2GB 堆算出来的：单任务峰值 83.7MB × 8 = 670MB（占堆 32.7%）。
+  # 换堆大小后重算：并发 = (堆 - 预留800MB) / 单任务峰值 / 2
+  # 详见 config/ExecutorConfig.batchMaxConcurrentTasks 的注释。
+  max-concurrent-tasks: 8
+  # 批量任务队列深度。排队中的任务各自占着已落盘的上传文件（最坏 200MB/个），
+  # 20 → 最坏约 4GB 临时磁盘占用。部署机磁盘更大 / IO 更快时可调大。
+  task-queue-capacity: 20
+  recovery:
+    # RUNNING 超时阈值（分钟）：任务确实在跑，阈值要大于单批最长处理时间
+    running-timeout-minutes: 30
+    # PENDING 超时阈值（分钟）：还在线程池排队，阈值要比 RUNNING 宽松
+    pending-timeout-minutes: 60
+    # 扫描间隔（毫秒）：5 分钟
+    scan-interval-ms: 300000
+    # 启动后首次扫描的延迟（毫秒）：1 分钟（避开启动高峰）
+    initial-delay-ms: 60000
+    # 批量临时文件的保留时长（分钟）：120（兜底清理「进程被 kill」留下的残留）
+    temp-file-retention-minutes: 120

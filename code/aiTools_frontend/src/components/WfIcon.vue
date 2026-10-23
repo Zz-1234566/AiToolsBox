@@ -4,8 +4,8 @@
     :class="{ 'wf-icon--fill': isFill }"
     viewBox="0 0 24 24"
     :style="cssSize"
-    :width="size"
-    :height="size"
+    :width="sizePx"
+    :height="sizePx"
     :fill="isFill ? 'currentColor' : 'none'"
     :stroke="isFill ? 'none' : 'currentColor'"
     :stroke-width="strokeWidth"
@@ -18,7 +18,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { STROKE_ICONS } from '@/utils/workflowView'
+import { STROKE_ICONS, ICON_SIZE_TOKENS } from '@/utils/workflowView'
 
 /**
  * 线性/实心图标统一出口（设计稿 ICON 同款 stroke 风格）。
@@ -27,8 +27,11 @@ import { STROKE_ICONS } from '@/utils/workflowView'
 const props = defineProps({
   /** STROKE_ICONS 里的图标名 */
   name: { type: String, required: true },
-  /** 边长，单位 px。推荐档位见 ICON_SIZE_TOKENS；保持向后兼容，可继续传任意数字 */
-  size: { type: [Number, String], default: 20 },
+  /**
+   * 边长，单位 px。
+   * 传档位名（"xs" / "sm" / "md"）走 ICON_SIZE_TOKENS；也可继续传任意数字（向后兼容）。
+   */
+  size: { type: [Number, String], default: ICON_SIZE_TOKENS.sm },
   strokeWidth: { type: [Number, String], default: 2 }
 })
 
@@ -37,6 +40,19 @@ const props = defineProps({
  * 仍可传任意数字，向后兼容，不做破坏性改动。
  */
 const def = computed(() => STROKE_ICONS[props.name] || STROKE_ICONS.summary)
+
+/**
+ * 实际边长（px）：档位名解析成数值，其余（数字 / 数字字符串）原样使用。
+ * 解析不到时回退到 sm 档，避免出现 0×0 的空图标。
+ */
+const sizePx = computed(() => {
+  const raw = props.size
+  if (typeof raw === 'string' && raw in ICON_SIZE_TOKENS) {
+    return ICON_SIZE_TOKENS[raw]
+  }
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : ICON_SIZE_TOKENS.sm
+})
 
 /**
  * 实心图标判定。
@@ -58,7 +74,7 @@ const paths = computed(() => {
 })
 
 /** 尺寸兜底：CSS 变量给 width/height 兜底，防止子组件根元素在 scoped 下丢失尺寸退化成 0×0 */
-const cssSize = computed(() => ({ '--wf-size': `${props.size}px` }))
+const cssSize = computed(() => ({ '--wf-size': `${sizePx.value}px` }))
 </script>
 
 <style scoped>

@@ -99,6 +99,11 @@ public class NodeExecutor {
         AiTool tool = findByCode(toolCode);
         String inputType = firstInputType(tool.getInputType());
 
+        // 【待办】工作流的**文件类**节点产物尚未接入产物表：
+        //   节点输出若是文件（如抠图结果），这里只拿到文本，产物没有落 sys_tool_output，
+        //   导致 listByRunId 恒空、运行详情里的 outputs 恒空。
+        //   接入方式：在下面的循环里，对文件型输出调 ToolOutputService.saveFileOutput(runId, nodeId, ...)。
+        //   注意：批量任务来源的产物链路是通的（saveBatchFileOutput），不要混淆。
         List<String> outputs = new ArrayList<>(inputs.size());
         for (int i = 0; i < inputs.size(); i++) {
             String input = inputs.get(i);
@@ -276,7 +281,7 @@ public class NodeExecutor {
                     return selected.getPromptContent();
                 }
             } catch (Exception e) {
-                log.warn("[workflow-node] 提示词不可用 promptId={} use={}: {}", promptId, promptUse, e.getMessage());
+                log.warn("[workflow-node] 提示词不可用 promptId={} use={}: {}", promptId, promptUse, e.getMessage(), e);
             }
             return null;
         }
@@ -301,7 +306,7 @@ public class NodeExecutor {
                 String meta = pathOrDataUrl.substring(5, comma);
                 byte[] bytes = java.util.Base64.getDecoder().decode(pathOrDataUrl.substring(comma + 1));
                 String name = meta.contains("/") ? meta.substring(meta.indexOf('/') + 1).split(";")[0] : fallbackName;
-                return payloadToMultipart(new BatchFilePayload(bytes, name));
+                return payloadToMultipart(BatchFilePayload.ofBytes(bytes, name));
             }
             // 2) HTTP(S) URL（如 COS 签名地址）→ 下载字节
             //    前端上传文件后拿到的是 COS 的 https 地址，不能当本地路径处理
@@ -311,9 +316,10 @@ public class NodeExecutor {
                     throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点输入文件为空，请重新上传");
                 }
                 if (bytes.length > Constants.BATCH_SINGLE_FILE_MAX_SIZE) {
-                    throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "节点输入文件超过单文件大小上限（20MB）");
+                    throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                            Constants.fileSizeLimitMessage("节点输入文件", Constants.BATCH_SINGLE_FILE_MAX_SIZE));
                 }
-                return payloadToMultipart(new BatchFilePayload(bytes, fileNameOf(pathOrDataUrl)));
+                return payloadToMultipart(BatchFilePayload.ofBytes(bytes, fileNameOf(pathOrDataUrl)));
             }
             // 3) 本地文件路径
             java.io.File f = new java.io.File(pathOrDataUrl);
@@ -323,9 +329,10 @@ public class NodeExecutor {
                 throw new BusinessException(ResultCode.WORKFLOW_NODE_FAILED.getCode(), "节点输入文件不存在，请重新上传");
             }
             if (f.length() > Constants.BATCH_SINGLE_FILE_MAX_SIZE) {
-                throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "节点输入文件超过单文件大小上限（20MB）");
+                throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                            Constants.fileSizeLimitMessage("节点输入文件", Constants.BATCH_SINGLE_FILE_MAX_SIZE));
             }
-            return payloadToMultipart(new BatchFilePayload(java.nio.file.Files.readAllBytes(f.toPath()), f.getName()));
+            return payloadToMultipart(BatchFilePayload.ofBytes(java.nio.file.Files.readAllBytes(f.toPath()), f.getName()));
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

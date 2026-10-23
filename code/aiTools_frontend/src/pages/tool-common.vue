@@ -267,6 +267,12 @@
       <BatchResultCards :items="batchCardsForView" :total="batchTotal" />
     </block>
 
+    <!-- 整批失败且没有任何单文件结果时（如服务重启导致任务中断），
+         没有卡片可渲染，必须把任务级失败原因显式告知用户，否则界面一片空白 -->
+    <view v-if="batchErrorMsg" class="batch-error">
+      <text class="batch-error__text">{{ batchErrorMsg }}</text>
+    </view>
+
     <view class="safe-area-bottom"></view>
 
   </scroll-view>
@@ -303,6 +309,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { BASE_URL } from '@/config/env'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
+import { pickFiles } from '@/utils/filePicker'
 import { requireLogin } from '@/utils/auth'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
@@ -341,6 +348,7 @@ const resultContent = ref('')
 const batchCards = ref([])        // 批量结果卡片数据：[{ index, fileName, status, costMs, errorMsg, output }]
 const batchTotal = ref(0)          // 批量任务总文件数（用于卡片显示 i/N）
 const batchProgress = ref(0)       // 批量任务已处理数（用于 loading 提示）
+const batchErrorMsg = ref('')      // 批量任务级失败原因（整批失败且无单文件结果时展示）
 const promptFormatText = ref('')    // 用户自定义格式提示词
 const promptGenerateText = ref('')  // 用户自定义生成内容提示词
 const formatPromptDisplay = ref('')  // 系统统一管理的格式提示词（只读）
@@ -424,10 +432,14 @@ const askText = ref('')
 const applySuggested = (text) => { askText.value = text }
 const uploadedFiles = ref([])   // 批量工具已选文件（mockup 阶段的示例数据已移除）
 /** 批量工具选文件（文档重点提取 / 智能识别 / AI 文件解读）：H5 原生多选；图片走 chooseImage，文档/音频走 chooseMessageFile（App 端不可用，见下方能力探测） */
-const onFilePickerClick = () => {
+const onFilePickerClick = async () => {
   const rule = toolInfo.value.fileRule || {}
   const maxCount = rule.maxCount || 10
   const accept = rule.accept || '.pdf,.docx,.txt'
+  /** 单文件大小上限（字节）；0 = 不限制。需与后端 multipart max-file-size 一致 */
+  const maxFileSize = rule.maxFileSize || 0
+  /** 本次上传总大小上限（字节）；0 = 不限制。需与后端 max-request-size 一致 */
+  const maxTotalSize = rule.maxTotalSize || 0
   const isImage = toolInfo.value.fileType === 'image'
   const isAudio = toolInfo.value.fileType === 'audio'
 
@@ -438,44 +450,45 @@ const onFilePickerClick = () => {
       uni.showToast({ title: `最多 ${maxCount} 个文件，已截断`, icon: 'none' })
       merged.splice(maxCount)
     }
+    // 单文件大小校验（与后端 multipart 的 max-file-size 一致）
+    if (maxFileSize > 0) {
+      const tooBig = merged.find(f => (f.size || 0) > maxFileSize)
+      if (tooBig) {
+        uni.showToast({
+          title: `${tooBig.fileName || '文件'} 超过 ${Math.round(maxFileSize / 1024 / 1024)}MB`,
+          icon: 'none', duration: 2500
+        })
+        return
+      }
+    }
+    // 本次上传总大小校验（与后端 multipart 的 max-request-size、
+    // 后端 Constants.BATCH_MAX_TOTAL_SIZE 一致 —— 三处必须同值）
+    if (maxTotalSize > 0) {
+      const total = merged.reduce((sum, f) => sum + (f.size || 0), 0)
+      if (total > maxTotalSize) {
+        uni.showToast({
+          title: `本次上传总大小不能超过 ${Math.round(maxTotalSize / 1024 / 1024)}MB`,
+          icon: 'none', duration: 2500
+        })
+        return
+      }
+    }
     uploadedFiles.value = merged
   }
 
-  // #ifdef H5
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.multiple = maxCount > 1
-  input.accept = accept
-  input.onchange = () => {
-    const picked = Array.from(input.files || []).map(f => ({
-      fileName: f.name, file: f, size: f.size || 0
-    }))
-    addPicked(picked)
-  }
-  input.click()
-  // #endif
-  // #ifndef H5
-  if (isImage && typeof uni.chooseImage === 'function') {
-    uni.chooseImage({
-      count: maxCount,
-      success: (res) => {
-        const paths = res.tempFilePaths || []
-        const files = res.tempFiles || []
-        addPicked(paths.map((p, i) => ({
-          fileName: (files[i] && files[i].name) || p.split('/').pop() || ('图片' + (i + 1)),
-          path: p, size: (files[i] && files[i].size) || 0
-        })))
-      },
-      fail: () => {
-        // 用户取消或权限被拒时给出反馈，避免「点了没反应」
-        uni.showToast({ title: '未选择图片', icon: 'none' })
-      }
-    })
+  // 跨端选择统一走 utils/filePicker（平台分支只在那一处，见该文件的平台能力表）
+  const res = await pickFiles({
+    count: maxCount,
+    accept,
+    fileType: isImage ? 'image' : isAudio ? 'audio' : 'file',
+    fileLabel: isAudio ? '录音文件' : '文件'
+  })
+  if (res.ok) {
+    addPicked(res.files)
     return
   }
-  // 文档/音频：chooseMessageFile
-  // App 端（Android/iOS）无该 API，能力探测同 UploadArea.vue，不要静默抛错
-  if (typeof uni.chooseMessageFile !== 'function') {
+  if (res.reason === 'unsupported') {
+    // App 端（Android/iOS）没有文件选择器 —— 明确告知，不静默失败
     uni.showToast({
       title: isAudio ? '当前平台暂不支持选择录音文件'
                      : '当前平台暂不支持选择文档，可改用 H5 端或微信小程序',
@@ -483,21 +496,11 @@ const onFilePickerClick = () => {
     })
     return
   }
-  uni.chooseMessageFile({
-    count: maxCount,
-    type: isAudio ? 'audio' : 'file',
-    extension: accept.split(',').map(s => s.trim()).filter(Boolean),
-    success: (res) => {
-      const files = res.tempFiles || []
-      addPicked(files.map((f, i) => ({
-        fileName: f.name || f.path.split('/').pop() || ('文件' + (i + 1)),
-        path: f.path || f,
-        size: f.size || 0
-      })))
-    },
-    fail: () => { /* 用户主动取消，不提示 */ }
-  })
-  // #endif
+  if (res.reason === 'empty') {
+    uni.showToast({ title: res.message || '没有符合要求的文件', icon: 'none', duration: 2500 })
+    return
+  }
+  // cancelled / error：用户主动取消，不提示
 }
 const removeFile = (idx) => { uploadedFiles.value.splice(idx, 1) }
 
@@ -684,7 +687,7 @@ const pureConvertTip = (isAudio) => isAudio
  *   详见 https://uniapp.dcloud.net.cn/api/media/file.html（App 列均为 x）。
  *   故 App 端文档类改走 ActionSheet：图片走 chooseImage，文档给出明确提示而非静默失败。
  */
-const onPureConvertPick = () => {
+const onPureConvertPick = async () => {
   const isAudio = toolId.value === 'audio-transcribe'
   const maxCount = (toolInfo.value.fileRule && toolInfo.value.fileRule.maxCount) || 1
   const allowedExts = isAudio ? PURE_CONVERT_AUDIO_EXTS : PURE_CONVERT_DOC_EXTS
@@ -707,96 +710,56 @@ const onPureConvertPick = () => {
     }
   }
 
-  // #ifdef H5
-  const input = document.createElement('input')
-  input.type = 'file'
-  // 方案 B：保留现有 mockup 外观，仅把选择逻辑改为支持多选（不引入新组件/样式）
-  input.multiple = maxCount > 1
-  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr'
-                       : '.pdf,.docx,.txt,.png,.jpg,.jpeg,.bmp,.gif,.webp'
-  input.onchange = () => {
-    const picked = Array.from(input.files || [])
-    if (!picked.length) return
-    // 兜底：accept 只是浏览器提示，用户仍可手动选 All files；按扩展名过滤，不符合的直接丢弃
-    const valid = picked.filter(f => {
-      const ext = getPureConvertExt(f.name)
-      return ext && allowedExts.includes(ext)
-    })
-    if (!valid.length) {
-      uni.showToast({ title: pureConvertTip(isAudio), icon: 'none', duration: 2500 })
-      return
-    }
-    applyPicked(valid.map(f => ({ name: f.name, file: f, size: f.size || 0 })))
-  }
-  input.click()
-  // #endif
-  // #ifndef H5
-  // App 端（Android/iOS）不存在 chooseFile / chooseMessageFile，只有 uni.chooseImage 可用。
-  // 能力探测同 UploadArea.vue：typeof 探测不到就不要再调，否则直接抛错。
-  if (typeof uni.chooseMessageFile !== 'function') {
-    if (isAudio) {
-      // 录音只能靠文件选择器，App 端无解 → 明确告知，不再静默失败
-      uni.showToast({ title: '当前平台暂不支持选择录音文件', icon: 'none', duration: 2500 })
-      return
-    }
-    // 文档提取的图片走 OCR，只需 chooseImage（全平台支持）→ 让用户选来源
-    uni.showActionSheet({
-      itemList: ['选择图片（自动走 OCR）', '选择文档文件'],
-      success: ({ tapIndex }) => {
-        if (tapIndex !== 0) {
-          uni.showToast({ title: '当前平台暂不支持选择文档，可改用图片', icon: 'none', duration: 2500 })
-          return
-        }
-        uni.chooseImage({
-          count: maxCount,
-          sizeType: ['compressed'],
-          sourceType: ['album', 'camera'],
-          success: (res) => {
-            const files = res.tempFiles || []
-            const picked = (res.tempFilePaths || []).map((p, i) => {
-              const t = files[i]
-              // uni.chooseImage 的 name 仅 H5 支持，App/小程序统一从 path 末段兜底取名
-              const name = (t && t.name) || p.split('/').pop() || ''
-              const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : ''
-              // 取不到扩展名时放行：后端 Constants.ALLOWED_DOC_EXTENSIONS 是权威校验，
-              // 且会返回明确错误文案；这里若拦死反而把 iOS 正常图片挡在门外
-              if (ext && !PURE_CONVERT_DOC_EXTS.includes(ext)) return null
-              return { name: name || '图片', file: null, path: p, size: (t && t.size) || 0 }
-            }).filter(Boolean)
-            if (!picked.length) {
-              uni.showToast({ title: pureConvertTip(false), icon: 'none', duration: 2500 })
-              return
-            }
-            applyPicked(picked)
-          },
-          fail: () => { /* 用户主动取消，不提示 */ }
-        })
-      }
-    })
+  // 跨端选择统一走 utils/filePicker
+  const res = await pickFiles({
+    count: maxCount,
+    accept: isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr'
+                     : '.pdf,.docx,.txt,.png,.jpg,.jpeg,.bmp,.gif,.webp',
+    fileType: isAudio ? 'audio' : 'file',
+    fileLabel: isAudio ? '录音文件' : '文件'
+  })
+  if (res.ok) {
+    applyPicked(res.files.map(f => ({ name: f.fileName, file: f.file, path: f.path, size: f.size })))
     return
   }
-  uni.chooseMessageFile({
-    count: maxCount > 1 ? maxCount : 1,
-    type: isAudio ? 'audio' : 'file',
-    // extension 让文件选择器**先**过滤（H5 端会映射为 input.accept），与 allowedExts 保持一致
-    extension: allowedExts,
-    success: (res) => {
-      const allPicked = (res.tempFiles || []).map(f => ({ name: f.name || f.path, file: null, path: f.path, size: f.size || 0 }))
-      if (!allPicked.length) return
-      // 兜底：chooseMessageFile 不按 accept 过滤，按 name 扩展名再次校验
-      const picked = allPicked.filter(f => {
-        const ext = getPureConvertExt(f.name)
-        return ext && allowedExts.includes(ext)
-      })
-      if (!picked.length) {
-        uni.showToast({ title: pureConvertTip(isAudio), icon: 'none', duration: 2500 })
+  if (res.reason === 'empty') {
+    uni.showToast({ title: res.message || pureConvertTip(isAudio), icon: 'none', duration: 2500 })
+    return
+  }
+  if (res.reason !== 'unsupported') {
+    // cancelled / error：用户主动取消，不提示
+    return
+  }
+
+  // ===== App 端（Android/iOS）：没有文件选择器 =====
+  if (isAudio) {
+    // 录音只能靠文件选择器，App 端无解 → 明确告知，不再静默失败
+    uni.showToast({ title: '当前平台暂不支持选择录音文件', icon: 'none', duration: 2500 })
+    return
+  }
+  // 文档提取的图片走 OCR，只需 chooseImage（全平台支持）→ 让用户选来源
+  uni.showActionSheet({
+    itemList: ['选择图片（自动走 OCR）', '选择文档文件'],
+    success: ({ tapIndex }) => {
+      if (tapIndex !== 0) {
+        uni.showToast({ title: '当前平台暂不支持选择文档，可改用图片', icon: 'none', duration: 2500 })
         return
       }
-      applyPicked(picked)
-    },
-    fail: () => { /* 用户主动取消，不提示 */ }
+      pickFiles({
+        count: maxCount,
+        fileType: 'image',
+        fileLabel: '图片'
+      }).then(imgRes => {
+        if (!imgRes.ok) {
+          if (imgRes.reason === 'empty') {
+            uni.showToast({ title: pureConvertTip(false), icon: 'none', duration: 2500 })
+          }
+          return
+        }
+        applyPicked(imgRes.files.map(f => ({ name: f.fileName, file: f.file, path: f.path, size: f.size })))
+      })
+    }
   })
-  // #endif
 }
 
 /** 从多选列表中移除一个 */
@@ -944,6 +907,11 @@ if (typeof window !== 'undefined') {
  */
 onUnload(() => {
   abortStream()
+  // 中止批量轮询：页面已销毁，继续 setTimeout 拉取只会空转
+  if (stopBatchPoll) {
+    stopBatchPoll()
+    stopBatchPoll = null
+  }
   if (currentTypewriter) {
     try { currentTypewriter.dispose() } catch (e) { /* ignore */ }
     currentTypewriter = null
@@ -1466,21 +1434,36 @@ const createTypewriter = (options) => {
 }
 
 /**
+ * 当前批量轮询的中止句柄（模块级）。
+ *
+ * 页面卸载（onUnload）与「重新生成」都需要能叫停正在跑的轮询，
+ * 否则页面已销毁轮询还在 setTimeout 里空转。
+ */
+let stopBatchPoll = null
+
+/**
  * 轮询批量任务结果：前端驱动（自适应间隔）
  *   - 有新 items 时：立即追加渲染 + 立即再拉
  *   - 无新 items 时：sleep 1.5s 再拉
  *   - 终态（status >= 2）时：停
+ *
+ * ⚠️ **轮询次数耗尽不能静默退出**：达到上限时任务可能仍在后端跑着，
+ *    静默退出会让 UI 永远停在「进行中」，用户既看不到结果也看不到任何提示。
+ *    耗尽时明确提示「任务仍在后台执行，请到历史记录查看」。
+ *
  * @param {String} batchId - 批量任务 ID
  * @param {String} toolCode - 当前工具编码（预留：以后按 toolCode 决定卡片渲染方式）
+ * @returns {Promise<{aborted: Boolean, finished: Boolean}>} aborted=被中止；finished=跑到终态
  */
 const pollBatchCompleted = async (batchId, toolCode) => {
   let since = 0
   let aborted = false
+  let finished = false
   // 用户切走 / 重新生成时停止轮询
   const stop = () => { aborted = true }
-  // 用 uni.$once 监听页面卸载（uniapp 无 onUnload composable，简单粗暴）
-  const origUnload = uni.$once
-  // 简易实现：跑 1000 次上限（每个文件 sleep 1.5s + AI 处理 5-30s 足够）
+  // 登记中止句柄，供 onUnload / 重新生成调用
+  stopBatchPoll = stop
+  // 轮询次数上限：每个文件 sleep 1.5s + AI 处理 5-30s，200 次足够绝大多数批次
   const MAX_LOOPS = 200
   for (let i = 0; i < MAX_LOOPS && !aborted; i++) {
     let res
@@ -1505,6 +1488,12 @@ const pollBatchCompleted = async (batchId, toolCode) => {
     // 终态：status 2=COMPLETED 3=PARTIAL 4=FAILED
     const status = res.status
     if (status === 2 || status === 3 || status === 4) {
+      finished = true
+      // 任务级失败原因（如「服务重启导致任务中断」）：只在没有任何单文件结果时展示，
+      // 有卡片时卡片里已有每个文件的失败原因，重复展示会啰嗦
+      if (status === 4 && !batchCards.value.length) {
+        batchErrorMsg.value = res.errorMsg || '批量任务失败，请重试'
+      }
       break
     }
     // 没新结果 + 还在进行中：等一下再拉
@@ -1512,7 +1501,19 @@ const pollBatchCompleted = async (batchId, toolCode) => {
       await new Promise(r => setTimeout(r, 1500))
     }
   }
-  return stop
+  // 只有「自己主动停的」才清空句柄；被新任务覆盖时句柄已指向新任务
+  if (stopBatchPoll === stop) {
+    stopBatchPoll = null
+  }
+  // 次数耗尽且没跑到终态：任务多半还在后端跑，明确告诉用户去哪看
+  if (!aborted && !finished) {
+    uni.showToast({
+      title: '任务仍在后台执行，请到历史记录查看结果',
+      icon: 'none',
+      duration: 3000
+    })
+  }
+  return { aborted, finished }
 }
 
 const handleGenerate = async () => {
@@ -1525,8 +1526,14 @@ const handleGenerate = async () => {
 
   loading.value = true
   resultContent.value = ''
+  // 重新生成：先叫停上一轮批量轮询，否则两轮会同时往 batchCards 里追加
+  if (stopBatchPoll) {
+    stopBatchPoll()
+    stopBatchPoll = null
+  }
   // 批量场景：清空卡片数组（保证重新生成时刷新）
   batchCards.value = []
+  batchErrorMsg.value = ''
   batchTotal.value = 0
   batchProgress.value = 0
 
@@ -3227,6 +3234,20 @@ svg {
   border: 2rpx solid #FCA5A5;
 }
 .btn--block { width: 100%; }
+
+/* 批量任务级失败原因（整批失败且无单文件结果时展示） */
+.batch-error {
+  margin: 24rpx 32rpx;
+  padding: 24rpx 28rpx;
+  border-radius: 16rpx;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1rpx solid rgba(239, 68, 68, 0.25);
+}
+.batch-error__text {
+  font-size: 26rpx;
+  color: #B91C1C;
+  line-height: 1.6;
+}
 
 .safe-area-bottom { height: 60rpx; }
 </style>

@@ -68,7 +68,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     // token 无效：attribute 不设，依赖调用方 authUtil 抛 401。
                     // 用 warn 而非 debug：debug 在生产（INFO 级）不可见，
                     // 会导致伪造/过期 token 尝试完全无法审计
-                    log.warn("JWT 解析失败（不设置登录态）: {}", e.getMessage());
+                    // 带异常对象：伪造 / 过期 token 的解析失败要能追溯到具体原因
+                    log.warn("JWT 解析失败（不设置登录态）: {}", e.getMessage(), e);
                 }
             }
         }

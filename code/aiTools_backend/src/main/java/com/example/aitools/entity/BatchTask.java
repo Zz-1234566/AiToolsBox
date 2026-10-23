@@ -37,6 +37,12 @@ public class BatchTask {
     /** 0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED */
     private Integer status;
 
+    /**
+     * 失败原因（如僵尸任务被自动回收、服务异常中断）。
+     * <p>成功时为 null。用于让用户知道「这个批量任务为什么失败了」。
+     */
+    private String errorMsg;
+
     /** 汇总结果（JSON 数组字符串：[{"fileName":"...","status":"OK|FAIL","output":"..."}]） */
     private String resultSummary;
 

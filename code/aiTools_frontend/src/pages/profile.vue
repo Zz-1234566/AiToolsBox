@@ -46,6 +46,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { pickFiles } from '@/utils/filePicker'
 import { onShow } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
 import PageHeader from '@/components/PageHeader.vue'
@@ -72,37 +73,44 @@ onShow(() => {
 })
 
 // 选择并上传头像（复用通用文件上传接口）
-const chooseAvatar = () => {
+const chooseAvatar = async () => {
   if (uploading.value) return
-  uni.chooseImage({
+  // 跨端选择统一走 utils/filePicker（平台分支只在那一处）
+  const picked = await pickFiles({
     count: 1,
-    sizeType: ['compressed'],
+    fileType: 'image',
     sourceType: ['album', 'camera'],
-    success: async (res) => {
-      const filePath = res.tempFilePaths[0]
-      uploading.value = true
-      uni.showLoading({ title: '上传中...' })
-      try {
-        const uploadRes = await uploadFileApi(filePath)
-        if (uploadRes.code === ERROR_CODE.SUCCESS && uploadRes.data) {
-          avatar.value = uploadRes.data.fileUrl
-          uni.showToast({ title: '头像上传成功', icon: 'success' })
-        } else {
-          uni.showToast({ title: uploadRes.message || '头像上传失败', icon: 'none' })
-        }
-      } catch (e) {
-        // request.js 已经统一弹出错误提示
-      } finally {
-        uploading.value = false
-        uni.hideLoading()
-      }
-    },
-    fail: () => {
-      // 用户取消或权限被拒时给出反馈，避免「点了没反应」
-      uploading.value = false
-      uni.showToast({ title: '未选择图片', icon: 'none' })
-    }
+    fileLabel: '头像'
   })
+  if (!picked.ok) {
+    if (picked.reason === 'unsupported' || picked.reason === 'empty') {
+      uni.showToast({ title: picked.message || '选择图片失败', icon: 'none' })
+    }
+    // cancelled：用户主动取消，不提示
+    return
+  }
+  await uploadAvatar(picked.files[0])
+}
+
+/** 上传选中的头像 */
+const uploadAvatar = async (file) => {
+  const filePath = file.path || file.file
+  uploading.value = true
+  uni.showLoading({ title: '上传中...' })
+  try {
+    const uploadRes = await uploadFileApi(filePath)
+    if (uploadRes.code === ERROR_CODE.SUCCESS && uploadRes.data) {
+      avatar.value = uploadRes.data.fileUrl
+      uni.showToast({ title: '头像上传成功', icon: 'success' })
+    } else {
+      uni.showToast({ title: uploadRes.message || '头像上传失败', icon: 'none' })
+    }
+  } catch (e) {
+    // request.js 已经统一弹出错误提示
+  } finally {
+    uploading.value = false
+    uni.hideLoading()
+  }
 }
 
 const handleSave = async () => {

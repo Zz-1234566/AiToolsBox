@@ -66,8 +66,11 @@ export const STROKE_ICONS = {
  *   xs=13  辅助图标（徽标、状态点、错误框里的说明性图标、行内小按钮）
  *   sm=20  正文行内图标（卡片、列表、产物缩略图里的图标）
  *   md=24  顶栏 / 主操作图标（返回等主交互，顶栏热区 64rpx≈32px）
+ *
+ * 导出供 WfIcon 组件与各页面复用：size 可以直接传档位名（"sm"），
+ * 也可以传任意数字（向后兼容）。
  */
-const ICON_SIZE_TOKENS = {
+export const ICON_SIZE_TOKENS = {
   xs: 13,
   sm: 20,
   md: 24

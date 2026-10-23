@@ -91,7 +91,10 @@ const batchCreate = (url, files, fields = {}) => {
         try {
           const errData = JSON.parse(xhr.responseText)
           if (errData && (errData.message || errData.msg)) msg = errData.message || errData.msg
-        } catch (ignore) {}
+        } catch (ignore) {
+          // 有意的兜底：响应体不是合法 JSON（如网关返回的 HTML 错误页）时，
+          // 保留上面按 HTTP 状态码拼的文案。**不是静默失败** —— 错误一定会 reject 给调用方。
+        }
         reject(new Error(msg))
       }
     }

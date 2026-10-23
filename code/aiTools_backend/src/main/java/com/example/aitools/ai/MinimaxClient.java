@@ -14,6 +14,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import com.example.aitools.common.MimeTypes;
 
 /**
  * MiniMax 客户端：多模态（图片/视频/文本）走 OpenAI 兼容 chat/completions；
@@ -159,7 +160,7 @@ public class MinimaxClient {
             // 文件字段
             buf.write(("--" + boundary + "\r\n"
                     + "Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n"
-                    + "Content-Type: " + (mimeType == null ? "application/octet-stream" : mimeType) + "\r\n\r\n")
+                    + "Content-Type: " + (mimeType == null ? MimeTypes.OCTET_STREAM : mimeType) + "\r\n\r\n")
                     .getBytes(StandardCharsets.UTF_8));
             buf.write(audioBytes);
             buf.write("\r\n".getBytes(StandardCharsets.UTF_8));
@@ -351,24 +352,24 @@ public class MinimaxClient {
      * 根据文件头字节猜测 MIME 类型
      */
     private String guessMimeType(byte[] bytes) {
-        if (bytes.length < 4) return "application/octet-stream";
+        if (bytes.length < 4) return MimeTypes.OCTET_STREAM;
         int b0 = bytes[0] & 0xFF;
         int b1 = bytes[1] & 0xFF;
         int b2 = bytes[2] & 0xFF;
         int b3 = bytes[3] & 0xFF;
         // PNG
-        if (b0 == 0x89 && b1 == 0x50 && b2 == 0x4E && b3 == 0x47) return "image/png";
+        if (b0 == 0x89 && b1 == 0x50 && b2 == 0x4E && b3 == 0x47) return MimeTypes.PNG;
         // JPEG
-        if (b0 == 0xFF && b1 == 0xD8 && b2 == 0xFF) return "image/jpeg";
+        if (b0 == 0xFF && b1 == 0xD8 && b2 == 0xFF) return MimeTypes.JPEG;
         // GIF
-        if (b0 == 0x47 && b1 == 0x49 && b2 == 0x46) return "image/gif";
+        if (b0 == 0x47 && b1 == 0x49 && b2 == 0x46) return MimeTypes.GIF;
         // WEBP
         if (b0 == 0x52 && b1 == 0x49 && b2 == 0x46 && b3 == 0x46) {
             // RIFF...WEBP
             if (bytes.length >= 12 && bytes[8] == 0x57 && bytes[9] == 0x45 && bytes[10] == 0x42 && bytes[11] == 0x50) {
-                return "image/webp";
+                return MimeTypes.WEBP;
             }
         }
-        return "image/jpeg"; // 默认按 JPEG 处理
+        return MimeTypes.JPEG; // 默认按 JPEG 处理
     }
 }

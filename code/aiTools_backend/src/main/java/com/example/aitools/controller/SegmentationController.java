@@ -6,17 +6,11 @@ import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.ExecutorConfig;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.dto.BatchUploadResponse;
-import com.example.aitools.dto.SegmentResult;
-import com.example.aitools.entity.ToolOutput;
 import com.example.aitools.exception.BusinessException;
-import com.example.aitools.mapper.AiToolMapper;
 import com.example.aitools.service.BatchTaskService;
-import com.example.aitools.service.FileStorageService;
-import com.example.aitools.service.HistoryService;
-import com.example.aitools.service.SegmentationService;
-import com.example.aitools.service.ToolOutputService;
+import com.example.aitools.service.BatchUploadService;
+import com.example.aitools.service.SegmentationBatchService;
 import com.example.aitools.utils.AuthUtil;
-import com.example.aitools.vo.ToolOutputVO;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +29,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import com.example.aitools.common.ToolCodes;
+import com.example.aitools.common.MimeTypes;
 
 /**
  * 人像分割（图片去背景）Controller。
@@ -58,27 +54,25 @@ public class SegmentationController {
     /**
      * 图片去/换背景图 tool_code（与人像分割共用实现，产品上只保留这一个图片工具）
      */
-    private static final String TOOL_CODE_BG_REMOVER = "image-bg-remover";
-
-    /** image-bg-remover 产物文件名：transparent/color 模式输出 PNG，image 模式输出 JPG。
-     *  真实后缀由 mimeType 决定（storage 层会按 mime 取后缀），此处仅作语义占位 */
-    private static final String OUTPUT_FILENAME_BG_REMOVER = "image-bg-remover.png";
 
     /** image-bg-remover 允许的 MIME 白名单（与 SegmentationService 一致）。
      *  前端 image-bg-remover.vue 的 ALLOWED_EXTS 必须与此表保持同步。 */
     private static final List<String> ALLOWED_IMAGE_TYPES =
-            Arrays.asList("image/jpeg", "image/png", "image/bmp", "image/gif");
+            Arrays.asList(MimeTypes.JPEG, MimeTypes.PNG, MimeTypes.BMP, MimeTypes.GIF);
 
-    /** image-bg-remover 允许的文件扩展名白名单（兜底：客户端未传 contentType 时使用）。 */
-    private static final Set<String> ALLOWED_IMAGE_EXTS =
-            new HashSet<>(Arrays.asList("jpg", "jpeg", "png", "bmp", "gif"));
+    /**
+     * image-bg-remover 允许的文件扩展名白名单（兜底：客户端未传 contentType 时使用）。
+     * <p>取自 {@link Constants#SEGMENTATION_IMAGE_EXTS} —— 前端 image-bg-remover.vue 的
+     * ALLOWED_EXTS 需与之保持同步。
+     */
+    private static final Set<String> ALLOWED_IMAGE_EXTS = Constants.SEGMENTATION_IMAGE_EXTS;
 
-    private final SegmentationService segmentationService;
-    private final ToolOutputService toolOutputService;
     private final BatchTaskService batchTaskService;
-    private final HistoryService historyService;
-    private final AiToolMapper aiToolMapper;
+    private final BatchUploadService batchUploadService;
     private final AuthUtil authUtil;
+
+    /** 批量编排（逐文件推理 / 落产物 / 记历史 / 汇总计数）—— 业务逻辑全在 Service */
+    private final SegmentationBatchService segmentationBatchService;
 
     /** 批量任务线程池（核心 4 / 最大 16 / 队列 50）—— 与 OCR 批处理、文件解读同池 */
     @Qualifier(ExecutorConfig.BATCH_EXECUTOR)
@@ -125,16 +119,23 @@ public class SegmentationController {
             if (!typeOk && !extOk) {
                 String ctx = (contentType != null ? contentType : "未知")
                         + (filename != null ? "（" + filename + "）" : "");
-                // 错误码 10001：与前端 image-bg-remover.vue 的 _showErrorToast 映射一致
-                // （文件格式不支持）。10001 已被 USER_NOT_FOUND 占用，按 task 要求
-                // 直接用字面量，不引入新的 ResultCode 枚举项。
-                throw new BusinessException(10001,
+                // 错误码用 ResultCode.IMAGE_UNSUPPORTED(30002) ——「图片格式不支持」，
+                // 语义唯一且与前端 errorCode.js 的 ERROR_MESSAGE 一致。
+                // ⚠️ 不要再用字面量 10001：那是 USER_NOT_FOUND（「用户不存在」），
+                //    前后端 errorCode.js / ResultCode 里含义冲突，兜底文案会显示成「用户不存在」。
+                throw new BusinessException(ResultCode.IMAGE_UNSUPPORTED.getCode(),
                         "不支持的图片格式：" + ctx + "，仅支持 JPG / PNG / BMP / GIF");
             }
         }
         if (files.size() > Constants.BATCH_MAX_FILE_COUNT) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
                     "单次最多上传 " + Constants.BATCH_MAX_FILE_COUNT + " 张图片");
+        }
+        // 批量总大小校验（与 multipart 的 max-request-size 一致，见 Constants.BATCH_MAX_TOTAL_SIZE）
+        long totalSize = files.stream().mapToLong(MultipartFile::getSize).sum();
+        if (totalSize > Constants.BATCH_MAX_TOTAL_SIZE) {
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                    Constants.fileSizeLimitMessage("批量文件总大小", Constants.BATCH_MAX_TOTAL_SIZE));
         }
         String modeNorm = (mode == null) ? "" : mode.trim().toLowerCase(java.util.Locale.ROOT);
         if (!java.util.Arrays.asList("transparent", "color", "image").contains(modeNorm)) {
@@ -150,11 +151,12 @@ public class SegmentationController {
                     "image 模式必须上传 background 背景图");
         }
         if (background != null && background.getSize() > Constants.MAX_FILE_SIZE) {
-            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "背景图不能超过20MB");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                    Constants.fileSizeLimitMessage("背景图", Constants.MAX_FILE_SIZE));
         }
 
         // 2) 同步建任务（HTTP 必须立即返回 batchId）
-        String batchId = batchTaskService.createTask(userId, TOOL_CODE_BG_REMOVER, files.size());
+        String batchId = batchTaskService.createTask(userId, ToolCodes.IMAGE_BG_REMOVER, files.size());
         log.info("[image-bg-remover] 创建批量任务 batchId={} userId={} fileCount={} mode={} hasBg={} bgColor={}",
                 batchId, userId, files.size(), modeNorm, background != null, backgroundColor);
 
@@ -169,16 +171,12 @@ public class SegmentationController {
                     throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取背景图失败，请重试");
                 }
             }
-            payloads = files.stream().map(f -> {
-                try {
-                    return BatchFilePayload.from(f);
-                } catch (IOException e) {
-                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取文件失败，请重试");
-                }
-            }).toList();
+            // 流式落盘，**不把整批字节读进堆**（批量总大小上限 200MB，
+            // 全量进内存的话并发几个请求就能打满堆，把整个后端拖垮）
+            payloads = batchUploadService.toPayloads(files);
         } catch (BusinessException e) {
             log.error("[image-bg-remover] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
-            safeFailBatch(batchId, files.size());
+            segmentationBatchService.failBatch(batchId, files.size());
             throw e;
         }
 
@@ -186,65 +184,22 @@ public class SegmentationController {
         final String bgColorFinal = backgroundColor;
         final String modeFinal = modeNorm;
 
-        // 4) 异步跑批
+        // 4) 异步跑批（逐文件推理 / 落产物 / 记历史 / 汇总计数 全部在 Service 里，Controller 不写业务）
         try {
             batchExecutor.execute(() -> {
                 try {
-                    batchTaskService.markRunning(batchId);
-                    int success = 0;
-                    int fail = 0;
-                    // 工具 id 查一次即可（N 个文件共用），查不到不阻断（历史允许 tool_id 为空）
-                    Long bgRemoverToolId = findToolId(TOOL_CODE_BG_REMOVER);
-                    for (BatchFilePayload p : payloads) {
-                        String fileName = p.getOriginalFilename();
-                        // 先建「处理中」历史，保证产物一产出就有记录（与 OCR / doc-to-text 同口径）
-                        Long historyId = historyService.createPendingHistory(
-                                userId, bgRemoverToolId, null, TOOL_CODE_BG_REMOVER,
-                                "上传图片：" + fileName);
-                        long fileStart = System.currentTimeMillis();
-                        try {
-                            // 3 模式合一：交由 service 内部按 mode 分发
-                            SegmentResult r = segmentationService.processImage(
-                                    p.getContent(), modeFinal, bgColorFinal, bgFinal);
-                            // 产物落库（批量任务来源：写 batchId 让 completed 端点能反查）
-                            // fileIndex 用循环下标区分同批次多张产物
-                            ToolOutputVO output = toolOutputService.saveBatchFileOutput(
-                                    batchId,
-                                    TOOL_CODE_BG_REMOVER,
-                                    success + fail,
-                                    ToolOutput.TYPE_IMAGE,
-                                    r.getImageBytes(),
-                                    OUTPUT_FILENAME_BG_REMOVER,
-                                    r.getMimeType(),
-                                    r.getWidth(),
-                                    r.getHeight(),
-                                    null);
-                            // 历史输出内容存产物 URL（产物本体在 sys_tool_output，可按 batchId 回查）
-                            historyService.completeHistory(historyId, output.getFileUrl(),
-                                    (int) (System.currentTimeMillis() - fileStart));
-                            success++;
-                        } catch (Exception e) {
-                            log.error("[image-bg-remover] 单文件失败 batchId={} file={} err={}",
-                                    batchId, fileName, e.getMessage());
-                            historyService.failHistory(historyId, e.getMessage());
-                            fail++;
-                        }
-                    }
-                    batchTaskService.completeBatch(batchId, success, fail, "[]");
-                    log.info("[image-bg-remover] 批量任务完成 batchId={} success={} fail={}",
-                            batchId, success, fail);
-                } catch (Exception e) {
-                    log.error("[image-bg-remover] 批量任务异常 batchId={}", batchId, e);
-                    try {
-                        batchTaskService.completeBatch(batchId, 0, files.size(), "[]");
-                    } catch (Exception ignore) {
-                        log.error("[image-bg-remover] 兜底 completeBatch 失败 batchId={}", batchId, ignore);
-                    }
+                    segmentationBatchService.processImageBatch(
+                            userId, payloads, modeFinal, bgColorFinal, bgFinal, batchId);
+                } finally {
+                    // 清理批量临时文件：必须在 finally 里，异常时也要清
+                    batchUploadService.cleanup(payloads);
                 }
             });
         } catch (RejectedExecutionException e) {
             log.error("[image-bg-remover] 批量任务被拒（线程池饱和）batchId={}", batchId, e);
-            safeFailBatch(batchId, files.size());
+            segmentationBatchService.failBatch(batchId, files.size());
+            // 任务没跑起来 → lambda 里的 finally 不会执行，临时文件要在这里清
+            batchUploadService.cleanup(payloads);
             throw new BusinessException(ResultCode.SERVICE_UNAVAILABLE.getCode(),
                     ResultCode.SERVICE_UNAVAILABLE.getMessage());
         }
@@ -262,29 +217,7 @@ public class SegmentationController {
      * 工具数据缺失不应阻断用户真正要的「去背景」这件事。
      * 口径与 {@code NodeExecutor#workflowToolId} 保持一致。
      */
-    private Long findToolId(String toolCode) {
-        try {
-            com.example.aitools.entity.AiTool tool = aiToolMapper.selectOne(
-                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<
-                            com.example.aitools.entity.AiTool>()
-                            .eq(com.example.aitools.entity.AiTool::getToolCode, toolCode)
-                            .last("LIMIT 1"));
-            return tool == null ? null : tool.getId();
-        } catch (Exception e) {
-            log.warn("[image-bg-remover] 查询工具 id 失败 toolCode={}", toolCode, e);
-            return null;
-        }
-    }
-
     /**
      * 兜底：刚建的批量任务若启动失败，必须置为完成态（success=0/fail=count），
      * 否则永久停留在 PENDING，前端已拿到的 batchId 会一直轮询等不到终态。
-     */
-    private void safeFailBatch(String batchId, int fileCount) {
-        try {
-            batchTaskService.completeBatch(batchId, 0, fileCount, "[]");
-        } catch (Exception e) {
-            log.error("[image-bg-remover] safeFailBatch 失败 batchId={}", batchId, e);
-        }
-    }
-}
+     */}

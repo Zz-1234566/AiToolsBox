@@ -114,6 +114,17 @@
                 <view v-if="n._state === 'run'" class="wfr-live"></view>
                 {{ STATE_TEXT[n._state] }}
               </text>
+              <!--
+                单独测试：跳到该节点对应工具的详情页，让用户先单独调通这个工具。
+                仅在**前端 TOOLS 里有**该工具时显示 —— 后端 listTools 返回的是全量工具，
+                其中图片创意/效率小工具等未实现项没有对应调试页，跳过去只会得到空壳页
+                （点「开始处理」才提示「该输入方式暂未接入」），反而更困惑。
+              -->
+              <view
+                v-if="canTestNode(n)"
+                class="wfr-node__test"
+                @click.stop="onTestNode(n)"
+              >单独测试</view>
             </view>
 
             <!-- 元信息行 -->
@@ -274,7 +285,8 @@ import WfIcon from '@/components/WfIcon.vue'
 import SseRenderjs from '@/components/sse-renderjs/sse-renderjs.vue'
 import { BASE_URL } from '@/config/env'
 import { streamRaw } from '@/api/stream'
-import { toolListApi } from '@/api/prompt'
+import { realizedToolListApi } from '@/api/prompt'
+import { hasToolDetailPage, toolDetailUrl } from '@/config/tools'
 import {
   workflowDetailApi, workflowRunApi, workflowRunDetailApi
 } from '@/api/workflow'
@@ -325,6 +337,30 @@ let runStartedAt = 0
 
 const STATE_TEXT = {
   done: '已完成', run: '运行中', fail: '失败', blocked: '已阻断', idle: '等待中'
+}
+
+/* ==================== 节点「单独测试」 ==================== */
+
+/**
+ * 该节点能否「单独测试」——即是否有可跳转的工具详情页。
+ *
+ * 只认**前端 TOOLS 里有的工具**（含专属页）：
+ * 后端 listTools 返回的是全量工具（含图片创意/效率小工具等未实现项），
+ * 那些没有对应调试页，跳过去只会得到一个「暂无该工具信息」的空壳页，
+ * 点「开始处理」才提示「该输入方式暂未接入」——比不给按钮更困惑。
+ */
+const canTestNode = (n) => hasToolDetailPage(n && n.nodeRef)
+
+/**
+ * 跳到该节点对应工具的详情页。
+ *
+ * 不带 historyId：工作流节点写历史时存的是「上游产物文本」而非本工具的原始输入
+ * （且文件节点只存了原始文件名），回填进去是错的 —— 「再次使用」对工作流来源
+ * 本就不可用，这里同样不传。
+ */
+const onTestNode = (n) => {
+  if (!n || !n.nodeRef) return
+  uni.navigateTo({ url: toolDetailUrl(n.nodeRef) })
 }
 
 /* ==================== 节点状态推导 ==================== */
@@ -701,7 +737,7 @@ const nodeTitleOf = (nodeId) => nodeNameOf(nodeId, null, null, ctx.value)
 
 const loadTools = async () => {
   try {
-    const res = await toolListApi()
+    const res = await realizedToolListApi()
     tools.value = (res && res.data) || []
   } catch (e) { /* ignore */ }
 }
@@ -1562,6 +1598,19 @@ const buildDetailLogs = (data) => {
 }
 
 .wfr-node__top { display: flex; align-items: center; gap: 16rpx; }
+/* 「单独测试」按钮：跳该节点工具的详情页 */
+.wfr-node__test {
+  flex-shrink: 0;
+  padding: 4rpx 16rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid var(--border-color, #E5E7EB);
+  font-size: 22rpx;
+  color: var(--text-secondary, #6B7280);
+  background: transparent;
+}
+.wfr-node__test:active {
+  opacity: 0.6;
+}
 .wfr-node__name {
   flex: 1;
   min-width: 0;

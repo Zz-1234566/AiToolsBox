@@ -9,6 +9,7 @@ import com.example.aitools.dto.TranscribeResponse;
 import com.example.aitools.exception.BusinessException;
 import com.example.aitools.service.AiOfficeToolService;
 import com.example.aitools.service.BatchTaskService;
+import com.example.aitools.service.BatchUploadService;
 import com.example.aitools.service.FileStorageService;
 import com.example.aitools.service.TranscribeService;
 import com.example.aitools.config.ExecutorConfig;
@@ -25,6 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import com.example.aitools.common.ToolCodes;
 
 /**
  * 录音转文本 Controller
@@ -40,6 +42,7 @@ public class TranscribeController {
     private final TranscribeService transcribeService;
     private final AiOfficeToolService aiOfficeToolService;
     private final BatchTaskService batchTaskService;
+    private final BatchUploadService batchUploadService;
     private final AuthUtil authUtil;
 
     /**
@@ -75,7 +78,8 @@ public class TranscribeController {
                     "不支持的音频格式，仅支持 MP3/WAV/M4A/AAC/FLAC/OGG/AMR");
         }
         if (file.getSize() > Constants.MAX_FILE_SIZE) {
-            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                    Constants.fileSizeLimitMessage(Constants.MAX_FILE_SIZE));
         }
         log.info("[meeting-minutes/transcribe] userId={} file={} size={} engine={}",
                 userId, file.getOriginalFilename(), file.getSize(), engine);
@@ -121,29 +125,25 @@ public class TranscribeController {
         }
         long totalSize = filtered.stream().mapToLong(MultipartFile::getSize).sum();
         if (totalSize > Constants.BATCH_MAX_TOTAL_SIZE) {
-            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "批量文件总大小超过 200MB");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                    Constants.fileSizeLimitMessage("批量文件总大小", Constants.BATCH_MAX_TOTAL_SIZE));
         }
         // 用过滤后的列表继续后续逻辑（final 引用以兼容 lambda）
         final List<MultipartFile> validFiles = filtered;
 
-        String batchId = batchTaskService.createTask(userId, "audio-transcribe", validFiles.size());
+        String batchId = batchTaskService.createTask(userId, ToolCodes.AUDIO_TRANSCRIBE, validFiles.size());
         log.info("[B2-ASR] 创建批量任务 batchId={} userId={} fileCount={} engine={}",
                 batchId, userId, validFiles.size(), engine);
 
-        // 同步读到内存（避开 Tomcat 异步线程跑批时临时文件已被清理）
+        // 同步流式落盘（避开 Tomcat 异步线程跑批时临时文件已被清理），
+        // 且**不把整批字节读进堆**（批量总大小上限 200MB）
         List<BatchFilePayload> payloads;
         try {
-            payloads = validFiles.stream().map(f -> {
-                try {
-                    return BatchFilePayload.from(f);
-                } catch (java.io.IOException e) {
-                    throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "读取录音文件失败，请重试");
-                }
-            }).toList();
+            payloads = batchUploadService.toPayloads(validFiles);
         } catch (BusinessException e) {
             log.error("[B2-ASR] 读取上传文件失败，任务置为失败 batchId={}", batchId, e);
             try {
-                batchTaskService.completeBatch(batchId, 0, validFiles.size(), "[]");
+                batchTaskService.failRemaining(batchId, validFiles.size());
             } catch (Exception ex) {
                 log.error("[B2-ASR] 失败标记写入失败 batchId={}", batchId, ex);
             }
@@ -152,17 +152,22 @@ public class TranscribeController {
 
         batchExecutor.execute(() -> {
             try {
-                batchTaskService.markRunning(batchId);
+                if (!batchTaskService.markRunning(batchId)) {
+                    throw new IllegalStateException("批量任务状态推进失败，任务不存在或已非待处理状态");
+                }
                 var result = aiOfficeToolService.audioTranscribeBatchStream(userId, payloads, batchId, engine);
                 batchTaskService.completeBatch(batchId, result.getSuccessCount(), result.getFailCount(), result.getResultJson());
                 log.info("[B2-ASR] 完成 batchId={} success={} fail={}", batchId, result.getSuccessCount(), result.getFailCount());
             } catch (Exception e) {
                 log.error("[B2-ASR] 异常 batchId={}", batchId, e);
                 try {
-                    batchTaskService.completeBatch(batchId, 0, validFiles.size(), "[]");
+                    batchTaskService.failRemaining(batchId, validFiles.size());
                 } catch (Exception ex) {
                     log.error("[B2-ASR] 兜底 completeBatch 失败 batchId={}", batchId, ex);
                 }
+            } finally {
+                // 清理批量临时文件：必须在 finally 里，异常时也要清
+                batchUploadService.cleanup(payloads);
             }
         });
 

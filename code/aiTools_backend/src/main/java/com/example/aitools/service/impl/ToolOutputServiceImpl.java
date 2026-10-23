@@ -36,6 +36,12 @@ public class ToolOutputServiceImpl implements ToolOutputService {
     private final ToolOutputMapper workflowOutputMapper;
     private final FileStorageService fileStorageService;
 
+    /**
+     * 【待办】工作流来源的文件类产物落库 —— <b>当前零调用方</b>。
+     * <p>工作流节点的文件产物链路尚未接通（接入点见 {@code NodeExecutor} 的逐文件循环），
+     * 因此 {@code listByRunId} 恒空、{@code vo.setOutputs(...)} 恒空。
+     * 本方法实现本身可用，批量任务来源走 {@link #saveBatchFileOutput}。
+     */
     @Override
     public ToolOutputVO saveFileOutput(String runId, String nodeId, String nodeName, String toolCode,
                                            int fileIndex, int outputType, byte[] content, String fileName,

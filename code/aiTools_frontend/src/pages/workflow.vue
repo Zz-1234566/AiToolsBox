@@ -182,9 +182,10 @@
 
 <script setup>
 import { themeStyle } from '@/utils/theme'
+import { pickFiles } from '@/utils/filePicker'
 import { ref, reactive, computed, nextTick } from 'vue'
 import { onShow, onHide, onUnload, onPageScroll } from '@dcloudio/uni-app'
-import { toolListApi } from '@/api/prompt'
+import { realizedToolListApi } from '@/api/prompt'
 import { uploadFile } from '@/api/request'
 import {
   workflowListApi, workflowDetailApi, workflowDeleteApi, workflowRunsApi
@@ -234,7 +235,7 @@ const firstEmoji = (wf) => emojiOf(firstIcon(wf))
 
 const loadTools = async () => {
   try {
-    const res = await toolListApi()
+    const res = await realizedToolListApi()
     tools.value = (res && res.data) || []
   } catch (e) { /* ignore */ }
 }
@@ -387,28 +388,28 @@ const openRun = async (wf) => {
   } catch (e) { /* ignore */ }
 }
 
-const pickFile = (n) => {
+const pickFile = async (n) => {
   const t = toolByCode(n.nodeRef)
   const isAudio = t && t.inputType && t.inputType.includes('audio')
   // 下游可能是 doc-to-text（接受文档与图片），故非音频节点同时放开图片格式；
   // 图片扩展名与后端 ALLOWED_FILE_EXTENSIONS 对齐（不含 bmp，该端点不接受）
   const DOC_ACCEPT = '.pdf,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp'
-  // #ifdef H5
-  const input = document.createElement('input')
-  input.type = 'file'
-  // 多选：工作流节点是数组语义（N 个文件 → N 个独立输入），支持一次选多个
-  input.multiple = true
-  input.accept = isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : DOC_ACCEPT
-  input.onchange = async () => {
-    const list = Array.from(input.files || [])
+  // 跨端选择统一走 utils/filePicker（平台分支只在那一处）
+  const res = await pickFiles({
+    // 多选：工作流节点是数组语义（N 个文件 → N 个独立输入），支持一次选多个
+    count: 10,
+    accept: isAudio ? '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr' : DOC_ACCEPT,
+    fileType: isAudio ? 'audio' : 'file',
+    fileLabel: isAudio ? '录音文件' : '文件'
+  })
+  if (res.ok) {
+    // uploadFiles 取 path（H5 端是原生 File，用 file 兜底）
+    const list = res.files.map(f => f.path || f.file).filter(Boolean)
     if (list.length) await uploadFiles(n, list)
+    return
   }
-  input.click()
-  // #endif
-  // #ifndef H5
-  // App 端（Android/iOS）无 chooseFile / chooseMessageFile，能力探测同 UploadArea.vue，
-  // 探测不到就明确提示，不要静默抛错
-  if (typeof uni.chooseMessageFile !== 'function') {
+  if (res.reason === 'unsupported') {
+    // App 端（Android/iOS）无文件选择器 —— 明确提示，不要静默抛错
     uni.showToast({
       title: isAudio ? '当前平台暂不支持选择录音文件'
                      : '当前平台暂不支持选择文档，可改用 H5 端或微信小程序',
@@ -416,16 +417,10 @@ const pickFile = (n) => {
     })
     return
   }
-  uni.chooseMessageFile({
-    count: 10,
-    type: isAudio ? 'audio' : 'file',
-    success: async (res) => {
-      const list = (res.tempFiles || []).map(f => f.path || f)
-      if (list.length) await uploadFiles(n, list)
-    },
-    fail: () => { /* 用户主动取消，不提示 */ }
-  })
-  // #endif
+  if (res.reason === 'empty') {
+    uni.showToast({ title: res.message || '没有符合要求的文件', icon: 'none', duration: 2500 })
+  }
+  // cancelled / error：用户主动取消，不提示
 }
 
 const uploadFiles = async (n, list) => {

@@ -116,7 +116,9 @@ public class HistoryServiceImpl implements HistoryService {
         history.setToolId(toolId);
         history.setModelId(modelId);
         history.setAiCode(aiCode);
-        history.setStatus(0); // 处理中
+        // 单工具直接调用：显式写明来源，不依赖 DB 默认值（默认值改了这里不会跟着变）
+        history.setSourceType(Constants.HISTORY_SOURCE_SINGLE);
+        history.setStatus(Constants.HISTORY_STATUS_PROCESSING);
         history.setDr(Constants.DR_NORMAL);
         historyMapper.insert(history);
 
@@ -161,7 +163,7 @@ public class HistoryServiceImpl implements HistoryService {
         // 更新主表 status=1 + duration
         History history = new History();
         history.setId(historyId);
-        history.setStatus(1);
+        history.setStatus(Constants.HISTORY_STATUS_SUCCESS);
         history.setDuration(duration);
         historyMapper.updateById(history);
 

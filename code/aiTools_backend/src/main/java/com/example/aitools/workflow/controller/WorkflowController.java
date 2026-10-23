@@ -89,7 +89,7 @@ public class WorkflowController {
                 log.warn("[workflow] SSE 超时收尾失败", e);
             }
         });
-        emitter.onError(t -> log.warn("[workflow] SSE 连接异常: {}", t == null ? "unknown" : t.getMessage()));
+        emitter.onError(t -> log.warn("[workflow] SSE 连接异常: {}", t == null ? "unknown" : t.getMessage(), t));
         // 校验/建记录在请求线程内同步完成，异常由 GlobalExceptionHandler 处理
         workflowService.runStream(userId, workflowId, body, emitter);
         return emitter;

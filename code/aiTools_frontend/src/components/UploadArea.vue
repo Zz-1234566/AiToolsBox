@@ -16,6 +16,7 @@
 </template>
 
 <script setup>
+import { pickFiles } from '@/utils/filePicker'
 const props = defineProps({
   title: {
     type: String,
@@ -45,46 +46,32 @@ const emit = defineEmits(['choose'])
 // 文档模式默认允许的扩展名（uni.chooseFile 的 extension 参数，H5 端会映射为 input 的 accept 属性）
 const DOCUMENT_EXTENSIONS = ['.txt', '.pdf', '.docx']
 
-const chooseFile = () => {
-  if (props.fileType === 'document') {
-    // uni.chooseFile 仅 H5（及 HarmonyOS）支持，App/微信小程序端不存在该 API
-    if (typeof uni.chooseFile !== 'function') {
-      uni.showToast({ title: '当前平台暂不支持选择文档', icon: 'none' })
-      return
+const chooseFile = async () => {
+  // accept prop 可覆盖默认扩展名（如 ".txt,.md"），默认限制 txt/pdf/docx
+  const extensions = (props.accept && props.accept !== 'all')
+    ? props.accept.split(',').map((s) => s.trim())
+    : DOCUMENT_EXTENSIONS
+  // 跨端选择统一走 utils/filePicker（平台分支只在那一处）
+  // 文档类：H5 走原生 input，微信/QQ 小程序走 chooseMessageFile，App 端不支持
+  // 图片类：uni.chooseImage 全平台可用
+  const res = await pickFiles({
+    count: 1,
+    accept: extensions.join(','),
+    fileType: props.fileType === 'document' ? 'file' : 'image',
+    fileLabel: props.fileType === 'document' ? '文档' : '图片'
+  })
+  if (!res.ok) {
+    if (res.reason === 'unsupported' || res.reason === 'empty') {
+      uni.showToast({ title: res.message || '选择文件失败', icon: 'none' })
     }
-    // accept prop 可覆盖默认扩展名（如 ".txt,.md"），默认限制 txt/pdf/docx
-    const extensions = (props.accept && props.accept !== 'all')
-      ? props.accept.split(',').map((s) => s.trim())
-      : DOCUMENT_EXTENSIONS
-    uni.chooseFile({
-      count: 1,
-      extension: extensions,
-      success: (res) => {
-        // 同时返回临时路径字符串和原生 File 对象（H5 端 tempFiles[0] 是 File）
-        emit('choose', {
-          filePath: res.tempFilePaths[0],
-          file: (res.tempFiles && res.tempFiles[0]) || null
-        })
-      },
-      fail: () => {
-        uni.showToast({ title: '选择文件失败', icon: 'none' })
-      }
-    })
+    // cancelled：用户主动取消，不提示
     return
   }
-  // image：原逻辑
-  uni.chooseImage({
-    count: 1,
-    success: (res) => {
-      // 同时返回临时路径字符串和原生 File 对象（H5 端 tempFiles[0] 是 File）
-      emit('choose', {
-        filePath: res.tempFilePaths[0],
-        file: (res.tempFiles && res.tempFiles[0]) || null
-      })
-    },
-    fail: () => {
-      uni.showToast({ title: '选择文件失败', icon: 'none' })
-    }
+  const picked = res.files[0]
+  // 同时返回临时路径字符串和原生 File 对象（H5 端 file 是原生 File）
+  emit('choose', {
+    filePath: picked.path || picked.file,
+    file: picked.file || null
   })
 }
 </script>

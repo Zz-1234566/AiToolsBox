@@ -455,6 +455,7 @@ CREATE TABLE IF NOT EXISTS sys_batch_task (
   fail_count INT DEFAULT 0 COMMENT '失败数',
   processed_index INT DEFAULT 0 COMMENT '已处理文件数（成功+失败，用于前端轮询 since 增量）',
   status TINYINT NOT NULL DEFAULT 0 COMMENT '0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED',
+  error_msg VARCHAR(255) DEFAULT NULL COMMENT '失败原因（如僵尸任务被自动回收、服务异常中断）',
   result_summary MEDIUMTEXT COMMENT '汇总结果（所有文件 AI 输出拼接，JSON 数组）',
   create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
   update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -474,6 +475,14 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- 僵尸任务自动回收：动态 SQL 加 error_msg（记录任务为何失败）
+SET @col_exists := (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sys_batch_task' AND COLUMN_NAME = 'error_msg');
+SET @sql := IF(@col_exists = 0, 'ALTER TABLE sys_batch_task ADD COLUMN error_msg VARCHAR(255) DEFAULT NULL COMMENT ''失败原因（如僵尸任务被自动回收、服务异常中断）'' AFTER status', 'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 CREATE TABLE IF NOT EXISTS sys_batch_task (
                                               id BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
                                               batch_id VARCHAR(64) NOT NULL COMMENT '对外 batchId（UUID）',
@@ -484,6 +493,7 @@ CREATE TABLE IF NOT EXISTS sys_batch_task (
                                               fail_count INT DEFAULT 0 COMMENT '失败数',
                                               processed_index INT DEFAULT 0 COMMENT '已处理文件数',
                                               status TINYINT NOT NULL DEFAULT 0 COMMENT '0=PENDING 1=RUNNING 2=COMPLETED 3=PARTIAL 4=FAILED',
+                                              error_msg VARCHAR(255) DEFAULT NULL COMMENT '失败原因',
                                               result_summary MEDIUMTEXT COMMENT '汇总结果',
                                               create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                                               update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -560,11 +570,22 @@ SET @sql := IF(@col_exists = 0,
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- ---------- 23.2 回填既有工具的类型 ----------
+-- ⚠️ 本段必须覆盖**每一个** status=1 AND dr=0 的工具：
+--    input_type 决定「工作流节点执行时选哪个能力」(NodeExecutor.executeOne 按它分派)，
+--    为 NULL 时节点会落进 default 分支直接抛「不支持的节点输入类型」。
+--    新增工具时务必在此补一行。
 UPDATE `sys_aitools_tool` SET `input_type` = 'text,file', `output_type` = 'text' WHERE `tool_code` = 'work-summary';
 UPDATE `sys_aitools_tool` SET `input_type` = 'file',      `output_type` = 'text' WHERE `tool_code` = 'doc-keypoint-extract';
 UPDATE `sys_aitools_tool` SET `input_type` = 'text,file', `output_type` = 'text' WHERE `tool_code` = 'weekly-report';
 -- meeting-minutes：移除录音入口后为纯文本输入
 UPDATE `sys_aitools_tool` SET `input_type` = 'text',      `output_type` = 'text' WHERE `tool_code` = 'meeting-minutes';
+-- doc-to-text：解析层。吃任意文件（含图片直送 OCR / 扫描件 PDF 逐页 OCR），
+--   故用 file（工作流里 file = 通吃所有上游输出），不能用 document —— 否则图片类型输入接不上
+UPDATE `sys_aitools_tool` SET `input_type` = 'file',      `output_type` = 'text' WHERE `tool_code` = 'doc-to-text';
+-- audio-transcribe：解析层，吃音频文件
+UPDATE `sys_aitools_tool` SET `input_type` = 'audio',     `output_type` = 'text' WHERE `tool_code` = 'audio-transcribe';
+-- image-bg-remover：图片创意层，进图出图
+UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'image' WHERE `tool_code` = 'image-bg-remover';
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'text' WHERE `tool_code` = 'ocr-recognize';
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'text' WHERE `tool_code` = 'bank-receipt-recognize';
 UPDATE `sys_aitools_tool` SET `input_type` = 'image',     `output_type` = 'text' WHERE `tool_code` = 'invoice-recognize';
@@ -601,6 +622,28 @@ VALUES
 ON DUPLICATE KEY UPDATE
     `tool_name` = VALUES(`tool_name`), `input_type` = VALUES(`input_type`),
     `output_type` = VALUES(`output_type`);
+
+-- ---------- 23.3b image-bg-remover（图片去/换背景，3 模式合一） ----------
+-- ⚠️ 本行是**全新安装路径**（init.sql）必须有的：
+--    此前只有 v1_2026_10_12_image_bg_remover_seed.sql（升级路径）里有这条记录，
+--    全新装库走 init.sql 会缺这一行 → 前端有该工具、后端 listTools() 查不到。
+--    两个路径的内容必须保持一致（与种子脚本同值）。
+-- ⚠️ input_type / output_type 必须一起写入：
+--    这两列决定「工作流节点执行时选哪个能力」(NodeExecutor.executeOne 按 input_type 分派)
+--    与「上下游能否连线」(NodeIoTypeEnum.canConnect 比对 output_type ⊆ 下游 input_type)。
+INSERT INTO `sys_aitools_tool`
+    (`tool_code`, `tool_type`, `tool_name`, `component_type`, `description`, `icon`, `input_type`, `output_type`, `sort_no`, `status`, `dr`)
+VALUES
+    ('image-bg-remover', '图片创意工具', '图片背景去除', 'image', '一键去背景/换底色/换背景图，本地 ONNX 推理，无需联网', '', 'image', 'image', 8, 1, 0)
+ON DUPLICATE KEY UPDATE
+    `tool_name`      = VALUES(`tool_name`),
+    `tool_type`      = VALUES(`tool_type`),
+    `component_type` = VALUES(`component_type`),
+    `description`    = VALUES(`description`),
+    `input_type`     = VALUES(`input_type`),
+    `output_type`    = VALUES(`output_type`),
+    `sort_no`        = VALUES(`sort_no`),
+    `status`         = VALUES(`status`);
 
 -- ---------- 23.4 ai-summary 改名 doc-keypoint-extract（工具表 + 提示词表） ----------
 UPDATE `sys_aitools_tool` SET `tool_code` = 'doc-keypoint-extract', `tool_name` = '文档重点提取' WHERE `tool_code` = 'ai-summary';

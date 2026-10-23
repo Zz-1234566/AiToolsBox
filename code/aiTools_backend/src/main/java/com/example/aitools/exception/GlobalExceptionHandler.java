@@ -1,5 +1,6 @@
 package com.example.aitools.exception;
 
+import com.example.aitools.common.Constants;
 import com.example.aitools.common.Result;
 import com.example.aitools.common.ResultCode;
 import jakarta.validation.ConstraintViolation;
@@ -25,7 +26,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public Result<Void> handleBusinessException(BusinessException e) {
-        log.warn("Business exception: {}", e.getMessage());
+        log.warn("Business exception: {}", e.getMessage()); // 静默失败规范豁免：堆栈已由 ErrorFactory 打过（含 cause），不重复打
         return Result.fail(e.getCode(), e.getMessage());
     }
 
@@ -61,13 +62,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public Result<Void> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException e) {
-        log.warn("Upload size exceeded: {}", e.getMessage());
-        return Result.fail(ResultCode.PARAM_ERROR.getCode(), "文件大小不能超过20MB");
+        log.warn("Upload size exceeded: {}", e.getMessage()); // 静默失败规范豁免：预期内的用户输入问题，堆栈无排查价值
+        return Result.fail(ResultCode.PARAM_ERROR.getCode(),
+                Constants.fileSizeLimitMessage(Constants.MAX_FILE_SIZE));
     }
 
     @ExceptionHandler({MissingServletRequestPartException.class, MissingServletRequestParameterException.class, MultipartException.class})
     public Result<Void> handleMissingFileParam(Exception e) {
-        log.warn("Missing file parameter: {}", e.getMessage());
+        log.warn("Missing file parameter: {}", e.getMessage()); // 静默失败规范豁免：预期内的客户端问题，堆栈无排查价值
         return Result.fail(ResultCode.PARAM_ERROR.getCode(), "请选择要上传的文件");
     }
 

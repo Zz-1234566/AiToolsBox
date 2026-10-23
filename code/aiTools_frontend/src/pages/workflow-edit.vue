@@ -132,7 +132,7 @@
 import { themeStyle } from '@/utils/theme'
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import { toolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
+import { realizedToolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
 import { workflowSaveApi, workflowDetailApi } from '@/api/workflow'
 import { TOOLS } from '@/config/tools'
 import { safeBack } from '@/utils/pageTransition'
@@ -421,7 +421,7 @@ const initPageState = async (opt = {}) => {
   pickedNames.value = {}
 
   try {
-    const res = await toolListApi()
+    const res = await realizedToolListApi()
     tools.value = (res && res.data) || []
   } catch (e) { /* ignore */ }
 

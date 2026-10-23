@@ -252,6 +252,7 @@
 
 <script>
 import { imageBgRemover, pollBatchCompleted } from '@/api/image-bg-remover'
+import { pickFiles } from '@/utils/filePicker'
 import { safeBack } from '@/utils/pageTransition'
 import { downloadOutput, saveLocalImageToAlbum, downloadToLocalPath } from '@/utils/fileAction'
 
@@ -259,6 +260,8 @@ import { downloadOutput, saveLocalImageToAlbum, downloadToLocalPath } from '@/ut
 // jpg / jpeg / png / bmp / gif。webp 等不在白名单内的格式直接前端拦截，
 // 不送往后端，避免走到 service 才抛异常。
 const ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'bmp', 'gif']
+// 单张图片大小上限 20MB（与后端 multipart max-file-size / Constants.MAX_FILE_SIZE 一致）
+const MAX_FILE_SIZE = 20 * 1024 * 1024
 
 // ==================== 物体调整参数常量 ====================
 /** 缩放下限 / 上限（与滑条 min=10 / max=300 保持一致） */
@@ -445,37 +448,36 @@ export default {
     },
 
     // ==================== 状态 A：上传 ====================
-    onPickImage() {
-      uni.chooseImage({
+    async onPickImage() {
+      // 跨端选择统一走 utils/filePicker（平台分支只在那一处）
+      const res = await pickFiles({
         count: 1,
-        sizeType: ['compressed'],
-        sourceType: ['album', 'camera'],
         // extension 让文件选择器**先**过滤（H5 端会映射为 input.accept），与 ALLOWED_EXTS 保持一致
-        extension: ALLOWED_EXTS,
-        success: (res) => {
-          const path = (res.tempFilePaths || [])[0]
-          if (!path) return
-          const temp = (res.tempFiles || [])[0]
-          // 文件名校验：uni.chooseImage 在 H5/小程序/App 下字段可能不同，统一兜底取 path 末段
-          const fileName = (temp && temp.name) || path.split('/').pop() || ''
-          const ext = fileName.includes('.')
-            ? fileName.split('.').pop().toLowerCase()
-            : ''
-          if (!ALLOWED_EXTS.includes(ext)) {
-            uni.showToast({
-              title: '不支持的格式：' + (ext || '未知') + '，仅支持 JPG / PNG / BMP / GIF',
-              icon: 'none',
-              duration: 3000
-            })
-            return
-          }
-          this.uploadedImage = path
-          this.uploadedFileName = fileName || 'image.png'
-        },
-        fail: () => {
-          uni.showToast({ title: '未选择图片', icon: 'none' })
-        }
+        accept: ALLOWED_EXTS.map(e => '.' + e).join(','),
+        fileType: 'image',
+        sourceType: ['album', 'camera'],
+        fileLabel: '图片'
       })
+      if (!res.ok) {
+        if (res.reason === 'unsupported' || res.reason === 'empty') {
+          uni.showToast({ title: res.message || '当前平台暂不支持选择图片', icon: 'none', duration: 3000 })
+        }
+        // cancelled：用户主动取消，不提示
+        return
+      }
+      const picked = res.files[0]
+      const fileName = picked.fileName || 'image.png'
+      // 大小校验：提前拦下，避免传完 20MB 才被后端拒（提示费解）
+      if ((picked.size || 0) > MAX_FILE_SIZE) {
+        uni.showToast({
+          title: '图片不能超过 20MB',
+          icon: 'none',
+          duration: 3000
+        })
+        return
+      }
+      this.uploadedImage = picked.path || picked.file
+      this.uploadedFileName = fileName
     },
 
     previewOriginal() {
@@ -531,7 +533,7 @@ export default {
     /**
      * 把 onStartRemove 流程中抛出的 err 翻译成用户能看懂的提示
      * - err.code 0  = 本地包装（如「提交任务失败」），原始 message 即提示
-     * - err.code 在 10001/10002/90001/90004/90005 → 给出具体话术
+     * - err.code 在 30002/80002/90001/90004/90005 → 给出具体话术
      * - 其他 code → 显示「message（错误码 code）」
      * - err.errMsg（uni.request/uploadFile fail）→ 网络异常
      * - 其他 → 客户端错误
@@ -552,11 +554,16 @@ export default {
         uni.showToast({ title: '系统错误：' + (msg || '请稍后再试'), icon: 'none', duration: 3000 })
         return
       }
-      if (code === 10001) {
+      // 30002 = IMAGE_UNSUPPORTED「图片格式不支持」；80002 = FILE_TOO_LARGE「文件太大」
+      // ⚠️ 原来这里写的是 10001 / 10002 —— 那两个码在 errorCode.js 里是
+      //    USER_NOT_FOUND（用户不存在）/ PASSWORD_ERROR（密码错误），
+      //    与本意完全不符（后端也从没发过这两个码），导致用户只能看到
+      //    「xxx（错误码 10001）」这种没头没尾的提示。
+      if (code === 30002) {
         uni.showToast({ title: '文件格式不支持：' + (msg || '请换一张图'), icon: 'none', duration: 3000 })
         return
       }
-      if (code === 10002) {
+      if (code === 80002) {
         uni.showToast({ title: '文件太大：' + (msg || '请压缩后重试'), icon: 'none', duration: 3000 })
         return
       }
@@ -774,23 +781,26 @@ export default {
       this.bgImage = null
     },
 
-    onUploadBg() {
-      uni.chooseImage({
+    async onUploadBg() {
+      // 跨端选择统一走 utils/filePicker（平台分支只在那一处）
+      const res = await pickFiles({
         count: 1,
-        sizeType: ['compressed'],
-        sourceType: ['album', 'camera'],
         // extension 让文件选择器**先**过滤，与 ALLOWED_EXTS 保持一致
-        extension: ALLOWED_EXTS,
-        success: (res) => {
-          const path = (res.tempFilePaths || [])[0]
-          if (!path) return
-          this.bgImage = path
-          this.currentBgColor = ''
-        },
-        fail: () => {
-          uni.showToast({ title: '未选择图片', icon: 'none' })
-        }
+        accept: ALLOWED_EXTS.map(e => '.' + e).join(','),
+        fileType: 'image',
+        sourceType: ['album', 'camera'],
+        fileLabel: '背景图'
       })
+      if (!res.ok) {
+        if (res.reason === 'unsupported' || res.reason === 'empty') {
+          uni.showToast({ title: res.message || '未选择图片', icon: 'none' })
+        }
+        // cancelled：用户主动取消，不提示
+        return
+      }
+      const picked = res.files[0]
+      this.bgImage = picked.path || picked.file
+      this.currentBgColor = ''
     },
 
     onClearOverlay() {

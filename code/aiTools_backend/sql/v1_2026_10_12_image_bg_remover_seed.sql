@@ -19,16 +19,23 @@ UPDATE sys_aitools_tool
  WHERE tool_code = 'image-bg-changer';
 
 -- 2) 新工具上线
+-- ⚠️ input_type / output_type 必须一起写入：
+--    这两列决定「工作流节点执行时选哪个能力」(NodeExecutor.executeOne 按 input_type 分派)
+--    与「上下游能否连线」(NodeIoTypeEnum.canConnect 比对 output_type ⊆ 下游 input_type)。
+--    缺这两列 → 新装库该工具 input_type 为 NULL → 放进工作流直接抛「不支持的节点输入类型」。
 INSERT INTO sys_aitools_tool
-    (tool_code, tool_type, tool_name, component_type, description, icon, sort_no, status, dr)
+    (tool_code, tool_type, tool_name, component_type, description, icon, input_type, output_type, sort_no, status, dr)
 VALUES
     ('image-bg-remover', '图片创意工具', '图片背景去除', 'image',
-     '一键去背景/换底色/换背景图，本地 ONNX 推理，无需联网', '', 8, 1, 0)
+     '一键去背景/换底色/换背景图，本地 ONNX 推理，无需联网', '',
+     'image', 'image', 8, 1, 0)
 ON DUPLICATE KEY UPDATE
     tool_name      = VALUES(tool_name),
     tool_type      = VALUES(tool_type),
     component_type = VALUES(component_type),
     description    = VALUES(description),
+    input_type     = VALUES(input_type),
+    output_type    = VALUES(output_type),
     sort_no        = VALUES(sort_no),
     status         = VALUES(status);
 

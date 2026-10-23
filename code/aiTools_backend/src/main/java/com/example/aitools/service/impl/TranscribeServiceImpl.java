@@ -102,8 +102,12 @@ public class TranscribeServiceImpl implements TranscribeService {
             log.error("[ASR-tencent] 转写失败", e);
             throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
         } finally {
-            if (inputTemp != null) try { Files.deleteIfExists(inputTemp); } catch (IOException ignored) {}
-            if (outputTemp != null) try { Files.deleteIfExists(outputTemp); } catch (IOException ignored) {}
+            // 临时文件清理是 best-effort：删不掉（Windows 上文件被占用）不该影响转写结果。
+            // 但不能静默 —— 至少要能在日志里看到（静默失败规范豁免：清理失败不影响主流程）
+            if (inputTemp != null) try { Files.deleteIfExists(inputTemp); }
+            catch (IOException ignored) { log.debug("[ASR] 临时输入文件删除失败 path={}", inputTemp, ignored); }
+            if (outputTemp != null) try { Files.deleteIfExists(outputTemp); }
+            catch (IOException ignored) { log.debug("[ASR] 临时输出文件删除失败 path={}", outputTemp, ignored); }
         }
     }
 
@@ -150,8 +154,12 @@ public class TranscribeServiceImpl implements TranscribeService {
             // 脱敏：ffmpeg 输出 / MiniMax HTTP 错误 / IO 路径只进日志
             throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
         } finally {
-            if (inputTemp != null) try { Files.deleteIfExists(inputTemp); } catch (IOException ignored) {}
-            if (outputTemp != null) try { Files.deleteIfExists(outputTemp); } catch (IOException ignored) {}
+            // 临时文件清理是 best-effort：删不掉（Windows 上文件被占用）不该影响转写结果。
+            // 但不能静默 —— 至少要能在日志里看到（静默失败规范豁免：清理失败不影响主流程）
+            if (inputTemp != null) try { Files.deleteIfExists(inputTemp); }
+            catch (IOException ignored) { log.debug("[ASR] 临时输入文件删除失败 path={}", inputTemp, ignored); }
+            if (outputTemp != null) try { Files.deleteIfExists(outputTemp); }
+            catch (IOException ignored) { log.debug("[ASR] 临时输出文件删除失败 path={}", outputTemp, ignored); }
         }
     }
 
@@ -193,7 +201,7 @@ public class TranscribeServiceImpl implements TranscribeService {
                 return true;
             }
         } catch (IOException e) {
-            log.warn("[ASR-ffmpeg] ffmpeg 不可用: {}", e.getMessage());
+            log.warn("[ASR-ffmpeg] ffmpeg 不可用: {}", e.getMessage(), e);
             return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

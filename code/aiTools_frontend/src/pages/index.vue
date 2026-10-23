@@ -100,29 +100,20 @@
 import { themeStyle } from '@/utils/theme'
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
+import { TOOLS, REALIZED_TOOLS, toolDetailUrl, getToolGradient, getToolCategoryTag } from '@/config/tools'
 import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 import { switchTab } from '@/utils/pageTransition'
 
-// tools.js icon 字段 → 首页可渲染的 iconType（共用映射）
-const ICON_TYPE_MAP = {
-  summary: 'doc', weekly: 'text', meeting: 'text', ocr: 'ocr',
-  'bg-color': 'image', 'bg-image': 'image', compress: 'image', qr: 'dev',
-  todo: 'dev', tomato: 'audio', password: 'dev'
-}
-const TAG_MAP = {
-  'AI办公助手': '办公'
-}
-
+// 渐变类型 / 分类 tag 统一取自 config/tools.js（唯一定义处），
+// 此前本页自维护 ICON_TYPE_MAP / TAG_MAP，与分类页各一份，新增工具容易漏改。
 const hotTools = ref(Object.keys(TOOLS).slice(0, 4).map(id => {
   const t = TOOLS[id] || {}
-  const iconType = ICON_TYPE_MAP[t.icon] || 'doc'
   return {
     id,
     name: t.name || id,
     desc: t.desc || '',
-    tag: TAG_MAP[t.category] || t.category || '工具',
-    iconType
+    tag: getToolCategoryTag(id) || t.category || '工具',
+    iconType: getToolGradient(id)
   }
 }))
 const recentTools = ref(Object.keys(TOOLS).slice(0, 1).map(id => {
@@ -131,7 +122,7 @@ const recentTools = ref(Object.keys(TOOLS).slice(0, 1).map(id => {
     id,
     name: t.name || id,
     time: '刚刚',
-    iconType: ICON_TYPE_MAP[t.icon] || 'doc'
+    iconType: getToolGradient(id)
   }
 }))
 
@@ -147,13 +138,8 @@ function goToCategory() {
 function goToHistory() {
   uni.navigateTo({ url: '/pages/history' })
 }
-// 部分工具有专属详情页；其它走通用 tool-common
-const SPECIAL_PAGES = {
-  'image-bg-remover': '/pages/image-bg-remover'
-}
 function goToTool(id) {
-  const url = SPECIAL_PAGES[id] || `/pages/tool-common?id=${id}`
-  uni.navigateTo({ url })
+  uni.navigateTo({ url: toolDetailUrl(id) })
 }
 function toggleFav(id) {
   const t = hotTools.value.find(x => x.id === id)

@@ -167,13 +167,34 @@ const handleGenerate = async () => {
   }
 }
 
-// 轮询批量任务
+/**
+ * 轮询批量任务（自建工具）。
+ *
+ * ⚠️ 原实现是**无限递归 setTimeout**（无上限、无中止）——后端任务若卡住不回终态，
+ *    页面会永久转圈且用户无法自救。这里改为**有上限的循环**，
+ *    并在上限耗尽时明确提示「任务仍在后台执行，请到历史记录查看」。
+ *
+ * ⚠️ 每次拉取都用 `since=0` 拿全量（自建工具的卡片数量很少，不做增量），
+ *    但仍需保留 since 语义以免与后端增量接口语义混淆。
+ */
 const pollBatchTask = async (batchId, fileCount) => {
-  try {
-    const res = await request({
-      url: `/api/ai-office/batch/${batchId}/completed?since=0`,
-      method: 'GET'
-    })
+  // 轮询上限：2s 一次，300 次 ≈ 10 分钟，足够绝大多数批次
+  const MAX_LOOPS = 300
+  const POLL_INTERVAL = 2000
+  let finished = false
+
+  for (let i = 0; i < MAX_LOOPS; i++) {
+    let res = null
+    try {
+      res = await request({
+        url: `/api/ai-office/batch/${batchId}/completed?since=0`,
+        method: 'GET'
+      })
+    } catch (e) {
+      // 网络抖动：等更久一点再试
+      await new Promise(r => setTimeout(r, POLL_INTERVAL + 1000))
+      continue
+    }
     if (res && res.code === 200 && res.data) {
       const items = res.data.results || []
       resultItems.value = items
@@ -184,15 +205,21 @@ const pollBatchTask = async (batchId, fileCount) => {
       resultContent.value = lines.join('\n\n')
       const status = res.data.status
       if (status === 2 || status === 3 || status === 4) {
-        loading.value = false
-      } else {
-        setTimeout(() => pollBatchTask(batchId, fileCount), 2000)
+        finished = true
+        break
       }
-    } else {
-      setTimeout(() => pollBatchTask(batchId, fileCount), 2000)
     }
-  } catch (e) {
-    setTimeout(() => pollBatchTask(batchId, fileCount), 3000)
+    await new Promise(r => setTimeout(r, POLL_INTERVAL))
+  }
+
+  loading.value = false
+  // 次数耗尽仍没跑到终态：任务多半还在后端跑，明确告诉用户去哪看
+  if (!finished) {
+    uni.showToast({
+      title: '任务仍在后台执行，请到历史记录查看结果',
+      icon: 'none',
+      duration: 3000
+    })
   }
 }
 

@@ -37,7 +37,8 @@ public class FileController {
             throw new BusinessException(ResultCode.FILE_UPLOAD_FAILED.getCode(), "请选择要上传的文件");
         }
         if (file.getSize() > Constants.MAX_FILE_SIZE) {
-            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(), "文件大小不能超过20MB");
+            throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
+                    Constants.fileSizeLimitMessage(Constants.MAX_FILE_SIZE));
         }
         String originalFilename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         String ext = FileStorageService.extractExtension(originalFilename).replaceFirst("^\\.", "");

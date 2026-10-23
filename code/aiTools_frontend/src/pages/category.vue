@@ -72,7 +72,7 @@ import { themeStyle } from '@/utils/theme'
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
-import { TOOLS, REALIZED_TOOLS } from '@/config/tools'
+import { TOOLS, REALIZED_TOOLS, toolDetailUrl, CATEGORIES, getToolGradient, getToolEmoji } from '@/config/tools'
 import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 
 const tabs = [
@@ -86,36 +86,30 @@ const tabs = [
 ]
 const activeTab = ref('all')
 
-// icon 字段 → iconType + emoji 的映射（mockup 里的视觉风格）
-const ICON_MAP = {
-  summary:   { type: 'doc',   emoji: '📄' },
-  weekly:    { type: 'text',  emoji: '📝' },
-  meeting:   { type: 'text',  emoji: '🎯' },
-  ocr:       { type: 'ocr',   emoji: '🔍' },
-  'bg-color':{ type: 'image', emoji: '🖼️' },
-  'bg-image':{ type: 'image', emoji: '🎨' },
-  compress:  { type: 'image', emoji: '📦' },
-  qr:        { type: 'dev',   emoji: '🔳' },
-  todo:      { type: 'dev',   emoji: '✅' },
-  tomato:    { type: 'audio', emoji: '🍅' },
-  password:  { type: 'dev',   emoji: '🔑' }
-}
-
 // 从 TOOLS 派生列表（展示全部 13 个工具，包括未实现的）
 const allTools = ref(Object.keys(TOOLS).map(id => {
   const t = TOOLS[id]
-  const icon = ICON_MAP[t.icon] || { type: 'doc', emoji: '📄' }
   return {
     id,
     name: t.name,
     desc: t.desc,
-    iconType: icon.type,
-    emoji: icon.emoji,
+    iconType: getToolGradient(id),
+    emoji: getToolEmoji(id),
     fileType: t.fileType || '',
     inputTypes: t.inputTypes || [],
     category: t.category || ''
   }
 }))
+
+/**
+ * 「办公」Tab 覆盖的分类集合。
+ *
+ * <p>分类名取自 tools.js 的 CATEGORIES（分类改名 / 新增分类时只改 tools.js 一处），
+ * 此前此处硬编码 'AI办公助手'，分类一改名这个 Tab 就会空掉。
+ */
+const OFFICE_CATEGORIES = new Set(
+  CATEGORIES.filter(c => c.code.includes('办公')).map(c => c.code)
+)
 
 // Tab 过滤
 const filteredTools = computed(() => {
@@ -129,20 +123,15 @@ const filteredTools = computed(() => {
     case 'dev':
       return []
     case 'office':
-      return allTools.value.filter(t => t.category === 'AI办公助手')
+      return allTools.value.filter(t => OFFICE_CATEGORIES.has(t.category))
     case 'all':
     default:
       return allTools.value
   }
 })
 
-// 部分工具有专属详情页；其它走通用 tool-common
-const SPECIAL_PAGES = {
-  'image-bg-remover': '/pages/image-bg-remover'
-}
 const goToTool = (id) => {
-  const url = SPECIAL_PAGES[id] || `/pages/tool-common?id=${id}`
-  uni.navigateTo({ url })
+  uni.navigateTo({ url: toolDetailUrl(id) })
 }
 
 /** 收藏：点击同步后端（乐观更新） */

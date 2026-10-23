@@ -93,7 +93,8 @@ public class JsonSingleHandler implements AiToolHandler {
             } catch (Exception e) {
                 lastErr.setLength(0);
                 lastErr.append(e.getMessage());
-                log.warn("[json-single] tool={} attempt={} failed: {}", toolCode, attempt, e.getMessage());
+                // 带异常对象：重试失败要能看到根因堆栈，不能只剩一句 message
+                log.warn("[json-single] tool={} attempt={} failed: {}", toolCode, attempt, e.getMessage(), e);
             }
         }
         historyService.failHistory(historyId, "JSON 解析重试耗尽：" + lastErr);

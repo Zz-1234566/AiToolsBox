@@ -42,6 +42,20 @@ public interface ToolOutputService {
      * @param durationMs 时长毫秒（可选）
      * @return 落库后的产物
      */
+    /**
+     * 【待办】保存一个文件类产物（<b>工作流来源</b>，传 runId）。
+     *
+     * <p>⚠️ <b>当前全项目零调用方</b> —— 工作流节点的文件类产物链路尚未接通。
+     * 后果（都是「看起来正常、实际永远为空」）：
+     * <ul>
+     *   <li>{@code listByRunId} 恒返回空列表（{@code run_id} 非空的记录恒 0 条）；</li>
+     *   <li>{@code WorkflowServiceImpl} 里的 {@code vo.setOutputs(...)} 恒为空；</li>
+     *   <li>{@code sys_tool_output} 上的 {@code idx_run} / {@code idx_run_node} 索引用不上。</li>
+     * </ul>
+     * 接入点：{@code NodeExecutor} 的逐文件循环（节点输出是文件时要落产物而非文本）。
+     * <p>本方法本身是可用且正确的 —— 批量任务来源请用
+     * {@link #saveBatchFileOutput}（那条链路已接通）。
+     */
     ToolOutputVO saveFileOutput(String runId, String nodeId, String nodeName, String toolCode,
                                     int fileIndex, int outputType, byte[] content, String fileName,
                                     String mimeType, Integer width, Integer height, Integer durationMs);

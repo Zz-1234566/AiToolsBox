@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
 import java.util.UUID;
+import com.example.aitools.common.MimeTypes;
 
 /**
  * 腾讯云 COS 文件存储实现。
@@ -199,19 +200,19 @@ public class CosFileStorageService implements FileStorageService {
     /** 按扩展名推断 MIME（产物场景没有原始 Content-Type） */
     private String guessMime(String filename) {
         String lower = filename == null ? "" : filename.toLowerCase(java.util.Locale.ROOT);
-        if (lower.endsWith(".png")) return "image/png";
-        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-        if (lower.endsWith(".webp")) return "image/webp";
-        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".png")) return MimeTypes.PNG;
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return MimeTypes.JPEG;
+        if (lower.endsWith(".webp")) return MimeTypes.WEBP;
+        if (lower.endsWith(".gif")) return MimeTypes.GIF;
         if (lower.endsWith(".mp4")) return "video/mp4";
         if (lower.endsWith(".webm")) return "video/webm";
         if (lower.endsWith(".mp3")) return "audio/mpeg";
         if (lower.endsWith(".wav")) return "audio/wav";
         if (lower.endsWith(".m4a")) return "audio/mp4";
-        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".pdf")) return MimeTypes.PDF;
         if (lower.endsWith(".json")) return "application/json";
         if (lower.endsWith(".txt")) return "text/plain; charset=utf-8";
-        return "application/octet-stream";
+        return MimeTypes.OCTET_STREAM;
     }
 
     private String buildKey(String prefix, String fileId, String ext) {

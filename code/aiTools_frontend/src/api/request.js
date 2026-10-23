@@ -1,6 +1,27 @@
-import { ERROR_CODE } from './errorCode'
+import { ERROR_CODE, ERROR_MESSAGE } from './errorCode'
 import { BASE_URL } from '../config/env'
 import { handleBusiness401, handleAuthError } from '../utils/auth-error-handler'
+
+/**
+ * 取错误提示文案：**后端 message 优先，缺失时按错误码兜底**。
+ *
+ * <p>为什么要兜底：后端部分错误分支不填 message（如 Result.fail(code) 不带文案），
+ * 此时 `data.message` 是 undefined，直接拿去 showToast 会显示空提示，
+ * 而 reject(new Error(undefined)) 的错误信息也是空 —— 用户完全看不懂出了什么事。
+ * errorCode.js 的 ERROR_MESSAGE 就是为此准备的（此前定义了但从未接入）。
+ *
+ * @param {Object} data 后端返回体 { code, message }
+ * @param {String} fallback 连错误码也查不到时的兜底文案
+ * @returns {String} 可直接展示给用户的中文文案
+ */
+const resolveErrorMessage = (data, fallback) => {
+  if (data && data.message) return data.message
+  if (data && data.code !== undefined && data.code !== null) {
+    const byCode = ERROR_MESSAGE[data.code]
+    if (byCode) return byCode
+  }
+  return fallback
+}
 
 /**
  * 通用请求封装
@@ -31,12 +52,14 @@ export const request = (options) => {
           if (data.code === ERROR_CODE.SUCCESS) {
             resolve(data)
           } else if (data.code === 401) {
-            handleBusiness401(data.message)
-            reject(new Error(data.message || '未登录'))
+            const msg = resolveErrorMessage(data, '未登录')
+            handleBusiness401(msg)
+            reject(new Error(msg))
           } else {
-            // 其他业务错误，显示后端返回的消息
-            uni.showToast({ title: data.message || '操作失败', icon: 'none' })
-            reject(new Error(data.message))
+            // 其他业务错误：后端 message 优先，缺失时按错误码兜底
+            const msg = resolveErrorMessage(data, '操作失败')
+            uni.showToast({ title: msg, icon: 'none' })
+            reject(new Error(msg))
           }
         } else if (res.statusCode === 401) {
           handleAuthError('登录已过期，请重新登录')

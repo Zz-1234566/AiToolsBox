@@ -15,14 +15,28 @@ export const CATEGORIES = [
   }
 ]
 
-// 工具分类 → 渐变类型映射（设计稿 tokens）
+// ==================== 图标映射（icon 字段 → 展示用渐变 / emoji） ====================
+// 这里是 icon 映射的**唯一定义处**。
+// 此前 index.vue（ICON_TYPE_MAP）与 category.vue（ICON_MAP）各维护一份，
+// 新增工具要改两处，漏一处就会出现「渐变对不上 / emoji 不显示」。
+// 分类页、首页、搜索页统一从这里取。
+
+// tools.js 的 icon 字段 → 渐变类型（同时用作 CSS class 后缀 tool-icon--{type}）
 // doc / image / dev / audio / video / ocr / text / code / brand
-const CATEGORY_TO_GRADIENT = {
-  'AI办公助手': 'doc',
-  '图片创意工具': 'image',
-  '效率小工具': 'dev'
+export const TOOL_ICON_TYPES = {
+  summary: 'doc', weekly: 'text', meeting: 'text', ocr: 'ocr',
+  'bg-color': 'image', 'bg-image': 'image', compress: 'image', qr: 'dev',
+  todo: 'dev', tomato: 'audio', password: 'dev'
 }
 
+// tools.js 的 icon 字段 → emoji（分类页图标用）
+export const TOOL_ICON_EMOJIS = {
+  summary: '📄', weekly: '📝', meeting: '🎯', ocr: '🔍',
+  'bg-color': '🖼️', 'bg-image': '🎨', compress: '📦', qr: '🔳',
+  todo: '✅', tomato: '🍅', password: '🔑'
+}
+
+// 工具分类 → 展示 tag 文字
 const CATEGORY_TO_TAG = {
   'AI办公助手': '办公',
   '图片创意工具': '图片',
@@ -30,14 +44,30 @@ const CATEGORY_TO_TAG = {
 }
 
 /**
- * 根据工具 ID 返回展示用的渐变类型（用于 ToolIcon / ToolCard）
+ * 根据工具 ID 返回展示用的渐变类型（用于 ToolIcon / ToolCard 的 tool-icon--{type}）
+ *
+ * <p>取值来源是**工具的 icon 字段**（TOOL_ICON_TYPES），不是分类 ——
+ * 同一分类下的工具要用不同渐变（「重点提取」是 doc、「周报生成」是 text），
+ * 按分类取值会让 6 个办公工具全变成同一个渐变。
+ *
  * @param {string} toolId
  * @returns {string} gradient name
  */
 export function getToolGradient(toolId) {
   const tool = TOOLS[toolId]
   if (!tool) return 'brand'
-  return CATEGORY_TO_GRADIENT[tool.category] || 'brand'
+  return TOOL_ICON_TYPES[tool.icon] || 'brand'
+}
+
+/**
+ * 根据工具 ID 返回 emoji（分类页图标用）
+ * @param {string} toolId
+ * @returns {string} emoji
+ */
+export function getToolEmoji(toolId) {
+  const tool = TOOLS[toolId]
+  if (!tool) return '📄'
+  return TOOL_ICON_EMOJIS[tool.icon] || '📄'
 }
 
 /**
@@ -131,6 +161,9 @@ export const TOOLS = {
     fileRule: {
       accept: '.pdf,.docx,.txt,.png,.jpg,.jpeg,.bmp,.gif,.webp',
       maxCount: 1,
+      // 单文件上限 20MB（后端 multipart max-file-size）
+      maxFileSize: 20 * 1024 * 1024,
+      // 本次上传总大小上限（后端 multipart max-request-size）
       maxTotalSize: 20 * 1024 * 1024,
       title: '上传文件',
       desc: '支持 PDF、DOCX、TXT、JPG、PNG、BMP、GIF、WEBP · 单个文件 20MB',
@@ -168,10 +201,17 @@ export const TOOLS = {
     fileRule: {
       accept: '.mp3,.wav,.m4a,.aac,.flac,.ogg,.amr',
       maxCount: 10,
+      // 单文件上限 20MB（后端 multipart max-file-size）
+      maxFileSize: 20 * 1024 * 1024,
+      // ⚠️ 200MB = 后端 multipart 的 max-request-size（整个上传请求的硬上限），
+      //    不是「每个文件 200MB」；单文件上限另为 20MB（max-file-size）。
+      //    这里写的是**本次上传总大小**上限。
+      //    三处必须同步：application.yml 的 max-request-size、
+      //    后端 Constants.BATCH_MAX_TOTAL_SIZE、本值与下方文案。
       maxTotalSize: 200 * 1024 * 1024,         // 200MB
       title: '上传录音',
       desc: '支持 MP3、WAV、M4A、AAC、FLAC、OGG、AMR · 最多 10 个文件 · 总大小 200MB',
-      notice: '单个录音建议不超过 500 秒（约 8 分钟）、50MB；超长录音请先裁剪',
+      notice: '单个录音建议不超过 500 秒（约 8 分钟）；超长录音请先裁剪',
       uploadType: 'audioBatch',                // 标识：调 audioBatchUpload
       apiPath: '/api/ai-office/meeting-minutes/batch-transcribe'
     },
@@ -193,6 +233,48 @@ export const TOOLS = {
 
 // 已实现的工具 code（用于提示词管理页工具下拉过滤）
 export const REALIZED_TOOLS = Object.entries(TOOLS).filter(([, v]) => v.realized).map(([k]) => k)
+
+/**
+ * 有**专属详情页**的工具（不走通用 tool-common）。
+ *
+ * 【为什么要集中在这里】
+ * 原本 index.vue / category.vue / favorites.vue 各写了一份同名的 SPECIAL_PAGES，
+ * 重复定义容易漏改（search.vue 就漏了分支，导致 image-bg-remover 从搜索页进去
+ * 会落到通用页而不是专属页）。故收敛为唯一常量，各处统一引用。
+ */
+export const TOOL_DETAIL_PAGES = {
+  'image-bg-remover': '/pages/image-bg-remover'
+}
+
+/**
+ * 该工具是否有可跳转的详情页。
+ *
+ * 注意：判断依据是「**前端 TOOLS 里有没有它**」，而不是后端 listTools 返回的全集 ——
+ * 后端含图片创意/效率小工具等未实现项，那些没有对应的前端调试页，
+ * 跳过去只会得到一个「暂无该工具信息」的空壳页（点开始处理才提示「该输入方式暂未接入」）。
+ *
+ * @param {String} toolCode 工具 code
+ * @returns {Boolean} 是否有可用的详情页
+ */
+export const hasToolDetailPage = (toolCode) => {
+  if (!toolCode) return false
+  if (TOOL_DETAIL_PAGES[toolCode]) return true
+  return Object.prototype.hasOwnProperty.call(TOOLS, toolCode)
+}
+
+/**
+ * 拼该工具的详情页跳转 URL。
+ *
+ * @param {String} toolCode 工具 code
+ * @param {String|Object} [historyId] 可选：回填用的历史记录 id
+ * @returns {String} 跳转 URL（调用方需自行判断 hasToolDetailPage）
+ */
+export const toolDetailUrl = (toolCode, historyId) => {
+  const special = TOOL_DETAIL_PAGES[toolCode]
+  if (special) return special
+  const base = `/pages/tool-common?id=${encodeURIComponent(toolCode)}`
+  return historyId ? `${base}&historyId=${historyId}` : base
+}
 
 // 根据 toolId 获取工具配置（带默认值兜底）
 export const getTool = (toolId) => TOOLS[toolId] || {

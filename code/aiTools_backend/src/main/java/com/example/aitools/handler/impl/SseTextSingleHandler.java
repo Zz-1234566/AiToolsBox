@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.function.Consumer;
+import com.example.aitools.common.ToolCodes;
 
 /**
  * 单文件 → SSE 长文本（现有 5 个工具的真实路径）
@@ -32,15 +33,15 @@ public class SseTextSingleHandler implements AiToolHandler {
                                    Consumer<String> onChunk) {
         // 现有 Service 用 if-else 按 toolCode 分派；这里改用统一的 switch
         return switch (toolCode) {
-            case "work-summary" -> aiOfficeToolService.aiWorkSummaryStream(
+            case ToolCodes.WORK_SUMMARY -> aiOfficeToolService.aiWorkSummaryStream(
                     userId, content, promptFormat, promptGenerate, promptId, onChunk);
-            case "weekly-report" -> aiOfficeToolService.aiWeeklyReportStream(
+            case ToolCodes.WEEKLY_REPORT -> aiOfficeToolService.aiWeeklyReportStream(
                     userId, content, promptFormat, promptGenerate, promptId, onChunk);
-            case "meeting-minutes" -> aiOfficeToolService.aiMeetingMinutesStream(
+            case ToolCodes.MEETING_MINUTES -> aiOfficeToolService.aiMeetingMinutesStream(
                     userId, content, promptFormat, promptGenerate, promptId, onChunk);
-            case "ocr-recognize" -> throw new BusinessException(
+            case ToolCodes.OCR_RECOGNIZE -> throw new BusinessException(
                     "ocr-recognize 单文件入口在 Controller 单独处理（要先调 OCR），请改用 ocr/stream 端点");
-            case "doc-keypoint-extract" -> throw new BusinessException(
+            case ToolCodes.DOC_KEYPOINT_EXTRACT -> throw new BusinessException(
                     "doc-keypoint-extract 单文件入口在 Controller 单独处理（要先解析文档），请改用 document-summary/stream 端点");
             default -> throw new BusinessException(
                     "toolCode=" + toolCode + " 不支持 sse-text-single 处理方式");
