@@ -141,7 +141,7 @@
               v-if="compareEnabled && uploadedImage"
               class="compare-divider"
               :class="{ 'compare-divider--active': isComparing }"
-              :style="{ left: compareRatio * 100 + '%' }"
+              :style="dividerStyle"
               @touchstart.stop="onCompareStart"
               @touchmove.stop.prevent="onCompareMove"
               @touchend.stop="onCompareEnd"
@@ -150,7 +150,7 @@
               @mousemove.stop.prevent="onCompareMouseMove"
               @mouseup.stop="onCompareMouseUp"
             >
-              <view class="compare-divider__handle">
+              <view class="compare-divider__handle" :style="compareHandleStyle">
                 <svg viewBox="0 0 24 24"><path d="M9.5 7.5L5 12l4.5 4.5M14.5 7.5L19 12l-4.5 4.5"/></svg>
               </view>
             </view>
@@ -440,6 +440,40 @@ export default {
       return ''
     },
 
+    /**
+     * 对比手柄的位置修正。
+     *
+     * <p>手柄 64rpx 宽、圆心落在分界线上。分界线贴到画面最左/最右时，
+     * 手柄有一半会落在画布盒外，被盒子的 {@code overflow:hidden} 裁掉一半。
+     *
+     * <p>这里把手柄整体**往画面内挪**，让圆心始终落在
+     * {@code [半宽, 区域宽 - 半宽]} 区间内 —— 既不被裁，分界线位置也仍然准确。
+     */
+    /**
+     * 分界线的位置。
+     *
+     * <p>线宽 2rpx，用 {@code left: ratio% - 1rpx} 让它**骑在边界上**：
+     * 否则 ratio=1 时 left=100%，整条线跑到画布盒外 → 线不见了。
+     */
+    dividerStyle() {
+      return { left: `calc(${this.compareRatio * 100}% - 1rpx)` }
+    },
+
+    compareHandleStyle() {
+      const w = (this.canvasRect && this.canvasRect.size) || this.canvasBoxWidth || 0
+      if (!w) return ''
+      const half = _upx2px(32) // 手柄直径 64rpx 的一半
+      const x = this.compareRatio * w
+      let shift = 0
+      if (x < half) {
+        shift = half - x
+      } else if (x > w - half) {
+        shift = (w - half) - x
+      }
+      if (!shift) return ''
+      return `transform: translate(calc(-50% + ${shift}px), -50%);`
+    },
+
     compareInnerStyle() {
       // 宽度必须**等于画布盒的实际宽度**，否则原图（aspectFit 居中）与
       // 下方的去背景结果（画布盒内居中）居中基准不同 → 两层错位。
@@ -495,22 +529,9 @@ export default {
      * 故在 onTouchStart（每次手势开始）实测一次。
      */
     _measureCanvas() {
-      const fallback = _upx2px(Math.min(PREVIEW_CANVAS_RPX, 720))
-      // #ifdef H5
-      try {
-        const el = this.$refs.composeCanvas
-        if (el) {
-          const rect = el.getBoundingClientRect()
-          if (rect && rect.width > 0) {
-            this.canvasRect = { left: rect.left, top: rect.top, size: rect.width }
-            return
-          }
-        }
-      } catch (err) {
-        // 非 H5 端无 DOM API，走下面的兜底
-      }
-      // #endif
-      this.canvasRect = { left: 0, top: 0, size: fallback }
+      // 与 _measureCanvasBox 合并为一次测量：宽度（对齐用）与区域左上角（拖拽基准）同源，
+      // 避免两处各测一次、拿到不一致的值。
+      this._measureCanvasBox()
     },
 
     /**
@@ -538,6 +559,7 @@ export default {
      * <p>H5 端直接读 DOM；其它端用 {@code createSelectorQuery}（uni-app 跨端 API）。
      */
     _measureCanvasBox() {
+      const fallback = _upx2px(Math.min(PREVIEW_CANVAS_RPX, 720))
       // #ifdef H5
       try {
         const el = this.$refs.composeCanvas
@@ -545,23 +567,31 @@ export default {
           const rect = el.getBoundingClientRect()
           if (rect && rect.width > 0) {
             this.canvasBoxWidth = rect.width
+            this.canvasRect = { left: rect.left, top: rect.top, size: rect.width }
             return
           }
         }
       } catch (err) {
         // 读不到就退回设计值
       }
+      this.canvasRect = { left: 0, top: 0, size: fallback }
       // #endif
       // #ifndef H5
       try {
         uni.createSelectorQuery().in(this)
           .select('.preview-box__canvas')
           .boundingClientRect((rect) => {
-            if (rect && rect.width > 0) this.canvasBoxWidth = rect.width
+            if (rect && rect.width > 0) {
+              this.canvasBoxWidth = rect.width
+              this.canvasRect = { left: rect.left, top: rect.top, size: rect.width }
+            } else {
+              this.canvasRect = { left: 0, top: 0, size: fallback }
+            }
           })
           .exec()
       } catch (err) {
         // 非 H5 端读不到就退回设计值
+        this.canvasRect = { left: 0, top: 0, size: fallback }
       }
       // #endif
     },
@@ -868,8 +898,10 @@ export default {
       const size = rect && rect.size > 0 ? rect.size : _upx2px(PREVIEW_CANVAS_RPX)
       if (!size) return
       const ratio = (clientX - left) / size
-      // 留 2% 余量，手柄不会被裁掉，也便于贴边
-      this.compareRatio = Math.max(0.02, Math.min(0.98, ratio))
+      // 全程 0~1 可达：之前钳在 2%~98%，导致**贴边时仍留下一条原图残边**
+      // （左边露出原图左缘、右边露出原图右缘），看起来像「没去干净」。
+      // 手柄被裁的问题由 compareHandleStyle 单独内收解决，不靠留余量。
+      this.compareRatio = Math.max(0, Math.min(1, ratio))
     },
 
     onCompareStart(e) {
