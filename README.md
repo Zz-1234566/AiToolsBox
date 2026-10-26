@@ -57,8 +57,9 @@ Graduation project/
 
 ### 2. 初始化数据库
 
-`sql/` 目录里大部分迁移脚本被 `.gitignore` 排除（`sql/*` + `!sql/init.sql`），
-**实际只有 4 个脚本入库**，且必须**按顺序全部执行**，只跑 `init.sql` 会缺表：
+`sql/` 目录里大部分临时脚本被 `.gitignore` 排除，**入库的是「建库入口 + 版本化迁移」**
+（`!sql/init.sql` + `!sql/v1_*.sql`）。已有的库需要**按顺序把迁移脚本补齐**，
+只跑 `init.sql` 会缺表/缺列：
 
 | # | 脚本 | 作用 |
 |---|---|---|
@@ -66,6 +67,7 @@ Graduation project/
 | 2 | `sql/v1_2026_10_12_ai_model_upgrade.sql` | 建 `sys_user_ai_model`（用户自选 AI 模型，**AI 模型选择功能依赖此表**） |
 | 3 | `sql/v1_2026_10_12_ai_model_seeds.sql` | 系统模型注册表 `sys_ai_model` 的初始数据 |
 | 4 | `sql/v1_2026_10_12_image_bg_remover_seed.sql` | 图片背景去除工具的 seed |
+| 5 | `sql/v1_2026_10_26_batch_task_error_msg.sql` | `sys_batch_task` 加 `error_msg` 列（**批量任务依赖此列**，见下） |
 
 ```bash
 # 登录 MySQL 后依次执行
@@ -73,7 +75,20 @@ mysql -u root -p < code/aiTools_backend/sql/init.sql
 mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_ai_model_upgrade.sql
 mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_ai_model_seeds.sql
 mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_image_bg_remover_seed.sql
+mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_26_batch_task_error_msg.sql
 ```
+
+> ⚠️ **漏执行第 5 个脚本的后果**：`sys_batch_task` 缺 `error_msg` 列 →
+> 批量任务落库时抛 `Unknown column 'error_msg' in 'field list'` →
+> **所有批量任务全线不可用**（不只是去背景，所有批量工具都受影响）。
+> 应用启动时会做 **schema 自检**，缺列会直接在日志里告诉你跑哪个脚本
+> （搜 `[schema-check]`），不用等运行时才炸。
+>
+> 单独补这一列也可以（脚本是幂等的）：
+> ```sql
+> ALTER TABLE sys_batch_task ADD COLUMN error_msg VARCHAR(255) DEFAULT NULL
+>   COMMENT '失败原因（如僵尸任务被自动回收、服务异常中断）' AFTER status;
+> ```
 
 建库后可自检：
 

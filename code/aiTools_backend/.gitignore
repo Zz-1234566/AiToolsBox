@@ -55,6 +55,10 @@ uploads/
 ### 获取方式见 README「图片工具与本地 ONNX 模型」小节
 src/main/resources/models/*.onnx
 
-### SQL 仅 init.sql 入库（唯一完整建库入口）；其余为本地迁移/修补脚本 ###
+### SQL：init.sql（唯一完整建库入口）入库；
+### 版本化迁移脚本 v1_<日期>_<名字>.sql 也入库（schema 变更必须随代码走，
+### 否则别人 clone 下来代码与库结构不匹配 → 运行时才炸 Unknown column）；
+### 其余临时/本地脚本（migrate_*.sql、init_*.sql 等）不入库。
 sql/*
 !sql/init.sql
+!sql/v1_*.sql
