@@ -48,6 +48,25 @@ jwt:
 file:
   upload-dir: uploads
 
+# 人像分割（image-bg-remover）
+segmentation:
+  enabled: true
+  # 预处理方式：
+  #   keep-ratio-pad —— **MODNet 官方口径**（默认）：保持长宽比缩放（长边→input-size）
+  #                     + pad 成方形（pad 值 = 127 中灰）。官方 src/models/modnet.py#preprocess
+  #                     就是这么做的。squash 会把竖版人像压扁，模型看到的是变形的人。
+  #   squash         —— 直接 resize 成 input-size×input-size（旧行为，留作 A/B 回退开关）
+  # 模型只接受方形输入（非方形会在内部 Concat 节点维度不匹配报错），所以保持比例必须靠 pad。
+  preprocess-mode: keep-ratio-pad
+  input-size: 512
+  # 蒙版二值化阈值（0~1）。**0 = 不二值化**（MODNet 官方推荐，保留半透明）；
+  # 调小更激进（带出更多背景），调大更保守（边缘收缩）。
+  mask-threshold: 0
+  # 蒙版羽化半径（像素）。**0 = 不羽化**（MODNet 输出本身已连续，羽化反而模糊发丝）
+  feather-size: 0
+  # 小图先放大到该最小边长再送模型（保留发丝级细节）
+  min-input-size: 640
+
 # 批量任务僵尸恢复（BatchTaskRecoveryJob）
 # 进程崩溃 / OOM 后，批量任务会永远停在 PENDING / RUNNING —— 数据库里没有「已死」状态，
 # 只有「没人再碰它了」。本组配置定义「多久没人碰 = 判定为僵死」。

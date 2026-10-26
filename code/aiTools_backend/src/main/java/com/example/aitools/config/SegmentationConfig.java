@@ -47,6 +47,21 @@ public class SegmentationConfig {
     private Integer inputSize = 512;
 
     /**
+     * 预处理方式：
+     * <ul>
+     *   <li>{@code keep-ratio-pad}（默认）—— <b>MODNet 官方口径</b>：
+     *       保持长宽比缩放（长边 → inputSize）+ pad 成方形（pad 值 = 127 中灰）。
+     *       官方 {@code src/models/modnet.py#preprocess} 就是这么做的。</li>
+     *   <li>{@code squash} —— 直接 resize 成 inputSize×inputSize。
+     *       竖版人像会被<b>压扁</b>，模型看到的是变形的人（训练分布之外），
+     *       细长结构（手臂、发丝）最先断。</li>
+     * </ul>
+     * <p>模型只接受方形输入（非方形会在内部 Concat 节点维度不匹配报错），
+     * 所以「保持比例」必须靠 pad 实现，不能直接送非方形。
+     */
+    private String preprocessMode = "keep-ratio-pad";
+
+    /**
      * 允许解码的最大像素总数（宽 × 高），默认 4000 万（约 4000×10000）。
      * <p>
      * 之所以在<b>解码前</b>用 ImageReader 只读尺寸就拦：一张 12000×8000 的图

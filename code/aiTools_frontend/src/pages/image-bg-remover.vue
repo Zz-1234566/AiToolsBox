@@ -27,6 +27,7 @@
             class="uploaded-preview__img"
             :src="uploadedImage"
             mode="aspectFit"
+            @load="onImageLoad"
             @click="previewOriginal"
           />
           <view class="uploaded-preview__bar">
@@ -78,6 +79,7 @@
             ref="composeCanvas"
             class="preview-box__canvas preview-box__canvas--compose"
             :class="{ 'preview-box__canvas--checker': !currentBgColor && !bgImage }"
+            :style="canvasBoxStyle"
           >
             <!-- 背景层（不动） -->
             <view class="bg-layer" :style="composeStyle"></view>
@@ -94,10 +96,16 @@
               @mouseup.stop="onMouseEnd"
               @mouseleave.stop="onMouseEnd"
             >
+              <!--
+                mode 必须是 scaleToFill（铺满区域），**不能是 aspectFit**：
+                aspectFit 会按比例内缩（letterbox），内缩量取决于图片长宽比与区域长宽比，
+                两层一旦区域不一致，居中偏移量就不一样 → 两张图起始位置错开。
+                统一 scaleToFill + 同一个区域 → 两图几何完全一致，逐像素对齐。
+              -->
               <image
                 v-if="transparentPng"
                 :src="transparentPng"
-                mode="aspectFit"
+                mode="scaleToFill"
                 class="object-layer__img"
                 :draggable="false"
               />
@@ -115,9 +123,10 @@
               :style="{ width: compareRatio * 100 + '%' }"
             >
               <view class="compare-layer__inner" :style="compareInnerStyle">
+                <!-- 与画布侧同一套：scaleToFill 铺满同一个区域（见 .object-layer__img 注释） -->
                 <image
                   :src="uploadedImage"
-                  mode="aspectFit"
+                  mode="scaleToFill"
                   class="compare-layer__img"
                   :style="objectTransformStyle"
                   :draggable="false"
@@ -279,7 +288,18 @@ const _upx2px = (rpx) => (uni && uni.upx2px ? uni.upx2px(rpx) : rpx)
 const RPX_PER_PX = 750 / Math.max(1, _upx2px(750))
 
 /** 成果图画布在 750rpx 设计稿下的宽度（= 100% - preview-box 左右各 16rpx padding） */
-const PREVIEW_CANVAS_RPX = 750 - 32
+/**
+ * 预览画布盒（.preview-box__canvas）的设计宽度（rpx）。
+ *
+ * <p>推导：屏幕 750rpx − .page-content 左右 padding 32×2 − .preview-box padding 16×2 = **654rpx**。
+ *
+ * <p>⚠️ 之前写成 750−32=718（只减了 page-content 的一边 padding，漏了 preview-box 的 16×2），
+ * 而对比层用这个常量当宽度 → 比真实画布宽 64rpx → <image mode="aspectFit">
+ * 在更宽的盒子里居中 → **原图整体右移，和去背景结果对不齐**。
+ *
+ * <p>本常量只是**兜底**；实际渲染优先用运行时实测的 {@code canvasBoxWidth}。
+ */
+const PREVIEW_CANVAS_RPX = 750 - 64 - 32
 
 export default {
   data() {
@@ -313,6 +333,11 @@ export default {
 
       // 对比滑块：左原图 / 右去背景，默认关闭，避免干扰编辑
       compareEnabled: false,
+      /** 画布盒实际宽度（px）：运行时实测，用于让对比层与画布层像素级对齐 */
+      canvasBoxWidth: 0,
+      /** 原图原始尺寸（px）：用于把「区域」的长宽比对齐到照片本身 */
+      photoW: 0,
+      photoH: 0,
       compareRatio: 0.5,      // 分界线位置 0~1
       isComparing: false,
 
@@ -399,8 +424,28 @@ export default {
      * 否则原图会跟着分界线一起被压缩，两侧比例就对不上了。
      * 用 100000rpx 的绝对宽度配合父级 left:0 + overflow 隐藏来实现裁剪。
      */
+    /**
+     * 画布盒（对比区域）的高度。
+     *
+     * <p>让**区域的长宽比 = 照片的长宽比**：这样两张图用 scaleToFill 铺满同一区域时
+     * 是 1:1 像素映射 —— 既起始位置完全一致，又不会把竖版照片拉变形。
+     *
+     * <p>实测不到画布宽度时退回设计的 720rpx 高。
+     */
+    canvasBoxStyle() {
+      if (this.canvasBoxWidth > 0 && this.photoW > 0 && this.photoH > 0) {
+        const h = Math.round(this.canvasBoxWidth * this.photoH / this.photoW)
+        if (h > 0) return `height: ${h}px;`
+      }
+      return ''
+    },
+
     compareInnerStyle() {
-      return `width: ${_upx2px(PREVIEW_CANVAS_RPX)}px; height: 100%;`
+      // 宽度必须**等于画布盒的实际宽度**，否则原图（aspectFit 居中）与
+      // 下方的去背景结果（画布盒内居中）居中基准不同 → 两层错位。
+      // 优先用运行时实测值（任何机型/布局都准），实测不到才退回设计值。
+      const w = this.canvasBoxWidth > 0 ? this.canvasBoxWidth : _upx2px(PREVIEW_CANVAS_RPX)
+      return `width: ${w}px; height: 100%;`
     }
   },
 
@@ -466,6 +511,59 @@ export default {
       }
       // #endif
       this.canvasRect = { left: 0, top: 0, size: fallback }
+    },
+
+    /**
+     * 捕获原图原始尺寸（px）。
+     * <p>uni 的 <image @load> 事件带 detail.width/height（H5/小程序/App 都有）。
+     * 用来把「区域」的长宽比对齐到照片本身 —— 否则 scaleToFill 会把竖版照片拉变形。
+     */
+    onImageLoad(e) {
+      const d = (e && e.detail) || {}
+      const w = d.width || 0
+      const h = d.height || 0
+      if (w > 0 && h > 0) {
+        this.photoW = w
+        this.photoH = h
+      }
+    },
+
+    /**
+     * 实测画布盒（.preview-box__canvas）的实际宽度（px）。
+     *
+     * <p><b>为什么必须实测</b>：画布盒的宽度 = 屏幕 − page-content 左右 padding −
+     * preview-box padding，还要再被 flex 布局分配 —— 写死 rpx 常量只是「按设计稿猜」，
+     * 猜错就会让**对比层与画布层的居中基准不一致** → 原图和去背景结果错位。
+     *
+     * <p>H5 端直接读 DOM；其它端用 {@code createSelectorQuery}（uni-app 跨端 API）。
+     */
+    _measureCanvasBox() {
+      // #ifdef H5
+      try {
+        const el = this.$refs.composeCanvas
+        if (el) {
+          const rect = el.getBoundingClientRect()
+          if (rect && rect.width > 0) {
+            this.canvasBoxWidth = rect.width
+            return
+          }
+        }
+      } catch (err) {
+        // 读不到就退回设计值
+      }
+      // #endif
+      // #ifndef H5
+      try {
+        uni.createSelectorQuery().in(this)
+          .select('.preview-box__canvas')
+          .boundingClientRect((rect) => {
+            if (rect && rect.width > 0) this.canvasBoxWidth = rect.width
+          })
+          .exec()
+      } catch (err) {
+        // 非 H5 端读不到就退回设计值
+      }
+      // #endif
     },
 
     /**
@@ -742,6 +840,8 @@ export default {
       // 给一个短暂的 100% 视觉停留，再切到状态 C
       setTimeout(() => {
         this.state = 'C'
+        // 切到状态 C 后画布盒才在 DOM 里 → 此时实测宽度，供对比层对齐用
+        this.$nextTick(() => this._measureCanvasBox())
         uni.showToast({ title: '去背景完成', icon: 'success' })
       }, 300)
     },
@@ -842,6 +942,10 @@ export default {
     /** 关闭对比时清理未结束的拖动，避免残留 window 监听 */
     onToggleCompare() {
       this.compareEnabled = !this.compareEnabled
+      // 开启对比时再实测一次（此时画布盒尺寸才最终确定）
+      if (this.compareEnabled) {
+        this.$nextTick(() => this._measureCanvasBox())
+      }
       if (!this.compareEnabled) {
         this.isComparing = false
         // #ifdef H5

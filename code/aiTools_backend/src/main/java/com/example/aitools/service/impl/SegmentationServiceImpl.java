@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
@@ -112,10 +113,10 @@ public class SegmentationServiceImpl implements SegmentationService {
         // 2) 小图先放大（不动大图）：300px 头像放大到 640 再送 320，模型看到的细节翻 4 倍
         BufferedImage upscaled = upscaleIfTooSmall(source);
 
-        // 3) 预处理：缩放到模型输入尺寸 → 归一化 → NCHW
+        // 3) 预处理：按官方口径（保持长宽比 + pad 成方形）→ 归一化 → NCHW
         int inputSize = segmentationConfig.getInputSize();
-        BufferedImage resized = resize(upscaled, inputSize, inputSize);
-        float[] input = toInputTensor(resized, inputSize);
+        PaddedInput padded = preprocessForModel(upscaled, inputSize);
+        float[] input = toInputTensor(padded.image, inputSize);
 
         // 4) 推理 → 0~255 灰度蒙版（模型尺寸）
         int[] mask = predictMask(input, inputSize);
@@ -125,8 +126,9 @@ public class SegmentationServiceImpl implements SegmentationService {
         int[] maskRefined = refineMask(mask, inputSize,
                 segmentationConfig.getMaskThreshold(), segmentationConfig.getFeatherSize());
 
-        // 6) 蒙版双线性放大回原图尺寸 + 按 alpha 混合底色
-        byte[] output = composite(source, maskRefined, inputSize, color);
+        // 6) 裁掉 pad 区（得到与原图同长宽比的蒙版）→ 双线性放大回原图 → 混合底色
+        int[] valid = cropValidRegion(maskRefined, inputSize, padded);
+        byte[] output = composite(source, valid, padded.w, padded.h, color);
 
         return new SegmentResult(output, width, height, OUTPUT_MIME);
     }
@@ -148,15 +150,17 @@ public class SegmentationServiceImpl implements SegmentationService {
         // 2) 小图先放大（不动大图）：保留发丝级细节
         BufferedImage upscaled = upscaleIfTooSmall(source);
 
-        // 3) 预处理 → 推理 → 透明合成
+        // 3) 预处理（官方口径：保持长宽比 + pad 成方形）→ 推理 → 透明合成
         int inputSize = segmentationConfig.getInputSize();
-        BufferedImage resized = resize(upscaled, inputSize, inputSize);
-        float[] input = toInputTensor(resized, inputSize);
+        PaddedInput padded = preprocessForModel(upscaled, inputSize);
+        float[] input = toInputTensor(padded.image, inputSize);
         int[] mask = predictMask(input, inputSize);
         // 蒙版二值化 + 羽化（走 yml 配置）
         int[] maskRefined = refineMask(mask, inputSize,
                 segmentationConfig.getMaskThreshold(), segmentationConfig.getFeatherSize());
-        byte[] output = compositeTransparent(source, maskRefined, inputSize);
+        // 裁掉 pad 区 → 得到与原图同长宽比的蒙版
+        int[] valid = cropValidRegion(maskRefined, inputSize, padded);
+        byte[] output = compositeTransparent(source, valid, padded.w, padded.h);
 
         return new SegmentResult(output, width, height, OUTPUT_MIME);
     }
@@ -335,6 +339,100 @@ public class SegmentationServiceImpl implements SegmentationService {
         }
         log.debug("[segment] 小图放大 {}x{} → {}x{}", w, h, newW, newH);
         return bi;
+    }
+
+    /**
+     * 按 **MODNet 官方口径**预处理：<b>保持长宽比</b>缩放 + <b>pad 成方形</b>。
+     *
+     * <p>官方 {@code src/models/modnet.py#preprocess}：
+     * <pre>
+     *   ratio = image_size[0] / max(h, w)     // 保持长宽比，长边缩到 512
+     *   im = F.interpolate(im, size=(h*ratio, w*ratio))
+     *   im = pad_divide_by(im, divisor)        // pad 到 32 的倍数，pad 值 = 127（中灰）
+     * </pre>
+     *
+     * <p><b>为什么要改</b>：原实现是 <b>squash</b>（直接 resize 成 size×size），
+     * 竖版人像会被<b>压扁</b>，模型看到的是**变形的人**（训练分布之外），
+     * 检出质量明显下降 —— 细长结构（手臂、头发丝）最先断。
+     * 官方是「保持比例 + pad」，不是压扁。
+     *
+     * <p><b>为什么必须 pad 而不是直接送非方形</b>：本模型内部有硬编码的方形特征图
+     * （非方形输入会在 Concat 节点维度不匹配而报错，实测 512×169 直接失败）。
+     * 所以「保持比例」只能靠 pad 实现。
+     *
+     * @param src  原图
+     * @param size 方形边长（= 模型输入边长）
+     * @return 预处理结果：方形输入图 + 原图内容在方形里的有效区域
+     */
+    private PaddedInput resizeKeepRatioPad(BufferedImage src, int size) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        // 保持长宽比：长边缩到 size
+        double ratio = (double) size / Math.max(w, h);
+        int nw = Math.max(1, (int) Math.round(w * ratio));
+        int nh = Math.max(1, (int) Math.round(h * ratio));
+
+        BufferedImage scaled = drawScaled(src, nw, nh, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+
+        // pad 到方形：pad 值用 127（中灰），与官方 pad_divide_by 一致
+        BufferedImage padded = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = padded.createGraphics();
+        try {
+            g.setColor(new Color(127, 127, 127));
+            g.fillRect(0, 0, size, size);
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.drawImage(scaled, 0, 0, null);
+        } finally {
+            g.dispose();
+        }
+        // 有效区域（居中放置，与官方一致）
+        int ox = (size - nw) / 2;
+        int oy = (size - nh) / 2;
+        return new PaddedInput(padded, ox, oy, nw, nh);
+    }
+
+    /** 预处理结果：方形输入图 + 有效区域（ox, oy, w, h） */
+    private static final class PaddedInput {
+        final BufferedImage image;
+        final int ox;
+        final int oy;
+        final int w;
+        final int h;
+
+        PaddedInput(BufferedImage image, int ox, int oy, int w, int h) {
+            this.image = image;
+            this.ox = ox;
+            this.oy = oy;
+            this.w = w;
+            this.h = h;
+        }
+    }
+
+    /**
+     * 预处理统一入口：按 {@code segmentation.preprocess-mode} 选择
+     * 「保持比例 + pad」（官方口径，默认）或「压扁成方形」。
+     *
+     * @return 方形输入图 + 有效区域（两种模式下都有效：squash 时有效区域 = 整个方形）
+     */
+    private PaddedInput preprocessForModel(BufferedImage src, int size) {
+        String mode = segmentationConfig.getPreprocessMode();
+        if (mode == null || mode.isBlank() || "squash".equalsIgnoreCase(mode)) {
+            // squash：整张方形都是有效内容
+            return new PaddedInput(resize(src, size, size), 0, 0, size, size);
+        }
+        return resizeKeepRatioPad(src, size);
+    }
+
+    /**
+     * 从方形蒙版里裁出有效区域（去掉 pad），得到与原图**同长宽比**的蒙版。
+     * <p>裁出来的尺寸不再是方形 —— 后续合成要按 (maskW, maskH) 双线性采样。
+     */
+    private int[] cropValidRegion(int[] mask, int size, PaddedInput p) {
+        int[] out = new int[p.w * p.h];
+        for (int y = 0; y < p.h; y++) {
+            System.arraycopy(mask, (p.oy + y) * size + p.ox, out, y * p.w, p.w);
+        }
+        return out;
     }
 
     /**
@@ -630,7 +728,7 @@ public class SegmentationServiceImpl implements SegmentationService {
      * @param color     底色
      * @return PNG 字节
      */
-    private byte[] compositeTransparent(BufferedImage source, int[] mask, int maskSize) {
+    private byte[] compositeTransparent(BufferedImage source, int[] mask, int maskW, int maskH) {
         int width = source.getWidth();
         int height = source.getHeight();
 
@@ -640,18 +738,18 @@ public class SegmentationServiceImpl implements SegmentationService {
         for (int y = 0; y < height; y++) {
             source.getRGB(0, y, width, 1, rowBuf, 0, width);
 
-            float fy = (y + 0.5f) * maskSize / height - 0.5f;
-            int y0 = clamp((int) Math.floor(fy), 0, maskSize - 1);
-            int y1 = Math.min(y0 + 1, maskSize - 1);
+            float fy = (y + 0.5f) * maskH / height - 0.5f;
+            int y0 = clamp((int) Math.floor(fy), 0, maskH - 1);
+            int y1 = Math.min(y0 + 1, maskH - 1);
             float wy = fy - y0;
 
             for (int x = 0; x < width; x++) {
-                float fx = (x + 0.5f) * maskSize / width - 0.5f;
-                int x0 = clamp((int) Math.floor(fx), 0, maskSize - 1);
-                int x1 = Math.min(x0 + 1, maskSize - 1);
+                float fx = (x + 0.5f) * maskW / width - 0.5f;
+                int x0 = clamp((int) Math.floor(fx), 0, maskW - 1);
+                int x1 = Math.min(x0 + 1, maskW - 1);
                 float wx = fx - x0;
 
-                float alpha = bilerp(mask, maskSize, x0, y0, x1, y1, wx, wy) / 255f;
+                float alpha = bilerp(mask, maskW, maskH, x0, y0, x1, y1, wx, wy) / 255f;
                 int srcArgb = rowBuf[x];
                 alpha *= ((srcArgb >>> 24) & 0xFF) / 255f;
 
@@ -686,7 +784,7 @@ public class SegmentationServiceImpl implements SegmentationService {
         }
     }
 
-    private byte[] composite(BufferedImage source, int[] mask, int maskSize, BackgroundColorEnum color) {
+    private byte[] composite(BufferedImage source, int[] mask, int maskW, int maskH, BackgroundColorEnum color) {
         int width = source.getWidth();
         int height = source.getHeight();
         int[] rgb = color.toRgb();
@@ -698,21 +796,21 @@ public class SegmentationServiceImpl implements SegmentationService {
             source.getRGB(0, y, width, 1, rowBuf, 0, width);
 
             // 目标行在 320 蒙版上的纵向采样坐标（中心对齐，半像素偏移）
-            float fy = (y + 0.5f) * maskSize / height - 0.5f;
-            int y0 = clamp((int) Math.floor(fy), 0, maskSize - 1);
-            int y1 = Math.min(y0 + 1, maskSize - 1);
+            float fy = (y + 0.5f) * maskH / height - 0.5f;
+            int y0 = clamp((int) Math.floor(fy), 0, maskH - 1);
+            int y1 = Math.min(y0 + 1, maskH - 1);
             float wy = fy - y0;
 
             for (int x = 0; x < width; x++) {
-                float fx = (x + 0.5f) * maskSize / width - 0.5f;
-                int x0 = clamp((int) Math.floor(fx), 0, maskSize - 1);
-                int x1 = Math.min(x0 + 1, maskSize - 1);
+                float fx = (x + 0.5f) * maskW / width - 0.5f;
+                int x0 = clamp((int) Math.floor(fx), 0, maskW - 1);
+                int x1 = Math.min(x0 + 1, maskW - 1);
                 float wx = fx - x0;
 
                 // 蒙版值域是 0~255，必须先归一化到 0~1 才能当 alpha 用：
                 // 直接拿 0~255 的值参与线性混合会使任何前景像素瞬间溢出钳位
                 // （红底人像会糊成 00FFFF 这类纯色，人脸细节全丢）
-                float alpha = bilerp(mask, maskSize, x0, y0, x1, y1, wx, wy) / 255f;
+                float alpha = bilerp(mask, maskW, maskH, x0, y0, x1, y1, wx, wy) / 255f;
                 // 原图自身可能带 alpha（PNG 透明背景），两者相乘才是最终不透明度
                 int srcArgb = rowBuf[x];
                 alpha *= ((srcArgb >>> 24) & 0xFF) / 255f;
@@ -738,11 +836,11 @@ public class SegmentationServiceImpl implements SegmentationService {
     }
 
     /** 蒙版双线性插值：四角加权 */
-    private float bilerp(int[] mask, int size, int x0, int y0, int x1, int y1, float wx, float wy) {
-        float v00 = mask[y0 * size + x0];
-        float v01 = mask[y0 * size + x1];
-        float v10 = mask[y1 * size + x0];
-        float v11 = mask[y1 * size + x1];
+    private float bilerp(int[] mask, int w, int h, int x0, int y0, int x1, int y1, float wx, float wy) {
+        float v00 = mask[y0 * w + x0];
+        float v01 = mask[y0 * w + x1];
+        float v10 = mask[y1 * w + x0];
+        float v11 = mask[y1 * w + x1];
         float top = v00 + (v01 - v00) * wx;
         float bottom = v10 + (v11 - v10) * wx;
         return top + (bottom - top) * wy;

@@ -334,6 +334,19 @@ AI 办公类工具划分为两层，**目的是让每个工具都能作为工作
 | 配置 | `segmentation.model-path` 指向它 + `segmentation.input-size: 512` |
 | 授权 | MODNet 官方仓库 Apache License 2.0 |
 
+#### 预处理口径（与 MODNet 官方一致）
+
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `segmentation.preprocess-mode` | `keep-ratio-pad` | **官方口径**：保持长宽比缩放（长边→`input-size`）+ pad 成方形（pad 值 = 127 中灰）。官方 `src/models/modnet.py#preprocess` 就是这么做的。`squash`（直接压成方形）会把竖版人像**压扁**，模型看到的是变形的人，细长结构（手臂、发丝）最先断 —— 保留该值仅作 A/B 对照 |
+| `segmentation.mask-threshold` | `0` | 0 = 不二值化（官方推荐，保留半透明）；调小更激进（带出更多背景），调大更保守（边缘收缩） |
+| `segmentation.feather-size` | `0` | 0 = 不羽化（MODNet 输出本身已连续，羽化反而模糊发丝） |
+| `segmentation.min-input-size` | `640` | 小图先放大再送模型，保留发丝级细节 |
+| `segmentation.max-image-pixels` | `40000000` | 解码**前**按像素总数拦超大图，避免 ARGB 缓冲把堆打爆 |
+
+> 模型只接受**方形**输入（非方形会在内部 Concat 节点维度不匹配报错），
+> 所以「保持长宽比」只能靠 **pad** 实现，不能直接送非方形。
+
 > ⚠️ **模型未入库**（`.gitignore` 已排除 `*.onnx`），clone 后该目录是空的，
 > 图片工具启动即失败。获取方式见下。
 
