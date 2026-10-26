@@ -1,5 +1,9 @@
 <template>
   <view class="page-container">
+    <!-- 左上角返回（App 端返回手势的唯一视觉提示；范式同 register.vue） -->
+    <view class="auth-back" @click="goToLogin">
+      <text class="auth-back__icon">‹</text>
+    </view>
     <view class="reset-card animate-fade-in-up">
       <!-- 标题 -->
       <view class="title-section">
@@ -233,6 +237,21 @@ const goToLogin = () => {
 </script>
 
 <style lang="scss" scoped>
+.auth-back {
+  padding: 24rpx 0 8rpx;
+  /* 触控热区 ≥ 44px（88rpx） */
+  width: 88rpx;
+  height: 88rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.auth-back__icon {
+  font-size: 56rpx;
+  color: #111827;
+  line-height: 1;
+}
+
 .page-container {
   min-height: 100vh;
   background-color: $bg-color;

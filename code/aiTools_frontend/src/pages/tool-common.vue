@@ -500,7 +500,12 @@ const onFilePickerClick = async () => {
     uni.showToast({ title: res.message || '没有符合要求的文件', icon: 'none', duration: 2500 })
     return
   }
-  // cancelled / error：用户主动取消，不提示
+  if (res.reason === 'error') {
+    // 权限被拒等真实错误：必须提示，否则用户以为「点了没反应」
+    uni.showToast({ title: res.message || '选择文件失败', icon: 'none', duration: 2500 })
+    return
+  }
+  // cancelled：用户主动取消，不提示
 }
 const removeFile = (idx) => { uploadedFiles.value.splice(idx, 1) }
 
@@ -726,8 +731,13 @@ const onPureConvertPick = async () => {
     uni.showToast({ title: res.message || pureConvertTip(isAudio), icon: 'none', duration: 2500 })
     return
   }
-  if (res.reason !== 'unsupported') {
-    // cancelled / error：用户主动取消，不提示
+  if (res.reason === 'error') {
+    // 权限被拒等真实错误：必须提示
+    uni.showToast({ title: res.message || '选择文件失败', icon: 'none', duration: 2500 })
+    return
+  }
+  if (res.reason === 'cancelled') {
+    // 用户主动取消，不提示
     return
   }
 

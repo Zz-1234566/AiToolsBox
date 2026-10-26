@@ -220,7 +220,15 @@ onMounted(loadList)
 <style lang="scss" scoped>
 @import '@/styles/buttons.scss';
 
-.page { min-height: 100vh; background: #F9FAFB; padding-bottom: 0; }
+.page {
+  /* 必须是 height 而非 min-height —— 见 search.vue 同名处的说明：
+     min-height 时 scroll-view 拿不到确定高度 → 不产生内部滚动。 */
+  height: 100vh;
+  background: #F9FAFB;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .topbar {
   /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
@@ -233,6 +241,9 @@ onMounted(loadList)
   &__title { flex: 1; text-align: center; font-size: 32rpx; font-weight: 600; color: #0f172a; }
 }
 .content {
+  flex: 1;
+  /* flex 子项 min-height 归零，否则 scroll-view 长高而不滚动 */
+  min-height: 0;
   /* App 端键盘高度（px）：iOS webview 不因键盘 resize，键盘盖住页面底部 →
      「保存」按钮被挡。这里加同等底部内边距，多出一段可滚动空间，
      用户可把按钮滚到键盘上方。H5/小程序该变量为 0，行为不变。 */

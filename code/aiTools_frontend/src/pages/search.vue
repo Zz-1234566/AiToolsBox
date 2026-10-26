@@ -116,7 +116,13 @@ const goToTool = (tool) => {
 
 <style lang="scss" scoped>
 .page-container {
-  min-height: 100vh;
+  /* ⚠️ 必须是 **height** 而不是 min-height：
+     min-height:100vh 时容器高度由内容撑开（可超过一屏），
+     子级 scroll-view 的 flex:1 拿不到确定高度 → **不产生内部滚动**，
+     整个页面跟着内容一起长，底部元素被推到屏幕外。
+     容器定高 + 子级 min-height:0 才能让 scroll-view 真正内部滚动。
+     （App 端尤其明显：H5 端有浏览器原生滚动兜着，问题被掩盖了。） */
+  height: 100vh;
   background-color: $bg-color;
   display: flex;
   flex-direction: column;
@@ -166,6 +172,9 @@ const goToTool = (tool) => {
 
 .result-list {
   flex: 1;
+  /* flex 子项默认 min-height:auto → 不会被压缩到内容高度以下，
+     导致 scroll-view 长高而不滚动。必须显式归零。 */
+  min-height: 0;
 }
 
 .empty-state {

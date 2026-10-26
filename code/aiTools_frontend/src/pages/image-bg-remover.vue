@@ -403,6 +403,33 @@ export default {
     }
   },
 
+  /**
+   * Android 物理返回键拦截（uni-app 的 onBackPress，App 端可用；iOS 侧滑由系统接管）。
+   *
+   * <p>处理中（state='B'）返回会**中断正在跑的去背景任务**并丢掉已上传的图片，
+   * 没有任何提示 —— 用户以为 App 卡了。这里给一次确认。
+   * <p>其余状态（A 已选图未处理 / C 已出结果）直接放行，不给用户添堵。
+   */
+  onBackPress() {
+    if (this.state !== 'B') {
+      return false   // 不拦截，走默认返回
+    }
+    uni.showModal({
+      title: '确认离开？',
+      content: '正在去背景，离开后本次处理会中断',
+      confirmText: '离开',
+      cancelText: '继续处理',
+      success: (r) => {
+        if (r.confirm) {
+          this._clearTimers()
+          // 用项目统一的 safeBack（栈空时自动 reLaunch 兜底），不手写 navigateBack
+          safeBack('/pages/index')
+        }
+      }
+    })
+    return true    // 阻止默认返回，由上面的 confirm 决定
+  },
+
   onUnload() {
     this._clearTimers()
     // 拖动中途离开页面会漏掉 mouseup，必须在这里解绑 window 监听
@@ -459,7 +486,7 @@ export default {
         fileLabel: '图片'
       })
       if (!res.ok) {
-        if (res.reason === 'unsupported' || res.reason === 'empty') {
+        if (res.reason === 'unsupported' || res.reason === 'empty' || res.reason === 'error') {
           uni.showToast({ title: res.message || '当前平台暂不支持选择图片', icon: 'none', duration: 3000 })
         }
         // cancelled：用户主动取消，不提示

@@ -131,7 +131,7 @@
 <script setup>
 import { themeStyle } from '@/utils/theme'
 import { ref, reactive, computed, watch, onUnmounted } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { onLoad, onBackPress } from '@dcloudio/uni-app'
 import { realizedToolListApi, systemPromptListApi, promptListApi } from '@/api/prompt'
 import { workflowSaveApi, workflowDetailApi } from '@/api/workflow'
 import { TOOLS } from '@/config/tools'
@@ -140,14 +140,37 @@ import PromptPickerDrawer from '@/components/PromptPickerDrawer.vue'
 
 const tools = ref([])
 const saving = ref(false)
+/**
+ * 保存成功后的延迟跳转定时器句柄。
+ * <p>⚠️ 必须在组件卸载时清掉：用户「保存后立刻手动返回」时，
+ * 这个 600ms 的定时器仍会触发 goBack() → **二次导航**（页面已退过一次，再退一次）。
+ */
+let goBackTimer = null
 const editingId = ref('')
 const form = reactive({ name: '', description: '', nodes: [] })
+/**
+ * 载入时的表单快照（JSON 字符串），用于判断「有没有未保存的改动」。
+ * <p>没有它的话，用户改了名字/节点后按返回键，改动直接丢失且无任何提示。
+ */
+const savedSnapshot = ref('')
 /** 工具编码 → 系统默认提示词 { format, generate }，用于判断该工具是否需要提示词 */
 const defaultPrompts = reactive({})
 /** 已选提示词的展示名（内存）：键 `${nodeId}_${format|generate}`，不落库 */
 const pickedNames = ref({})
 
 const isNew = computed(() => !editingId.value)
+
+/** 当前表单的快照字符串（只取会影响保存结果的字段） */
+const snapshot = () => JSON.stringify({
+  name: form.name,
+  description: form.description,
+  nodes: (form.nodes || []).map(n => ({
+    nodeId: n.nodeId, nodeRef: n.nodeRef, name: n.name, deps: n.deps, params: n.params
+  }))
+})
+
+/** 是否有未保存的改动 */
+const isDirty = computed(() => !!savedSnapshot.value && snapshot() !== savedSnapshot.value)
 
 const toolNames = computed(() => tools.value.map(t => t.toolName))
 const toolByCode = (code) => tools.value.find(t => t.toolCode === code)
@@ -392,7 +415,8 @@ const save = async () => {
       nodes: form.nodes
     })
     uni.showToast({ title: '保存成功', icon: 'success' })
-    setTimeout(() => goBack(), 600)
+    if (goBackTimer) clearTimeout(goBackTimer)
+    goBackTimer = setTimeout(() => goBack(), 600)
   } catch (e) {
     // request.js 已统一提示
   } finally {
@@ -435,6 +459,8 @@ const initPageState = async (opt = {}) => {
       form.nodes = (d.nodes || []).map(n => ({
         nodeId: n.nodeId, nodeRef: n.nodeRef, name: n.name || '', deps: n.deps || [], params: n.params || {}
       }))
+      // 记录载入快照（用于「未保存改动」判定）
+      savedSnapshot.value = snapshot()
       // 预加载各节点工具的默认提示词，使「格式/生成提示词」输入框正常显示
       await Promise.all(form.nodes.map(n => ensureDefaultPrompts(n.nodeRef)))
       // 回填已选提示词的展示名（按 promptId 反查）
@@ -458,6 +484,31 @@ const initPageState = async (opt = {}) => {
 
 // 上次初始化用的 workflowId，onShow 时比对是否需要重新初始化（keep-alive 复用兜底）
 let lastInitId = ''
+/**
+ * Android 物理返回键拦截：表单有未保存改动时二次确认。
+ * <p>uni-app 的 onBackPress 仅 App 端可用；iOS 侧滑由系统接管（拦不住），
+ * 所以这是「能改善多少改善多少」，不是跨端一致方案。
+ */
+onBackPress(() => {
+  if (!isDirty.value) {
+    return false   // 没有改动 → 不拦
+  }
+  uni.showModal({
+    title: '确认离开？',
+    content: '有未保存的修改，离开后将会丢失',
+    confirmText: '离开',
+    cancelText: '继续编辑',
+    success: (r) => {
+      if (r.confirm) {
+        savedSnapshot.value = snapshot()   // 标记为「已放弃改动」，避免二次确认
+        // 用项目统一的 safeBack（栈空时自动 reLaunch 兜底），不手写 navigateBack
+        safeBack('/pages/workflow')
+      }
+    }
+  })
+  return true
+})
+
 onLoad(async (opt) => {
   lastInitId = (opt && opt.workflowId) || ''
   await initPageState(opt || {})
@@ -492,7 +543,11 @@ const applyRouteAndInit = async (h) => {
 const onHashChange = () => { routeHash.value = location.hash || '' }
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', onHashChange)
-  onUnmounted(() => window.removeEventListener('hashchange', onHashChange))
+  onUnmounted(() => {
+    window.removeEventListener('hashchange', onHashChange)
+    // 清掉待触发的延迟跳转，避免页面已退却再跳一次
+    if (goBackTimer) { clearTimeout(goBackTimer); goBackTimer = null }
+  })
 }
 // #endif
 
@@ -610,7 +665,10 @@ watch(routeHash, (h) => { applyRouteAndInit(h) })
 .wfe-node__del {
   color: #EF4444;
   font-size: 32rpx;
-  padding: 0 8rpx;
+  /* 触控热区 ≥ 44px（88rpx）：✕ 原本只有字号高（≈16px），太难点。
+     用 padding 撑开热区，负 margin 抵消布局占位，视觉不变。 */
+  padding: 28rpx 28rpx;
+  margin: -28rpx -20rpx;
   flex-shrink: 0;
 }
 

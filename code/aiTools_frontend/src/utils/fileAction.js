@@ -119,29 +119,38 @@ export const downloadOutput = (target, opts = {}) => {
 
   // #ifndef H5
   uni.showLoading({ title: '下载中…', mask: true })
+  // ⚠️ uni.showLoading 与 uni.showToast **共用同一个浮层**：
+  //    在 showToast 之后再调 hideLoading，会把刚弹出的 toast 一起顶掉
+  //    —— 用户根本看不到「下载失败（链接可能已过期）」。
+  //    所以这里用 toastShown 标记：已经弹过 toast 就不再 hideLoading。
+  let toastShown = false
+  const showToast = (title, icon = 'none') => {
+    toastShown = true
+    uni.showToast({ title, icon })
+  }
   uni.downloadFile({
     url,
     success: (res) => {
       if (res.statusCode !== 200) {
-        uni.showToast({ title: '下载失败（链接可能已过期）', icon: 'none' })
+        showToast('下载失败（链接可能已过期）')
         return
       }
       if (kind === 'image') {
         uni.saveImageToPhotosAlbum({
           filePath: res.tempFilePath,
-          success: () => uni.showToast({ title: '已保存到相册', icon: 'success' }),
-          fail: () => uni.showToast({ title: '保存失败，可长按图片另存', icon: 'none' })
+          success: () => showToast('已保存到相册', 'success'),
+          fail: () => showToast('保存失败，可长按图片另存')
         })
       } else {
         uni.openDocument({
           filePath: res.tempFilePath,
           showMenu: true,
-          fail: () => uni.showToast({ title: '无法打开该文件', icon: 'none' })
+          fail: () => showToast('无法打开该文件')
         })
       }
     },
-    fail: () => uni.showToast({ title: '下载失败', icon: 'none' }),
-    complete: () => uni.hideLoading()
+    fail: () => showToast('下载失败'),
+    complete: () => { if (!toastShown) uni.hideLoading() }
   })
   // #endif
 }
@@ -244,7 +253,9 @@ export const previewOutput = (target) => {
     downloadOutput(target, { toast: false })
     return
   }
-  // 视频有页面内 <video controls> 兜底；其余走下载
+  // 视频：只在 **history-detail** 页有页面内 <video controls> 可直接播放；
+  // 其它页（如 workflow-run）没有 video 元素，只能走「下载后用系统播放器打开」。
+  // 这里统一走下载 —— 各页是否内联播放由页面自己决定，不在本函数里区分。
   if (kind !== 'video') downloadOutput(target)
 }
 

@@ -83,7 +83,7 @@ const chooseAvatar = async () => {
     fileLabel: '头像'
   })
   if (!picked.ok) {
-    if (picked.reason === 'unsupported' || picked.reason === 'empty') {
+    if (picked.reason === 'unsupported' || picked.reason === 'empty' || picked.reason === 'error') {
       uni.showToast({ title: picked.message || '选择图片失败', icon: 'none' })
     }
     // cancelled：用户主动取消，不提示
@@ -141,7 +141,9 @@ const handleSave = async () => {
 
 <style lang="scss" scoped>
 .page-container {
-  min-height: 100vh;
+  /* 必须是 height 而非 min-height —— 见 search.vue 同名处的说明：
+     min-height 时 scroll-view 拿不到确定高度 → 不产生内部滚动。 */
+  height: 100vh;
   background-color: $bg-color;
   display: flex;
   flex-direction: column;
@@ -149,6 +151,8 @@ const handleSave = async () => {
 
 .page-content {
   flex: 1;
+  /* flex 子项 min-height 归零，否则 scroll-view 长高而不滚动 */
+  min-height: 0;
   padding: 0 $spacing-md;
 }
 

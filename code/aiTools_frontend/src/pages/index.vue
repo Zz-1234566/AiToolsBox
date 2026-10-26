@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { themeStyle } from '@/utils/theme'
+import { themeStyle, refreshTabBarStyle } from '@/utils/theme'
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { TOOLS, REALIZED_TOOLS, toolDetailUrl, getToolGradient, getToolCategoryTag } from '@/config/tools'
@@ -163,6 +163,8 @@ async function loadFavorites() {
 }
 
 onShow(() => {
+  // tabBar 配色与主题同步（主题是在 settings 这个非 tabBar 页切换的）
+  refreshTabBarStyle()
   loadFavorites()
 })
 </script>

@@ -378,12 +378,16 @@ const onClearAll = () => {
 .hist-badge--ok { background: #D1FAE5; color: #10B981; }
 .hist-badge--fail { background: #FEE2E2; color: #EF4444; }
 .hist-card__del {
-  width: 52rpx;
-  height: 52rpx;
+  /* 触控热区 ≥ 44px（88rpx）：删除是破坏性操作，
+     热区太小会误触到相邻内容。图标本身仍保持 34rpx 不变，只扩大可点范围。 */
+  width: 88rpx;
+  height: 88rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
+  /* 视觉上不因热区变大而显得突兀：负 margin 抵消布局占位 */
+  margin: -18rpx 0;
 }
 .hist-del__icon {
   width: 34rpx;

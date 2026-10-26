@@ -181,7 +181,7 @@
 </template>
 
 <script setup>
-import { themeStyle } from '@/utils/theme'
+import { themeStyle, refreshTabBarStyle } from '@/utils/theme'
 import { pickFiles } from '@/utils/filePicker'
 import { ref, reactive, computed, nextTick } from 'vue'
 import { onShow, onHide, onUnload, onPageScroll } from '@dcloudio/uni-app'
@@ -324,6 +324,8 @@ const restoreScroll = async () => {
 let listDirty = true
 
 onShow(async () => {
+  // tabBar 配色与主题同步（主题是在 settings 这个非 tabBar 页切换的）
+  refreshTabBarStyle()
   // 记住「本次进入是否需要恢复」，在下面 loadList 之前先取，避免异步过程里被覆盖
   const needRestore = shouldRestore
   shouldRestore = false
@@ -428,8 +430,13 @@ const pickFile = async (n) => {
   }
   if (res.reason === 'empty') {
     uni.showToast({ title: res.message || '没有符合要求的文件', icon: 'none', duration: 2500 })
+    return
   }
-  // cancelled / error：用户主动取消，不提示
+  if (res.reason === 'error') {
+    // 权限被拒等真实错误：必须提示
+    uni.showToast({ title: res.message || '选择文件失败', icon: 'none', duration: 2500 })
+  }
+  // cancelled：用户主动取消，不提示
 }
 
 const uploadFiles = async (n, list) => {

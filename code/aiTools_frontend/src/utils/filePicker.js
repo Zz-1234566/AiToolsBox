@@ -95,6 +95,31 @@ export const pickFiles = (opts = {}) => {
     message: `当前平台暂不支持选择${fileLabel}`
   })
 
+  /**
+   * 失败回调 → 结果。
+   *
+   * <p>uni 的 fail 回调会带 errMsg，里面能区分「用户主动取消」与「权限被拒」：
+   * <ul>
+   *   <li>取消：`chooseImage:fail cancel` / `chooseMessageFile:fail cancel`</li>
+   *   <li>权限：`...:fail auth deny` / `permission` / `authorize`</li>
+   * </ul>
+   * 两者都返回 'cancelled' 会被调用方当成「用户取消」而**不提示**，
+   * 于是「点了没反应」—— 用户以为 App 卡了。权限被拒必须明确告知。
+   */
+  const failed = (err) => {
+    const msg = (err && (err.errMsg || err.message)) || ''
+    const denied = /auth|permission|authorize|deny/i.test(msg)
+    if (denied) {
+      return {
+        ok: false,
+        files: [],
+        reason: 'error',
+        message: `没有访问${fileLabel}的权限，请在系统设置里允许`
+      }
+    }
+    return { ok: false, files: [], reason: 'cancelled' }
+  }
+
   // #ifdef H5
   // H5：原生 <input type="file">，支持多选，是唯一能一次选多个文件的路径
   return new Promise((resolve) => {
@@ -169,7 +194,7 @@ export const pickFiles = (opts = {}) => {
           }
           resolve({ ok: true, files: valid.slice(0, count) })
         },
-        fail: () => resolve({ ok: false, files: [], reason: 'cancelled' })
+        fail: (err) => resolve(failed(err))
       })
     })
   }
@@ -205,7 +230,7 @@ export const pickFiles = (opts = {}) => {
           }
           resolve({ ok: true, files: valid.slice(0, count) })
         },
-        fail: () => resolve({ ok: false, files: [], reason: 'cancelled' })
+        fail: (err) => resolve(failed(err))
       })
     })
   }

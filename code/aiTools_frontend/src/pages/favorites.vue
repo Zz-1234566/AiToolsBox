@@ -71,6 +71,7 @@
 </template>
 
 <script setup>
+import { refreshTabBarStyle } from '@/utils/theme'
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { favoriteListApi, favoriteRemoveApi } from '@/api/favorite'
@@ -127,6 +128,8 @@ const switchTab = (t) => {
 }
 
 onShow(() => {
+  // tabBar 配色与主题同步（主题是在 settings 这个非 tabBar 页切换的）
+  refreshTabBarStyle()
   if (!requireLogin()) return
   fetchList()
 })

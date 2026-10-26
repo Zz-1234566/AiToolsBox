@@ -61,7 +61,7 @@ const chooseFile = async () => {
     fileLabel: props.fileType === 'document' ? '文档' : '图片'
   })
   if (!res.ok) {
-    if (res.reason === 'unsupported' || res.reason === 'empty') {
+    if (res.reason === 'unsupported' || res.reason === 'empty' || res.reason === 'error') {
       uni.showToast({ title: res.message || '选择文件失败', icon: 'none' })
     }
     // cancelled：用户主动取消，不提示

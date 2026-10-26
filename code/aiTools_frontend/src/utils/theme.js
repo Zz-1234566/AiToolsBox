@@ -95,12 +95,30 @@ function setCSSVars(vars) {
 }
 
 function updateTabBarStyle(isDark) {
-  uni.setTabBarStyle({
-    color: isDark ? '#6B6B6B' : '#8E8B8B',
-    selectedColor: isDark ? '#F0F0F0' : '#211E1E',
-    backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
-    borderStyle: 'white',
-  })
+  // 某些平台在非 tabBar 页调用 setTabBarStyle 会静默失败 —— 包 try/catch，
+  // 避免「切主题」这个动作因为一个装饰性调用而整体失败。
+  try {
+    uni.setTabBarStyle({
+      color: isDark ? '#6B6B6B' : '#8E8B8B',
+      selectedColor: isDark ? '#F0F0F0' : '#211E1E',
+      backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF',
+      borderStyle: 'white',
+    })
+  } catch (e) {
+    // 忽略：tabBar 配色只是装饰，CSS 变量才是主题的主体
+  }
+}
+
+/**
+ * 把当前主题的配色同步到 tabBar。
+ *
+ * <p>供 **tabBar 页的 onShow** 调用：主题是在 settings 页（**非 tabBar 页**）切换的，
+ * 那次 setTabBarStyle 可能没生效 → 用户切回 tabBar 时仍是旧配色。
+ * 在 tabBar 页每次 onShow 同步一次，保证 tabBar 与主题永远一致。
+ */
+export function refreshTabBarStyle() {
+  const isDark = !!uni.getStorageSync(STORAGE_KEY)
+  updateTabBarStyle(isDark)
 }
 
 export function initTheme() {

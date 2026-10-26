@@ -184,6 +184,11 @@ GET /api/ai-office/batch/{batchId}/completed?since=N
 - `[B2]` 单独使用时（工具无关的通用环节，如 `BatchTaskServiceImpl`），
   **日志正文必须带可区分上下文的信息**（toolCode / fileCount / batchId），否则排查时定位不到是哪个工具。
 - 标记是**刻意保留的检索前缀**，做代码清理时**不要一并删除**。
+- ⚠️ **改名有历史断层**：`[OCR-B2]` 已于 2026-10-23 统一为 `[B2-OCR]`，
+  但**线上历史日志里仍是旧标记**。排查历史问题时**两个都要 grep**：
+  ```bash
+  grep -rnE "\[(OCR-B2|B2-OCR)\]" <日志文件>
+  ```
 - 其他家族：`[ASR-*]`（语音）、`[Compress]`（压缩）、`[Resolver]`（凭据）、`[HandlerFactory]`（工厂）。
 
 ---
@@ -636,25 +641,25 @@ grep -rn "createElement('a')\|uni\.downloadFile(\|saveImageToPhotosAlbum(" src/ 
 cd code/aiTools_frontend
 for f in src/components/*.vue; do
   n=$(basename "$f" .vue)
-  # 1) 先列出所有引用行（不要用 -q：-q 会抑制输出，管道下游就拿不到内容了）
-  # 2) 排除组件**自身文件**的命中（按路径前缀排除，不是按内容排除 ——
-  #    按内容排除会连别的页面里的 `import X from '@/components/X.vue'` 一起干掉）
-  # 3) grep -q . 判断「还剩不剩内容」：空输入时退出码为 1 → 判定为孤儿
-  if grep -rn --include=*.vue --include=*.js "\b$n\b" src/pages src/components 2>/dev/null \
-       | grep -v "^src/components/$n\.vue:" \
-       | grep -q .; then
-    :   # 有引用，不是孤儿
-  else
-    echo "孤儿组件: $n"
-  fi
+  used=0
+  # 逐个文件找引用，**跳过组件自身文件**（用 shell 的路径比较，不用 grep 输出里的路径）
+  for g in $(find src/pages src/components -name '*.vue' -type f); do
+    [ "$g" = "$f" ] && continue
+    if grep -q "\b$n\b" "$g" 2>/dev/null; then used=1; break; fi
+  done
+  [ "$used" -eq 0 ] && echo "孤儿组件: $n"
 done
 ```
 
-> ⚠️ **写法要点**（两个坑都踩过）：
+> ⚠️ **写法要点**（三个坑都踩过）：
 > 1. 不要用 `grep -rq`（静默模式）：无匹配时无输出 → 管道下游拿到空输入，
 >    而 `grep -v` 对空输入退出码为 1 → **把全部在用组件都报成孤儿**。
-> 2. 排除自身文件要按**路径前缀**（`^src/components/X.vue:`），
->    按文件名内容排除会误伤别的页面里 import 这一组件的那一行。
+> 2. **不要靠 `grep -v` 过滤 grep 输出里的路径前缀来排除组件自身文件** ——
+>    Windows 下 grep 输出的路径分隔符是 `\`（`src\components\X.vue:12:...`），
+>    用 `^src/components/` 这种正斜杠前缀**过滤不掉** → 组件自身的命中仍在，
+>    `grep -q .` 恒成功 → **真孤儿永远检不出来**（静默失效，最难发现的一类）。
+>    上面的写法用 shell 的 `[ "$g" = "$f" ]` 直接跳过自身文件，不依赖路径分隔符。
+> 3. 按文件名**内容**排除（而不是按路径）会误伤别的页面里 import 这一组件的那一行。
 
 > 判断以**实际目录**为准（`ls src/components/*.vue`），不要依赖任何写死的组件清单 ——
 > 写死的清单会随代码演进而失效，比没有检查更危险。
