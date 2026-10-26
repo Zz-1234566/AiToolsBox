@@ -292,6 +292,7 @@ export default {
 
       // 状态 A 数据
       uploadedImage: null,    // 原图本地路径（H5：blob URL；小程序/APP：tempFilePaths[0]）
+      _blobUrls: { preview: '', bg: '' },   // H5 端自己创建的 blob URL（换图/卸载时需 revoke）
       uploadedFileName: '',   // 文件名
 
       // 状态 B 数据
@@ -432,6 +433,9 @@ export default {
 
   onUnload() {
     this._clearTimers()
+    // 回收自己创建的 blob URL（不 revoke 会把原图一直留在内存里）
+    this._revokeBlobUrl('preview')
+    this._revokeBlobUrl('bg')
     // 拖动中途离开页面会漏掉 mouseup，必须在这里解绑 window 监听
     // #ifdef H5
     this._detachCompareWindowListeners()
@@ -503,8 +507,46 @@ export default {
         })
         return
       }
-      this.uploadedImage = picked.path || picked.file
+      this.uploadedImage = this._toDisplayUrl(picked, 'preview')
       this.uploadedFileName = fileName
+    },
+
+    /**
+     * 把 pickFiles 的结果转成**可直接显示/使用的 URL 字符串**。
+     *
+     * <p>为什么需要转：H5 端 pickFiles 走原生 {@code <input type="file">}，
+     * 给的是**原生 File 对象**；而本页的 uploadedImage / bgImage 要被
+     * {@code <image :src>}、{@code backgroundImage: url()}、
+     * {@code uni.getImageInfo()}、canvas 的 drawImage 用 —— **都只认 URL 字符串**。
+     * 非 H5 端（小程序/App）pickFiles 给的是临时路径，本来就能直接用。
+     *
+     * @param {Object} picked pickFiles 返回的单个文件
+     * @param {String} slot   'preview'（原图）| 'bg'（背景图），决定记到哪个字段以便回收
+     * @returns {String} URL 字符串（取不到时为空串）
+     */
+    _toDisplayUrl(picked, slot) {
+      if (!picked) return ''
+      if (picked.path) return picked.path
+      if (picked.file && typeof URL !== 'undefined' && URL.createObjectURL) {
+        const url = URL.createObjectURL(picked.file)
+        // 换图时把上一个 blob URL 回收掉，否则原图会一直留在内存里
+        this._revokeBlobUrl(slot)
+        this._blobUrls[slot] = url
+        return url
+      }
+      return ''
+    },
+
+    /**
+     * 回收 blob URL（避免换图多次后内存里堆积原图）。
+     * <p>blob URL 不会自动释放，不 revoke 就等于把原图一直留在内存里。
+     */
+    _revokeBlobUrl(slot) {
+      const url = this._blobUrls[slot]
+      if (url && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+        try { URL.revokeObjectURL(url) } catch (e) { /* ignore */ }
+      }
+      this._blobUrls[slot] = ''
     },
 
     previewOriginal() {
@@ -618,6 +660,12 @@ export default {
     _pollBatch(batchId) {
       return new Promise((resolve, reject) => {
         let since = 0
+        // ⚠️ 增量结果**必须累计**：
+        //   后端按「已收到的条数」裁剪（since=N → 跳过前 N 个），
+        //   所以最后一轮（终态）返回的 results 往往是**空数组**——
+        //   产物已经在前面某轮被裁掉了。
+        //   不累计就只读到最后一轮的空数组 → 「后端产物暂未回传」。
+        const collected = []
         const tick = async () => {
           try {
             const res = await pollBatchCompleted(batchId, since)
@@ -632,21 +680,22 @@ export default {
               this.progress = Math.max(this.progress, Math.floor(ratio * 90))
             }
 
-            // 推进 since（增量拉取）
+            // 推进 since（增量拉取），并把新到的结果**累计**下来
             if (Array.isArray(data.results)) {
+              collected.push(...data.results)
               since += data.results.length
             }
 
             // 终态判断
             if (data.status === 2) {
-              this._onBatchCompleted(data)
+              this._onBatchCompleted(data, collected)
               resolve()
             } else if (data.status === 3 || data.status === 4) {
               const ok = data.successCount || 0
               const total = data.fileCount || 1
               if (ok > 0) {
                 // 部分成功：仍按完成处理
-                this._onBatchCompleted(data)
+                this._onBatchCompleted(data, collected)
                 resolve()
               } else {
                 throw new Error('处理失败，请重试')
@@ -663,15 +712,20 @@ export default {
       })
     },
 
-    _onBatchCompleted(data) {
+    /**
+     * 批量完成：取出产物 URL。
+     *
+     * @param data      本轮响应
+     * @param collected **历轮累计**的结果（后端按 since 裁剪，终态那一轮往往是空的）
+     */
+    _onBatchCompleted(data, collected) {
       this._clearTimers()
       this.progress = 100
 
-      // image-bg-remover 当前 resultSummary 写死为 "[]"，fileUrl 不会出现在 results 里；
-      // 产物落库到 sys_tool_output（toolCode='image-bg-remover'）但暂无按 batchId 查 fileUrl 的接口。
-      // 兼容解析：若 results 里有 fileUrl / output 字段则使用；否则 transparentPng 留空，
-      // 状态 C 仍可进入（实时预览显示「暂无合成结果」+ 提示后端补全接口）。
-      const results = (data && data.results) || []
+      // image-bg-remover 的 resultSummary 写死为 "[]"，产物走 sys_tool_output，
+      // 由后端在回退分支里按 batchId 反查并塞进 results（带 fileUrl）。
+      // ⚠️ 必须用**累计**的结果：后端按 since 裁剪，终态那一轮返回的 results 是空的。
+      const results = (collected && collected.length) ? collected : ((data && data.results) || [])
       const first = results[0] || null
 
       let url = ''
@@ -806,6 +860,7 @@ export default {
       }
       // 切底色时清掉背景图（同时只能一个生效，UX 更清晰）
       this.bgImage = null
+      this._revokeBlobUrl('bg')
     },
 
     async onUploadBg() {
@@ -826,13 +881,15 @@ export default {
         return
       }
       const picked = res.files[0]
-      this.bgImage = picked.path || picked.file
+      // 背景图同样要 URL 字符串（<image :src> / backgroundImage:url() / getImageInfo）
+      this.bgImage = this._toDisplayUrl(picked, 'bg')
       this.currentBgColor = ''
     },
 
     onClearOverlay() {
       this.currentBgColor = ''
       this.bgImage = null
+      this._revokeBlobUrl('bg')
     },
 
     // ==================== 状态 C：物体调整（D2） ====================
@@ -1341,6 +1398,9 @@ export default {
       this.transparentPng = null
       this.currentBgColor = ''
       this.bgImage = null
+      // 重置会丢掉原图与背景图 → 对应的 blob URL 必须回收，否则原图一直留在内存里
+      this._revokeBlobUrl('preview')
+      this._revokeBlobUrl('bg')
       this.batchId = null
       this.progress = 0
       // 重置物体调整
