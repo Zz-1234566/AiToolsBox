@@ -1,3 +1,4 @@
+import { STORAGE_KEYS } from '@/utils/auth'
 import { ERROR_CODE, ERROR_MESSAGE } from './errorCode'
 import { BASE_URL } from '../config/env'
 import { handleBusiness401, handleAuthError } from '../utils/auth-error-handler'
@@ -30,7 +31,7 @@ const resolveErrorMessage = (data, fallback) => {
  */
 export const request = (options) => {
   return new Promise((resolve, reject) => {
-    const token = uni.getStorageSync('token')
+    const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
     const headers = {
       'Content-Type': 'application/json',
       ...options.header
@@ -87,7 +88,7 @@ export const request = (options) => {
  */
 export const uploadFile = (url, filePath, name = 'file', formData = {}) => {
   return new Promise((resolve, reject) => {
-    const token = uni.getStorageSync('token')
+    const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
     const headers = {}
     if (token) {
       headers['Authorization'] = 'Bearer ' + token
@@ -137,7 +138,7 @@ export const uploadFile = (url, filePath, name = 'file', formData = {}) => {
  */
 export const uploadWithFormData = (url, filePath, formData = {}, name = 'image') => {
   return new Promise((resolve, reject) => {
-    const token = uni.getStorageSync('token')
+    const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
     const header = {}
     if (token) {
       header['Authorization'] = 'Bearer ' + token

@@ -7,13 +7,15 @@
  * 行为：业务 401 与 HTTP 401 完全一致（都跳登录）
  */
 
+import { STORAGE_KEYS } from './auth'
+
 /** 单一来源：清登录态 + Toast + 跳登录页 */
 export const handleAuthError = (message, options = {}) => {
   const { showToast = true, redirectToLogin = true } = options
 
   // 1) 清登录态
-  uni.removeStorageSync('token')
-  uni.removeStorageSync('userInfo')
+  uni.removeStorageSync(STORAGE_KEYS.TOKEN)
+  uni.removeStorageSync(STORAGE_KEYS.USER_INFO)
 
   // 2) Toast
   if (showToast) {

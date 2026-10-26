@@ -178,7 +178,7 @@ import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/PageHeader.vue'
 import { initTheme, toggleTheme as doToggleTheme } from '@/utils/theme'
-import { requireLogin } from '@/utils/auth'
+import { requireLogin, STORAGE_KEYS } from '@/utils/auth'
 import { logoutApi } from '@/api/user'
 import { getBaseUrl, setBaseUrl, resetBaseUrl } from '@/config/env'
 
@@ -194,7 +194,7 @@ const serverUrl = ref(getBaseUrl())
 onShow(() => {
   serverUrl.value = getBaseUrl()
   if (!requireLogin()) return
-  isLoggedIn.value = !!uni.getStorageSync('token')
+  isLoggedIn.value = !!uni.getStorageSync(STORAGE_KEYS.TOKEN)
 })
 
 /**
@@ -295,8 +295,8 @@ const handleLogout = () => {
       } finally {
         uni.hideLoading()
       }
-      uni.removeStorageSync('token')
-      uni.removeStorageSync('userInfo')
+      uni.removeStorageSync(STORAGE_KEYS.TOKEN)
+      uni.removeStorageSync(STORAGE_KEYS.USER_INFO)
       isLoggedIn.value = false
       // 通知其他页面（如「我的」）刷新登录状态
       uni.$emit('loginStatusChanged')

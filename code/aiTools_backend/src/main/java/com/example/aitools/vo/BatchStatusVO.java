@@ -189,7 +189,13 @@ public class BatchStatusVO {
         for (int i = 0; i < slice.size(); i++) {
             BatchFileResult r = slice.get(i);
             ResultItem item = toItem(r);
-            int fileIdx = fromIdx + i;
+            // 匹配产物用 **result_summary 里自带的序号**（BatchFileResult.index，1-based）换算成
+            // 0-based 位置，而不是「数组下标 fromIdx + i」。
+            // 两者只在「每个文件都恰好在 result_summary 里占一位」时相等；
+            // 一旦 result_summary 缺项（落库失败 / 历史数据），下标就会与真实文件位置错位，
+            // 导致产物挂到错误的文件上。取不到 index 时才回退到下标。
+            Integer idx = r.getIndex();
+            int fileIdx = (idx != null && idx > 0) ? idx - 1 : fromIdx + i;
             ToolOutputVO match = findByFileIndex(safeOutputs, fileIdx);
             if (match != null) {
                 mergeOutput(item, match);

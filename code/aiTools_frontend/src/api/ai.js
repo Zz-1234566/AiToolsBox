@@ -1,3 +1,4 @@
+import { STORAGE_KEYS } from '@/utils/auth'
 import { uploadFile, uploadWithFormData, request } from './request'
 import { BASE_URL } from '../config/env'
 
@@ -63,7 +64,7 @@ const batchCreate = (url, files, fields = {}) => {
     Object.keys(fields).forEach((k) => {
       if (fields[k] != null && fields[k] !== '') formData.append(k, String(fields[k]))
     })
-    const token3 = uni.getStorageSync('token')
+    const token3 = uni.getStorageSync(STORAGE_KEYS.TOKEN)
     const xhr = new XMLHttpRequest()
     xhr.open('POST', BASE_URL() + url, true)
     // 不手动设 Content-Type，让浏览器自动加 multipart boundary
@@ -83,8 +84,8 @@ const batchCreate = (url, files, fields = {}) => {
           reject(new Error('响应解析失败: ' + e.message))
         }
       } else if (xhr.status === 401) {
-        uni.removeStorageSync('token')
-        uni.removeStorageSync('userInfo')
+        uni.removeStorageSync(STORAGE_KEYS.TOKEN)
+        uni.removeStorageSync(STORAGE_KEYS.USER_INFO)
         reject(new Error('登录已过期'))
       } else {
         let msg = '创建批量任务失败 (HTTP ' + xhr.status + ')'
@@ -115,7 +116,7 @@ const batchCreate = (url, files, fields = {}) => {
     // ② 小程序：uploadFile 不支持 files 数组，且小程序端暂未开通 → 见下方分支。
 
     // #ifdef APP-PLUS
-    const token2 = uni.getStorageSync('token')
+    const token2 = uni.getStorageSync(STORAGE_KEYS.TOKEN)
     const header2 = token2 ? { 'Authorization': 'Bearer ' + token2 } : {}
     const uploadFiles = fileItems.map((f) => {
       const uri = (f && (f.uri || f.path || f.filePath)) || ''
@@ -238,7 +239,7 @@ export const transcribeMeeting = (filePath, opts = {}) => {
 // #ifdef H5
 // H5 端专用：dataURL / Blob / File → multipart/form-data → fetch
 async function transcribeMeetingH5(filePath, opts = {}) {
-  const token = uni.getStorageSync('token')
+  const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
   const headers = {}
   if (token) headers.Authorization = 'Bearer ' + token
 

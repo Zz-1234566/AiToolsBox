@@ -46,6 +46,7 @@
 </template>
 
 <script setup>
+import { STORAGE_KEYS } from '@/utils/auth'
 import { ref, nextTick } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { request } from '../api/request'
@@ -73,10 +74,10 @@ const triggerShake = (field) => {
 
 const applyPendingAccount = () => {
   // storage 兜底（注册成功 / 找回账号后回填账号）
-  const pending = uni.getStorageSync('pendingAccount')
+  const pending = uni.getStorageSync(STORAGE_KEYS.PENDING_ACCOUNT)
   if (pending) {
     form.value.account = pending
-    uni.removeStorageSync('pendingAccount')
+    uni.removeStorageSync(STORAGE_KEYS.PENDING_ACCOUNT)
   }
 }
 
@@ -117,8 +118,8 @@ const handleLogin = async () => {
     })
 
     // 存储 token 和用户信息
-    uni.setStorageSync('token', res.data.token)
-    uni.setStorageSync('userInfo', res.data.userInfo)
+    uni.setStorageSync(STORAGE_KEYS.TOKEN, res.data.token)
+    uni.setStorageSync(STORAGE_KEYS.USER_INFO, res.data.userInfo)
     // 通知其他页面（如“我的”Tab）登录状态已变化
     uni.$emit('loginStatusChanged')
     uni.showToast({ title: '登录成功', icon: 'success' })

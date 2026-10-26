@@ -1,6 +1,25 @@
 import { base64Decode } from './base64'
 
 /**
+ * 本地存储（storage）的 key —— **全项目唯一定义处**。
+ *
+ * <p>storage key 是**跨模块共享契约**：`auth.js` 写、`request.js` 读、
+ * `auth-error-handler.js` 删、`settings.vue` 清登录态。
+ * 散落成字面量时，改一处漏一处就会出现
+ * 「写的是 `'Token'`、读的是 `'token'`」→ **登录态诡异失效，且极难排查**。
+ *
+ * <p>新增 key 时加到这里，并同步检查所有读写点。
+ */
+export const STORAGE_KEYS = {
+  /** 登录 token（JWT） */
+  TOKEN: 'token',
+  /** 登录用户信息（含 id / account / username / avatar / role） */
+  USER_INFO: 'userInfo',
+  /** 忘记密码 / 注册流程中暂存的账号（登录页 onShow 读取并清空） */
+  PENDING_ACCOUNT: 'pendingAccount'
+}
+
+/**
  * 解析 JWT 的 payload 部分（base64url 解码）
  * @param {String} token
  * @returns {Object|null} payload 对象，解析失败返回 null
@@ -37,12 +56,12 @@ const isTokenValid = (token) => {
  * @param {Boolean} redirect 是否跳转登录页
  */
 export const requireLogin = (redirect = true) => {
-  const token = uni.getStorageSync('token')
+  const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
   if (isTokenValid(token)) return true
 
   // token 不存在或已过期，清除登录态
-  uni.removeStorageSync('token')
-  uni.removeStorageSync('userInfo')
+  uni.removeStorageSync(STORAGE_KEYS.TOKEN)
+  uni.removeStorageSync(STORAGE_KEYS.USER_INFO)
 
   if (redirect) {
     uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
@@ -59,6 +78,6 @@ export const requireLogin = (redirect = true) => {
  * @returns {Boolean}
  */
 export const isAdmin = () => {
-  const userInfo = uni.getStorageSync('userInfo')
+  const userInfo = uni.getStorageSync(STORAGE_KEYS.USER_INFO)
   return !!(userInfo && userInfo.role === 'admin')
 }

@@ -71,7 +71,7 @@
     </view>
 
     <!-- 注册成功弹层 -->
-    <view v-if="showSuccess" class="success-mask">
+    <view v-if="showSuccess" class="success-mask" @touchmove.stop.prevent="onNoop">
       <view class="success-card">
         <view class="success-icon">✓</view>
         <text class="success-title">注册成功</text>
@@ -85,6 +85,7 @@
 </template>
 
 <script setup>
+import { STORAGE_KEYS } from '@/utils/auth'
 import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { safeBack } from '@/utils/pageTransition'
 import { request } from '../api/request'
@@ -127,6 +128,15 @@ const triggerShake = (field) => {
 }
 
 // 发送邮箱验证码：校验邮箱后触发 60s 倒计时
+/**
+ * 空处理函数：只为了给遮罩加 `@touchmove.stop.prevent`。
+ *
+ * 遮罩层若不锁住 touchmove，用户在遮罩空白处上下拖动会**连带滚动底层页面**，
+ * 弹层内容相对遮罩发生位移（真机廉价感最明显的表现之一）。
+ * 范式同 pages/image-bg-remover.vue。
+ */
+const onNoop = () => {}
+
 const handleSendCode = async () => {
   if (countdown.value > 0 || sendingCode.value) return
   if (!form.value.email) {
@@ -225,7 +235,7 @@ const handleRegister = async () => {
 
 const goToLogin = () => {
   // 用 storage 兜底保存账号
-  uni.setStorageSync('pendingAccount', registeredAccount.value)
+  uni.setStorageSync(STORAGE_KEYS.PENDING_ACCOUNT, registeredAccount.value)
   uni.navigateTo({ url: `/pages/login?account=${registeredAccount.value}` })
 }
 

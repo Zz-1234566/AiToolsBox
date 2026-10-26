@@ -1,3 +1,4 @@
+import { STORAGE_KEYS } from '@/utils/auth'
 import { BASE_URL } from '../config/env'
 import { handleAuthError } from '../utils/auth-error-handler'
 import { getSseEmitter, setSseCallbacks } from '../utils/sseBridge'
@@ -131,7 +132,7 @@ export const streamRaw = (options) => {
 
 /** H5 原始流：原生 XHR */
 const streamRawH5 = (options) => {
-  const token = uni.getStorageSync('token')
+  const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
   const xhr = new XMLHttpRequest()
   xhr.open('POST', BASE_URL() + options.url, true)
   xhr.setRequestHeader('Content-Type', 'application/json')
@@ -172,7 +173,7 @@ const streamRawApp = (options) => {
     if (options.onError) options.onError(new Error('流式组件未就绪，请返回上一页重试'))
     return () => {}
   }
-  const token = uni.getStorageSync('token')
+  const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
   const reqId = 'sse-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
 
   setSseCallbacks(reqId, {

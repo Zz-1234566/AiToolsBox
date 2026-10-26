@@ -43,6 +43,7 @@
 </template>
 
 <script setup>
+import { STORAGE_KEYS } from '@/utils/auth'
 import { ref, nextTick } from 'vue'
 import { findAccountApi } from '@/api/user'
 import { safeBack } from '@/utils/pageTransition'
@@ -90,7 +91,7 @@ const handleFind = async () => {
 const goToLogin = () => {
   // 回填账号：登录页 onShow 会读取 pendingAccount
   if (result.value) {
-    uni.setStorageSync('pendingAccount', result.value.account)
+    uni.setStorageSync(STORAGE_KEYS.PENDING_ACCOUNT, result.value.account)
   }
   goBack()
 }

@@ -539,6 +539,27 @@ grep -rnE "uni\.choose(Image|MessageFile|File)\(" src/ --include=*.vue --include
 #    Windows 下 grep 输出的路径分隔符是 \，按 / 过滤会漏掉。
 ```
 
+### 13.1.2 本地存储 key（storage key）
+
+**storage key 必须用 `utils/auth.js` 的 `STORAGE_KEYS`**，不要写字符串字面量。
+
+storage key 是**跨模块共享契约**：`auth.js` 写、`request.js` 读、`auth-error-handler.js` 删、
+`settings.vue` 清登录态。散落成字面量时，改一处漏一处就会出现
+「写的是 `'Token'`、读的是 `'token'`」→ **登录态诡异失效，且极难排查**（要等到下次登录才发现）。
+
+| 常量 | 值 | 用途 |
+|---|---|---|
+| `STORAGE_KEYS.TOKEN` | `'token'` | 登录 token（JWT） |
+| `STORAGE_KEYS.USER_INFO` | `'userInfo'` | 登录用户信息（含 role） |
+| `STORAGE_KEYS.PENDING_ACCOUNT` | `'pendingAccount'` | 忘记密码/注册流程暂存账号 |
+
+**提交前自检**：
+```bash
+cd code/aiTools_frontend
+grep -rnE "(get|set|remove)StorageSync\('(token|userInfo|pendingAccount)'\)" src/ --include=*.vue --include=*.js
+# 预期：无输出
+```
+
 ### 13.2 keep-alive 与页面状态（**最隐蔽的坑**）
 
 `uni-h5` 用 `<KeepAlive>` 包 `RouterView`，缓存 key = `path + getStateId()`，**不含 query**。后果：

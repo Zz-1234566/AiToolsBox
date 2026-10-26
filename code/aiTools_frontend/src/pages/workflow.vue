@@ -60,7 +60,7 @@
     </block>
 
     <!-- 加载遮罩：只盖不卸载，保证列表节点（及其文档高度）在刷新期间始终存在 -->
-    <view v-if="loading" class="wf-loading-mask">
+    <view v-if="loading" class="wf-loading-mask" @touchmove.stop.prevent="onNoop">
       <text class="wf-loading-mask__text">加载中…</text>
     </view>
 
@@ -71,7 +71,7 @@
       用 --kb 把弹层抬到键盘上方，保证输入框与「开始运行」按钮始终可见可点。
       H5/小程序该变量为 0，行为与原来一致。
     -->
-    <view v-if="runVisible" class="mask" :style="{ '--kb': keyboardHeight + 'px' }" @click="runVisible = false">
+    <view v-if="runVisible" class="mask" :style="{ '--kb': keyboardHeight + 'px' }" @click="runVisible = false" @touchmove.stop.prevent="onNoop">
       <view class="sheet" @click.stop>
         <text class="sheet__title">运行：{{ runTarget && runTarget.name }}</text>
         <text class="sheet__desc">请为以下起始节点提供输入</text>
@@ -118,7 +118,7 @@
     </view>
 
     <!-- ============ 历史弹窗 ============ -->
-    <view v-if="runsVisible" class="mask" @click="runsVisible = false">
+    <view v-if="runsVisible" class="mask" @click="runsVisible = false" @touchmove.stop.prevent="onNoop">
       <view class="sheet" @click.stop>
         <text class="sheet__title">运行历史</text>
         <scroll-view scroll-y class="sheet__body">
@@ -195,6 +195,15 @@ import {
   nodeIconPath, fileDisplayName, openFile, durationText
 } from '@/utils/workflowView'
 import { useKeyboardHeight } from '@/utils/keyboardHeight'
+
+/**
+ * 空处理函数：只为了给遮罩加 `@touchmove.stop.prevent`。
+ *
+ * 遮罩层若不锁住 touchmove，用户在遮罩空白处上下拖动会**连带滚动底层页面**，
+ * 弹层内容相对遮罩发生位移（真机廉价感最明显的表现之一）。
+ * 范式同 pages/image-bg-remover.vue。
+ */
+const onNoop = () => {}
 
 const workflows = ref([])
 const loading = ref(false)

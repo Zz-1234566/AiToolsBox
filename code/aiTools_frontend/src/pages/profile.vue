@@ -53,7 +53,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import { updateProfileApi } from '@/api/user'
 import { uploadFileApi } from '@/api/ai'
 import { ERROR_CODE } from '@/api/errorCode'
-import { requireLogin } from '@/utils/auth'
+import { requireLogin, STORAGE_KEYS } from '@/utils/auth'
 
 const account = ref('')
 const username = ref('')
@@ -64,7 +64,7 @@ const uploading = ref(false)
 // 从本地缓存读取当前用户信息
 onShow(() => {
   if (!requireLogin()) return
-  const userInfo = uni.getStorageSync('userInfo')
+  const userInfo = uni.getStorageSync(STORAGE_KEYS.USER_INFO)
   if (userInfo) {
     account.value = userInfo.account || ''
     username.value = userInfo.username || ''
@@ -125,7 +125,7 @@ const handleSave = async () => {
       avatar: avatar.value
     })
     // 同步更新本地缓存的用户信息
-    uni.setStorageSync('userInfo', res.data)
+    uni.setStorageSync(STORAGE_KEYS.USER_INFO, res.data)
     uni.$emit('loginStatusChanged')
     uni.showToast({ title: '保存成功', icon: 'success' })
     setTimeout(() => {

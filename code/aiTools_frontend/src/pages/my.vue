@@ -45,6 +45,7 @@
 </template>
 
 <script setup>
+import { STORAGE_KEYS } from '@/utils/auth'
 import { themeStyle } from '@/utils/theme'
 import { ref, computed } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
@@ -60,7 +61,7 @@ const initials = computed(() => {
 const isLoggedIn = () => !!userInfo.value
 
 const loadUserInfo = () => {
-  userInfo.value = uni.getStorageSync('userInfo') || null
+  userInfo.value = uni.getStorageSync(STORAGE_KEYS.USER_INFO) || null
 }
 
 const go = (url) => uni.navigateTo({ url })

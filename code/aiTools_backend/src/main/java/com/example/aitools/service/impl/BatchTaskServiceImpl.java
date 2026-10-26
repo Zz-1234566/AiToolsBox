@@ -87,6 +87,11 @@ public class BatchTaskServiceImpl implements BatchTaskService {
                .set(BatchTask::getStatus, status)
                .set(BatchTask::getSuccessCount, successCount)
                .set(BatchTask::getFailCount, failCount)
+               // processed_index 一并写终值：它是前端进度条的数据源
+               // （batchProgress = res.processedIndex || since）。
+               // 平时由 appendItem 逐个 +1，但**那次更新失败就永久少算**，
+               // 导致任务已完成、进度条却停在 2/3。终态用真实计数覆盖，保证自洽。
+               .set(BatchTask::getProcessedIndex, successCount + failCount)
                .set(BatchTask::getResultSummary, resultSummaryJson)
                .set(BatchTask::getErrorMsg, errorMsg)
                .set(BatchTask::getFinishedAt, LocalDateTime.now());

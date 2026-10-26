@@ -74,7 +74,7 @@
       用 --kb 把弹层抬到键盘上方，保证输入框与「保存/取消」始终可见可点。
       H5/小程序该变量为 0，行为与原来一致。
     -->
-    <view v-if="showModal" class="modal-mask" :style="{ '--kb': keyboardHeight + 'px' }" @click="closeModal">
+    <view v-if="showModal" class="modal-mask" :style="{ '--kb': keyboardHeight + 'px' }" @click="closeModal" @touchmove.stop.prevent="onNoop">
       <view class="modal-card" @click.stop>
         <text class="modal-title">{{ modalTitle }}</text>
 
@@ -205,6 +205,15 @@ const fetchToolList = async () => {
     selectedToolCode.value = firstRealized || (firstAvailable && firstAvailable.toolCode) || ''
   }
 }
+
+/**
+ * 空处理函数：只为了给遮罩加 `@touchmove.stop.prevent`。
+ *
+ * 遮罩层若不锁住 touchmove，用户在遮罩空白处上下拖动会**连带滚动底层页面**，
+ * 弹层内容相对遮罩发生位移（真机廉价感最明显的表现之一）。
+ * 范式同 pages/image-bg-remover.vue。
+ */
+const onNoop = () => {}
 
 const onPickTool = (tool) => {
   selectedToolCode.value = tool.toolCode

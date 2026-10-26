@@ -1,5 +1,5 @@
 <template>
-  <view v-if="show" class="prompt-drawer-mask" :style="themeStyle" @click="close">
+  <view v-if="show" class="prompt-drawer-mask" :style="themeStyle" @click="close" @touchmove.stop.prevent="onNoop">
     <view class="prompt-drawer" @click.stop>
       <!-- 顶部 header -->
       <view class="prompt-drawer__header">
@@ -141,6 +141,15 @@ const selectedItem = computed(() => {
 })
 
 // 点列表项 → 设置预览
+/**
+ * 空处理函数：只为了给遮罩加 `@touchmove.stop.prevent`。
+ *
+ * 遮罩层若不锁住 touchmove，用户在遮罩空白处上下拖动会**连带滚动底层页面**，
+ * 弹层内容相对遮罩发生位移（真机廉价感最明显的表现之一）。
+ * 范式同 pages/image-bg-remover.vue。
+ */
+const onNoop = () => {}
+
 const onPreview = (item) => {
   selectedId.value = item.id
 }

@@ -310,7 +310,7 @@ import { BASE_URL } from '@/config/env'
 import { onLoad, onUnload } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
 import { pickFiles } from '@/utils/filePicker'
-import { requireLogin } from '@/utils/auth'
+import { requireLogin, STORAGE_KEYS } from '@/utils/auth'
 import VueJsonPretty from 'vue-json-pretty'
 import 'vue-json-pretty/lib/styles.css'
 import { uploadFileApi, audioBatchUpload, batchCompleted, meetingMinutesDecideRoute, meetingMinutesJson } from '@/api/ai.js'
@@ -778,7 +778,7 @@ const runValidation = () => validate(toolId.value, currentInputType.value, {
   inputText: inputText.value,
   promptFormat: promptFormatText.value,
   promptGenerate: promptGenerateText.value,
-  token: !!uni.getStorageSync('token')
+  token: !!uni.getStorageSync(STORAGE_KEYS.TOKEN)
 })
 
 // 拉取系统格式提示词（只读展示用）
@@ -1483,7 +1483,12 @@ const pollBatchCompleted = async (batchId, toolCode) => {
     if (newItems.length) {
       batchCards.value = batchCards.value.concat(newItems)
       since += newItems.length
-      batchProgress.value = res.processedIndex || since
+      // 进度取「后端计数」与「客户端已收到条数」的较大值：
+      //   - 后端 processed_index 偶尔会少算（appendItem 那次更新失败就永久少算），
+      //     终态由 completeBatch 用真实计数纠正，但过程中可能偏小；
+      //   - since 是客户端权威已收条数。
+      // 取 max 保证进度**单调不减**，不会先显示 3/3 又退回 2/3。
+      batchProgress.value = Math.max(res.processedIndex || 0, since)
     }
     // 终态：status 2=COMPLETED 3=PARTIAL 4=FAILED
     const status = res.status
@@ -1572,7 +1577,7 @@ const handleGenerate = async () => {
           name: 'file',
           // 录音转写透传引擎；文档转文本不带该字段
           formData: id === 'audio-transcribe' ? { engine: asrEngine.value } : {},
-          header: { Authorization: 'Bearer ' + (uni.getStorageSync('token') || '') },
+          header: { Authorization: 'Bearer ' + (uni.getStorageSync(STORAGE_KEYS.TOKEN) || '') },
           success: resolve,
           fail: reject
         })
@@ -1642,6 +1647,11 @@ const handleGenerate = async () => {
 </script>
 
 <style lang="scss" scoped>
+
+/* ⚠️ 以下两个遮罩样式（.prompt-drawer-mask / .prompt-mask）已删除：
+   抽屉已抽成独立组件 components/PromptPickerDrawer.vue，
+   它的样式在**组件自己的 scoped 块**里 —— 本页的 scoped 样式根本作用不到子组件，
+   留着只是误导（看着像本页的遮罩，实际不生效）。 */
 /* 全局 SVG 兜底：默认尺寸 + 跟随父颜色（避免父容器缺 size 时显示异常） */
 svg {
   width: 100%;
@@ -1709,15 +1719,7 @@ svg {
   margin-top: 8rpx;
 }
 
-/* ============ 抽屉式 prompt-picker 弹窗样式（按图 4：左列表 + 右预览） ============ */
-.prompt-drawer-mask {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
-  display: flex;
-  justify-content: flex-end;
-}
+
 .prompt-drawer {
   position: absolute;
   left: 0;
@@ -2048,272 +2050,7 @@ svg {
     line-height: 1.6;
   }
 }
-.prompt-mask {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-color: rgba(0,0,0,0.5);
-  z-index: 999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  
-  .prompt-picker {
-    width: 80%;
-    max-height: 70vh;
-    background-color: $bg-white;
-    border-radius: $radius-lg;
-    padding: $spacing-lg;
-    display: flex;
-    flex-direction: column;
-    
-    .prompt-picker-title {
-      font-size: $font-size-lg;
-      font-weight: 600;
-      color: $text-primary;
-      text-align: center;
-      margin-bottom: $spacing-md;
-    }
 
-    // Tab 切换栏
-    .prompt-tabs {
-      display: flex;
-      border-bottom: 1rpx solid $divider-color;
-      margin-bottom: $spacing-sm;
-
-      .prompt-tab {
-        flex: 1;
-        text-align: center;
-        padding: $spacing-sm 0;
-        font-size: $font-size-sm;
-        color: $text-secondary;
-        position: relative;
-
-        &.active {
-          color: $text-primary;
-          font-weight: 600;
-
-          &::after {
-            content: '';
-            position: absolute;
-            left: 50%;
-            bottom: 0;
-            transform: translateX(-50%);
-            width: 40rpx;
-            height: 4rpx;
-            background-color: $text-primary;
-            border-radius: 2rpx;
-          }
-        }
-      }
-    }
-    
-    .prompt-picker-list {
-      max-height: 50vh;
-    }
-    
-    .prompt-group-title {
-      font-size: $font-size-sm;
-      color: $text-tertiary;
-      padding: $spacing-sm $spacing-md;
-    }
-    
-    .prompt-empty {
-      text-align: center;
-      padding: $spacing-xl 0;
-      color: $text-tertiary;
-      font-size: $font-size-sm;
-    }
-    
-    .prompt-picker-item {
-      padding: $spacing-md;
-      border-bottom: 1rpx solid $divider-color;
-      
-      .prompt-picker-text {
-        font-size: $font-size-sm;
-        color: $text-primary;
-        white-space: pre-wrap;
-      }
-    }
-
-    // ============ AI 生成 tab 样式 ============
-    .ai-gen-form {
-      padding: $spacing-sm $spacing-md;
-
-      .ai-gen-label {
-        display: block;
-        font-size: $font-size-sm;
-        color: $text-secondary;
-        margin-bottom: $spacing-xs;
-      }
-
-      .ai-gen-textarea {
-        width: 100%;
-        min-height: 160rpx;
-        background-color: $bg-color;
-        border-radius: $radius-md;
-        padding: $spacing-sm $spacing-md;
-        font-size: $font-size-sm;
-        color: $text-primary;
-        border: 2rpx solid $border-color;
-        box-sizing: border-box;
-      }
-
-      .ai-gen-btn {
-        width: 100%;
-        height: 80rpx;
-        margin-top: $spacing-md;
-        border-radius: $radius-pill;
-        background-color: $text-primary;
-        color: $bg-white;
-        font-size: $font-size-md;
-        font-weight: 500;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: none;
-
-        &[disabled] {
-          opacity: 0.5;
-        }
-      }
-
-      .ai-gen-preview {
-        margin-top: $spacing-md;
-
-        .ai-gen-preview-box {
-          background-color: $bg-color;
-          border-radius: $radius-md;
-          padding: $spacing-md;
-          max-height: 400rpx;
-          overflow-y: auto;
-          border: 1rpx solid $border-color;
-
-          .ai-gen-preview-text {
-            font-size: $font-size-sm;
-            color: $text-primary;
-            white-space: pre-wrap;
-            word-break: break-all;
-            line-height: 1.6;
-          }
-        }
-
-        .ai-gen-actions {
-          display: flex;
-          gap: $spacing-sm;
-          margin-top: $spacing-md;
-
-          .ai-gen-action-btn {
-            flex: 1;
-            height: 80rpx;
-            border-radius: $radius-pill;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: $font-size-sm;
-
-            &.secondary {
-              background-color: $bg-color;
-              color: $text-primary;
-              border: 1rpx solid $border-color;
-            }
-
-            &.primary {
-              background-color: $text-primary;
-              color: $bg-white;
-            }
-
-            &:active {
-              opacity: 0.8;
-            }
-          }
-        }
-      }
-    }
-    
-    .prompt-picker-close {
-      margin-top: $spacing-md;
-      text-align: center;
-      color: $text-secondary;
-      font-size: $font-size-sm;
-    }
-  }
-
-  // ============ "应用并保存"命名小窗样式 ============
-  .save-name-mask {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-
-    .save-name-modal {
-      width: 80%;
-      background-color: $bg-white;
-      border-radius: $radius-lg;
-      padding: $spacing-lg;
-      display: flex;
-      flex-direction: column;
-
-      .save-name-title {
-        font-size: $font-size-md;
-        font-weight: 600;
-        color: $text-primary;
-        margin-bottom: $spacing-xs;
-      }
-
-      .save-name-hint {
-        font-size: $font-size-xs;
-        color: $text-tertiary;
-        margin-bottom: $spacing-md;
-      }
-
-      .save-name-input {
-        width: 100%;
-        height: 80rpx;
-        background-color: $bg-color;
-        border-radius: $radius-md;
-        padding: 0 $spacing-md;
-        font-size: $font-size-sm;
-        color: $text-primary;
-        border: 1rpx solid $border-color;
-        box-sizing: border-box;
-        margin-bottom: $spacing-md;
-      }
-
-      .save-name-actions {
-        display: flex;
-        gap: $spacing-sm;
-
-        .save-name-btn {
-          flex: 1;
-          height: 80rpx;
-          border-radius: $radius-pill;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: $font-size-sm;
-
-          &.secondary {
-            background-color: $bg-color;
-            color: $text-primary;
-            border: 1rpx solid $border-color;
-          }
-
-          &.primary {
-            background-color: $text-primary;
-            color: $bg-white;
-          }
-
-          &:active {
-            opacity: 0.8;
-          }
-        }
-      }
-    }
-  }
-}
 
 .action-section {
   margin-bottom: $spacing-md;

@@ -1,3 +1,4 @@
+import { STORAGE_KEYS } from '@/utils/auth'
 import { request } from './request'
 
 // 从 storage / token 拿当前用户 id（不依赖后端 token 解析，后端 /api/history/list 直接收 userId 入参）
@@ -5,7 +6,7 @@ import { request } from './request'
 //   - 兜底从 storage 取
 function _resolveUserId() {
   try {
-    const u = uni.getStorageSync('userInfo')
+    const u = uni.getStorageSync(STORAGE_KEYS.USER_INFO)
     if (u && u.id) return u.id
     if (u && u.userId) return u.userId
   } catch (e) { /* 静默 */ }

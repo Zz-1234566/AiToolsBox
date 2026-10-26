@@ -236,7 +236,10 @@ onMounted(loadList)
   /* App 端键盘高度（px）：iOS webview 不因键盘 resize，键盘盖住页面底部 →
      「保存」按钮被挡。这里加同等底部内边距，多出一段可滚动空间，
      用户可把按钮滚到键盘上方。H5/小程序该变量为 0，行为不变。 */
-  padding-bottom: calc(60rpx + var(--kb, 0px));
+  /* 底部再叠加 env(safe-area-inset-bottom)：iOS Home 指示条高 34px，
+     而 60rpx(=30px) 不足以避开它 → 「保存」按钮会被压住。
+     范式同 tool-common.vue / PromptPickerDrawer.vue。 */
+  padding-bottom: calc(60rpx + env(safe-area-inset-bottom, 0px) + var(--kb, 0px));
 }
 
 // 复用 redesign-card（背景白 + 圆角 24rpx + 轻阴影）—— 不 import，全局类在 scoped 不生效
