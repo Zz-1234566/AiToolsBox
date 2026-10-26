@@ -36,6 +36,20 @@ public interface WorkflowService {
     void runStream(Long userId, String workflowId, WorkflowRunRequest request,
                    org.springframework.web.servlet.mvc.method.annotation.SseEmitter onEmitter);
 
+    /**
+     * <b>节点重跑</b>（流式，SSE）：以指定节点为起点，用它上游的**已有产物**
+     * 重跑该节点及其下游；上游节点不重新执行。
+     *
+     * <p>多文件支持：上游产物按文件顺序存储，重跑按同样的文件顺序逐个进行。
+     * <p>产生新的 run 记录（便于审计），node_results 自包含（含上游结果）。
+     * <p>前提：上一轮必须已跑完并落库（node_results 只在整轮结束时一次性写入）。
+     *
+     * @param onEmitter 由调用方创建并配置好的 SseEmitter
+     */
+    void runStreamResume(Long userId, String workflowId,
+                         com.example.aitools.workflow.dto.WorkflowResumeRequest request,
+                         org.springframework.web.servlet.mvc.method.annotation.SseEmitter onEmitter);
+
     /** 运行历史列表（当前用户，按时间倒序） */
     List<WorkflowRunVO> listRuns(Long userId, String workflowId, int limit);
 

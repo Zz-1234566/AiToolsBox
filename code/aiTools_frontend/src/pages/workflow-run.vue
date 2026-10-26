@@ -125,6 +125,16 @@
                 class="wfr-node__test"
                 @click.stop="onTestNode(n)"
               >单独测试</view>
+              <!--
+                重跑：以上一轮的上游产物为输入，重跑**本节点及其下游**。
+                只在「本节点已经跑过（有终态）」且「本页有可续跑的 run」时出现 ——
+                没有上一轮就没有产物可复用，重跑无从谈起。
+              -->
+              <view
+                v-if="canResumeNode(n)"
+                class="wfr-node__test wfr-node__test--resume"
+                @click.stop="onResumeNode(n)"
+              >重跑</view>
             </view>
 
             <!-- 元信息行 -->
@@ -302,6 +312,12 @@ import { safeBack } from '@/utils/pageTransition'
 const mode = ref('run')            // run = 本次运行（SSE 实时） / detail = 历史回放
 const workflowId = ref('')
 const runId = ref('')
+/**
+ * 最近一次**实际执行**的 runId（由 run_start 帧写入）。
+ * <p>与 {@link runId} 的区别：runId 是「详情模式正在查看的那一轮」（来自 URL），
+ * lastRunId 是「本页刚跑出来的那一轮」—— 「节点重跑」要用后者作为续跑来源。
+ */
+const lastRunId = ref('')
 const loading = ref(false)
 const fatalError = ref('')
 
@@ -361,6 +377,38 @@ const canTestNode = (n) => hasToolDetailPage(n && n.nodeRef)
 const onTestNode = (n) => {
   if (!n || !n.nodeRef) return
   uni.navigateTo({ url: toolDetailUrl(n.nodeRef) })
+}
+
+/**
+ * 该节点能否「重跑」。
+ * <p>两个条件都要满足：
+ * <ol>
+ *   <li>本节点**已经跑过**（有终态）—— 没跑过的节点没有「上一轮产物」可复用；</li>
+ *   <li>本页有可续跑的 runId（上一轮跑出来了）。</li>
+ * </ol>
+ */
+const canResumeNode = (n) => {
+  if (!n) return false
+  if (!lastRunId.value) return false
+  return n._state === ST.DONE || n._state === ST.FAIL
+}
+
+/** 重跑：确认后从该节点开始续跑 */
+const onResumeNode = (n) => {
+  if (!n) return
+  if (!lastRunId.value) {
+    uni.showToast({ title: '还没有可重跑的运行记录，请先运行一次', icon: 'none' })
+    return
+  }
+  uni.showModal({
+    title: '重跑该节点？',
+    content: `将沿用上一轮「${n.name || n.nodeId}」之前节点的产物，重新执行本节点及其下游`,
+    confirmText: '重跑',
+    cancelText: '取消',
+    success: (r) => {
+      if (r.confirm) startResume(n.nodeId)
+    }
+  })
 }
 
 /* ==================== 节点状态推导 ==================== */
@@ -1033,16 +1081,24 @@ const startSync = async (inputs) => {
  * SSE 流式运行：逐帧接收，边跑边展示。
  * 帧类型：run_start / file_start / node_start / chunk / node_done / file_done / all_done / error
  */
-const startStream = (inputs) => {
+/**
+ * 发起一次 SSE 运行。
+ *
+ * <p><b>普通运行与「节点重跑」共用这一套帧解析</b>（帧类型完全一致：
+ * run_start / file_start / node_start / chunk / node_done / file_done / all_done / error）。
+ *
+ * @param {String} path         接口路径后缀：'/run/stream'（普通）或 '/run/resume'（重跑）
+ * @param {Object} body         请求体
+ * @param {Array}  names        文件显示名（按文件顺序；重跑时前端没有上一轮的文件名，传空数组走兜底）
+ * @param {Boolean} allowFallback 建连失败时是否允许降级到同步接口
+ *                              （**节点重跑不能降级** —— 同步接口会重跑整条链，不是重跑）
+ */
+const runStreamWith = (path, body, names, allowFallback) => {
   batchRun.value = false
   streamMode.value = true
-  const url = BASE_URL() + `/api/workflow/${workflowId.value}/run/stream`
+  const url = BASE_URL() + `/api/workflow/${workflowId.value}${path}`
 
-  // 每个文件的显示名（按源节点输入顺序，取用户上传时的文件名）
-  const fileNames = []
-  Object.keys(inputs).forEach((nodeId) => {
-    ;(inputs[nodeId] || []).forEach(f => fileNames.push(fileDisplayName(f)))
-  })
+  const fileNames = names || []
 
   let consumed = 0
   let buffer = ''
@@ -1055,6 +1111,8 @@ const startStream = (inputs) => {
     receivedAnyFrame = true
     const t = obj.type
     if (t === 'run_start') {
+      // 记下本轮 runId —— 「节点重跑」要用它作为「从哪一轮续跑」的来源
+      lastRunId.value = obj.runId || ''
       pushLog(`runId=${obj.runId}`, 'run', { i: '' })
     } else if (t === 'file_start') {
       const name = fileNames[obj.fileIndex] || ('文件 ' + (obj.fileIndex + 1))
@@ -1170,7 +1228,7 @@ const startStream = (inputs) => {
   // 所以不共用 createSseEventParser，沿用本页自己的 feed() 解析。
   const cancel = streamRaw({
     url,
-    data: { inputs, inputFileNames: inputFileNames.value || null },
+    data: body,
     onData: (text) => {
       lastText = text
       feed(text)
@@ -1193,8 +1251,8 @@ const startStream = (inputs) => {
       //   就会返 500，此时降级重跑必然重复调用 AI。故一律**不重试**，直接显示真实错误。
       //
       // receivedAnyFrame：已收到过帧 = 服务端已在执行，中断更不能重试。
-      if (status === 0 && !receivedAnyFrame) {
-        fallbackToSync(inputs, '实时进度不可用')
+      if (status === 0 && !receivedAnyFrame && allowFallback) {
+        fallbackToSync(body.inputs, '实时进度不可用')
         return
       }
       stopTimer()
@@ -1212,6 +1270,39 @@ const startStream = (inputs) => {
   // 保存取消函数（onUnmounted / resetRunState 用它中断请求）
   xhr = { abort: cancel }
   startTimer()
+}
+
+/** 普通运行（整条链从源节点跑一遍） */
+const startStream = (inputs) => {
+  // 每个文件的显示名（按源节点输入顺序，取用户上传时的文件名）
+  const names = []
+  Object.keys(inputs).forEach((nodeId) => {
+    ;(inputs[nodeId] || []).forEach(f => names.push(fileDisplayName(f)))
+  })
+  runStreamWith('/run/stream',
+    { inputs, inputFileNames: inputFileNames.value || null },
+    names, true)
+}
+
+/**
+ * 节点重跑：用**上一轮**的上游产物，重跑 fromNodeId 及其下游。
+ *
+ * <p>与普通运行的关键差异：
+ * <ul>
+ *   <li>只跑 fromNodeId 及其下游，上游节点**不执行**（直接复用上一轮产物）；</li>
+ *   <li>不降级到同步接口 —— 同步接口会重跑**整条链**，与「重跑某节点」的语义不符；</li>
+ *   <li>其他节点的终态**保留**（上游产物不动），只有被重跑的节点会重新进入 run 态。</li>
+ * </ul>
+ */
+const startResume = (fromNodeId) => {
+  if (!lastRunId.value) {
+    uni.showToast({ title: '还没有可重跑的运行记录', icon: 'none' })
+    return
+  }
+  pushLog(`重跑节点 ${fromNodeId}（沿用上一轮上游产物）`, 'run', { i: '↻' })
+  runStreamWith('/run/resume',
+    { runId: lastRunId.value, fromNodeId },
+    [], false)
 }
 
 /* ==================== 历史回放日志 ==================== */
@@ -1610,6 +1701,11 @@ const buildDetailLogs = (data) => {
 }
 .wfr-node__test:active {
   opacity: 0.6;
+}
+/* 「重跑」：与「单独测试」区分 —— 用主色描边，暗示「会再次执行」 */
+.wfr-node__test--resume {
+  border-color: var(--brand-primary, #3B82F6);
+  color: var(--brand-primary, #3B82F6);
 }
 .wfr-node__name {
   flex: 1;

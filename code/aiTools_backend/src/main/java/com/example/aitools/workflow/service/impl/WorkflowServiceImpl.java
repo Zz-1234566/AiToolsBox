@@ -253,70 +253,11 @@ public class WorkflowServiceImpl implements WorkflowService {
                         new java.util.concurrent.ConcurrentHashMap<>());
 
                 WorkflowEngine.ExecutionResult er = workflowEngine.executeWithProgress(
-                        plan, sourceInputs, new WorkflowEngine.ProgressListener() {
-                            @Override
-                            public void onFileStart(int fileIndex, int fileTotal) {
-                                sendEvent(emitter, Map.of("type", "file_start",
-                                        "fileIndex", fileIndex, "fileTotal", fileTotal));
-                            }
-
-                            @Override
-                            public void onNodeStart(String nodeId, String nodeRef, int fileIndex, int fileTotal) {
-                                Map<String, Object> m = new LinkedHashMap<>();
-                                m.put("type", "node_start");
-                                m.put("nodeId", nodeId);
-                                m.put("nodeRef", nodeRef);
-                                // 节点中文名（如「录音转写」）：取不到时为 null，
-                                // 前端据此回退用 nodeRef 反查，不编造「节点1」之类占位符
-                                m.put("nodeName", nodeNameMap.get(nodeId));
-                                m.put("fileIndex", fileIndex);
-                                m.put("fileTotal", fileTotal);
-                                sendEvent(emitter, m);
-                            }
-
-                            @Override
-                            public void onNodeChunk(String nodeId, int fileIndex, String chunk) {
-                                chunkedNodeIds.add(nodeId);
-                                Map<String, Object> m = new LinkedHashMap<>();
-                                m.put("type", "chunk");
-                                m.put("nodeId", nodeId);
-                                m.put("fileIndex", fileIndex);
-                                m.put("text", chunk);
-                                sendEvent(emitter, m);
-                            }
-
-                            @Override
-                            public void onNodeDone(String nodeId, int fileIndex, boolean ok, String output, String errMsg) {
-                                Map<String, Object> m = new LinkedHashMap<>();
-                                m.put("type", "node_done");
-                                m.put("nodeId", nodeId);
-                                // 同 node_start：带上节点中文名，前端无需再靠 nodeRef 反查
-                                m.put("nodeName", nodeNameMap.get(nodeId));
-                                m.put("fileIndex", fileIndex);
-                                m.put("ok", ok);
-                                m.put("errMsg", errMsg);
-                                // 非 text 节点没有 chunk 帧，这里带上完整输出，避免前端丢内容；
-                                // text 节点已通过 chunk 帧推送，front-end 自行拼接，故不带 output
-                                m.put("output", chunkedNodeIds.contains(nodeId) ? null : output);
-                                sendEvent(emitter, m);
-                            }
-
-                            @Override
-                            public void onFileDone(int fileIndex, int fileTotal, boolean ok) {
-                                sendEvent(emitter, Map.of("type", "file_done",
-                                        "fileIndex", fileIndex, "fileTotal", fileTotal, "ok", ok));
-                            }
-                        }, userId, run.getRunId(), sourceFileNames(request));
+                        plan, sourceInputs, buildProgressListener(emitter, nodeNameMap, chunkedNodeIds),
+                        userId, run.getRunId(), sourceFileNames(request));
 
                 // 4) 落库终态
-                run.setStatus(er.status);
-                run.setNodeResults(writeJson(er.nodeResults));
-                run.setSuccessCount(er.successCount);
-                run.setFailCount(er.failCount);
-                run.setMaxDepth(er.depth);
-                run.setDuration(er.duration);
-                run.setFinishedAt(LocalDateTime.now());
-                workflowRunMapper.updateById(run);
+                persistTerminal(run, er);
 
                 Map<String, Object> done = new LinkedHashMap<>();
                 done.put("type", "all_done");
@@ -367,6 +308,326 @@ public class WorkflowServiceImpl implements WorkflowService {
                 log.warn("[workflow] 池饱和错误帧推送失败（连接可能已关闭）", ex);
             }
         }
+    }
+
+    // ==================== 节点重跑（从某节点续跑）====================
+
+    /**
+     * 节点重跑（流式）：以指定节点为起点，用它上游的**已有产物**重跑该节点及其下游。
+     *
+     * <p><b>与整轮重跑的区别</b>：普通 {@code /run/stream} 会把整条链从源节点跑一遍；
+     * 本方法**跳过** {@code fromNodeId} 的所有上游节点，直接复用上一轮它们的产物作为输入。
+     *
+     * <p><b>多文件语义</b>：上游产物是**按文件顺序**的数组
+     * （与 {@code node_results[nodeId].outputs} 一致），重跑按同样的文件顺序逐个进行，
+     * 单文件 / 多文件都支持。
+     *
+     * <p><b>落库</b>：产生**新的 run 记录**（不复用旧记录，便于审计）；
+     * 新记录的 node_results 是**自包含**的（上游节点的结果一并带上）。
+     *
+     * <p><b>前提</b>：上一轮必须**已跑完并落库** —— {@code node_results} 只在整轮结束时
+     * 一次性写入，中途断掉的运行取不到中间产物。
+     */
+    @Override
+    public void runStreamResume(Long userId, String workflowId,
+                               com.example.aitools.workflow.dto.WorkflowResumeRequest request,
+                               org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter) {
+        if (request == null || request.getRunId() == null || request.getRunId().isBlank()) {
+            throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请指定要续跑的运行记录");
+        }
+        if (request.getFromNodeId() == null || request.getFromNodeId().isBlank()) {
+            throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "请指定要从哪个节点开始重跑");
+        }
+
+        // 1) 工作流与执行计划
+        Workflow wf = getOwned(userId, workflowId);
+        List<WorkflowNode> nodes = parseNodes(wf.getNodes());
+        WorkflowValidator.Plan plan = workflowValidator.validateAndPlan(nodes);
+
+        // 2) 上一轮运行记录（必须属于当前用户与当前工作流）
+        WorkflowRun prev = workflowRunMapper.selectOne(
+                new LambdaQueryWrapper<WorkflowRun>()
+                        .eq(WorkflowRun::getRunId, request.getRunId())
+                        .eq(WorkflowRun::getUserId, userId)
+                        .eq(WorkflowRun::getWorkflowId, workflowId)
+                        .eq(WorkflowRun::getDr, Constants.DR_NORMAL)
+                        .last("LIMIT 1"));
+        if (prev == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND.getCode(), "要续跑的运行记录不存在");
+        }
+        if (prev.getNodeResults() == null || prev.getNodeResults().isBlank()) {
+            throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(),
+                    "该运行没有节点结果（可能未跑完），无法重跑");
+        }
+
+        // 3) 解析上一轮的节点结果
+        Map<String, WorkflowNodeResult> prevResults;
+        try {
+            prevResults = objectMapper.readValue(prev.getNodeResults(),
+                    new TypeReference<LinkedHashMap<String, WorkflowNodeResult>>() {});
+        } catch (Exception e) {
+            log.error("[workflow] 解析上一轮 node_results 失败 runId={}", prev.getRunId(), e);
+            throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "该运行的节点结果无法解析");
+        }
+
+        // 4) 定位重跑节点，并收集它的**所有上游**（这些节点不执行，只取产物）
+        String fromNodeId = request.getFromNodeId();
+        int startLevel = -1;
+        for (int i = 0; i < plan.levels.size(); i++) {
+            for (WorkflowNode n : plan.levels.get(i)) {
+                if (fromNodeId.equals(n.getNodeId())) { startLevel = i; break; }
+            }
+            if (startLevel >= 0) break;
+        }
+        if (startLevel < 0) {
+            throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(),
+                    "工作流里已没有该节点（可能被删除或改过），无法重跑");
+        }
+
+        // 上游 = 该节点的所有传递依赖
+        Set<String> upstream = new LinkedHashSet<>();
+        collectUpstream(plan, fromNodeId, upstream);
+
+        // 5) 组装预置产物：上游节点的输出 + 上一轮的结果
+        WorkflowEngine.PresetOutputs preset = new WorkflowEngine.PresetOutputs();
+        for (String nodeId : upstream) {
+            WorkflowNodeResult old = prevResults.get(nodeId);
+            if (old == null || old.getOutputs() == null || old.getOutputs().isEmpty()) {
+                // 上游没跑出产物 → 无法重跑（要重跑上游，用户应该选更靠上的节点）
+                throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(),
+                        "上游节点「" + nodeNameOf(nodes, nodeId) + "」没有可用产物，无法重跑");
+            }
+            preset.outputs.put(nodeId, old.getOutputs());
+            preset.results.put(nodeId, old);
+        }
+
+        // 6) 源节点输入：默认沿用上一轮的输入快照
+        Map<String, List<String>> sourceInputs = (request.getInputs() != null && !request.getInputs().isEmpty())
+                ? request.getInputs()
+                : parseInputSnapshot(prev.getInputSnapshot());
+
+        // 7) 截断执行计划：从重跑节点所在层开始
+        WorkflowValidator.Plan resumed = new WorkflowValidator.Plan();
+        for (int i = startLevel; i < plan.levels.size(); i++) {
+            resumed.levels.add(plan.levels.get(i));
+            for (WorkflowNode n : plan.levels.get(i)) {
+                resumed.nodeMap.put(n.getNodeId(), n);
+            }
+        }
+
+        // 8) 建运行记录（RUNNING）—— 新记录，便于审计
+        WorkflowRun run = new WorkflowRun();
+        run.setRunId(UUID.randomUUID().toString().replace("-", ""));
+        run.setWorkflowId(workflowId);
+        run.setUserId(userId);
+        run.setStatus(WorkflowRunStatusEnum.RUNNING.getCode());
+        run.setSuccessCount(0);
+        run.setFailCount(0);
+        run.setMaxDepth(resumed.depth());
+        run.setDuration(0);
+        run.setInputSnapshot(writeJson(sourceInputs));
+        run.setInputFileNames(prev.getInputFileNames());
+        workflowRunMapper.insert(run);
+        log.info("[workflow] 节点重跑 workflowId={} userId={} fromNodeId={} prevRunId={} newRunId={} upstream={}",
+                workflowId, userId, fromNodeId, prev.getRunId(), run.getRunId(), upstream);
+
+        // 9) 异步执行 + 实时推送
+        try {
+            streamExecutor.execute(() -> {
+            try {
+                sendEvent(emitter, Map.of("type", "run_start", "runId", run.getRunId()));
+
+                final Map<String, String> nodeNameMap = buildNodeNameMap(nodes, workflowId);
+                java.util.Set<String> chunkedNodeIds = java.util.Collections.newSetFromMap(
+                        new java.util.concurrent.ConcurrentHashMap<>());
+
+                WorkflowEngine.ExecutionResult er = workflowEngine.executeWithProgress(
+                        resumed, sourceInputs, buildProgressListener(emitter, nodeNameMap, chunkedNodeIds),
+                        userId, run.getRunId(), parseFileNames(prev.getInputFileNames()), preset);
+
+                persistTerminal(run, er);
+
+                Map<String, Object> done = new LinkedHashMap<>();
+                done.put("type", "all_done");
+                done.put("runId", run.getRunId());
+                done.put("status", er.status);
+                done.put("successCount", er.successCount);
+                done.put("failCount", er.failCount);
+                done.put("duration", er.duration);
+                sendEvent(emitter, done);
+                emitter.complete();
+            } catch (Exception e) {
+                log.error("[workflow] 节点重跑异常 workflowId={} fromNodeId={}", workflowId, fromNodeId, e);
+                try {
+                    run.setStatus(WorkflowRunStatusEnum.FAILED.getCode());
+                    run.setErrorMsg(ResultCode.WORKFLOW_RUN_FAILED.getMessage());
+                    run.setFinishedAt(LocalDateTime.now());
+                    workflowRunMapper.updateById(run);
+                } catch (Exception ex) {
+                    log.error("[workflow] 节点重跑失败态落库异常 runId={}", run.getRunId(), ex);
+                }
+                try {
+                    sendEvent(emitter, Map.of("type", "error",
+                            "message", ResultCode.WORKFLOW_RUN_FAILED.getMessage()));
+                    emitter.complete();
+                } catch (Exception ex) {
+                    log.warn("[workflow] 推送错误帧失败（连接可能已关闭）", ex);
+                }
+            }
+            });
+        } catch (RejectedExecutionException e) {
+            log.error("[workflow] 节点重跑被拒（线程池饱和）workflowId={} userId={}", workflowId, userId, e);
+            try {
+                run.setStatus(WorkflowRunStatusEnum.FAILED.getCode());
+                run.setErrorMsg(ResultCode.SERVICE_UNAVAILABLE.getMessage());
+                run.setFinishedAt(LocalDateTime.now());
+                workflowRunMapper.updateById(run);
+            } catch (Exception ex) {
+                log.error("[workflow] 池饱和失败态落库异常 runId={}", run.getRunId(), ex);
+            }
+            try {
+                sendEvent(emitter, Map.of("type", "error",
+                        "message", ResultCode.SERVICE_UNAVAILABLE.getMessage()));
+                emitter.complete();
+            } catch (Exception ex) {
+                log.warn("[workflow] 池饱和错误帧推送失败（连接可能已关闭）", ex);
+            }
+        }
+    }
+
+    /**
+     * 收集某节点的<b>所有传递上游</b>（不含它自己）。
+     */
+    private void collectUpstream(WorkflowValidator.Plan plan, String nodeId, Set<String> acc) {
+        WorkflowNode node = plan.nodeMap.get(nodeId);
+        if (node == null || node.getDeps() == null) return;
+        for (String dep : node.getDeps()) {
+            if (acc.add(dep)) {
+                collectUpstream(plan, dep, acc);
+            }
+        }
+    }
+
+    /** 节点 id → 节点中文名（取不到时回退节点 id） */
+    private String nodeNameOf(List<WorkflowNode> nodes, String nodeId) {
+        for (WorkflowNode n : nodes) {
+            if (nodeId.equals(n.getNodeId())) {
+                return (n.getName() != null && !n.getName().isBlank()) ? n.getName() : nodeId;
+            }
+        }
+        return nodeId;
+    }
+
+    /**
+     * 反解析上一轮的输入快照（{@code input_snapshot}）→ nodeId → 输入数组。
+     * <p>解析失败返回空 Map（不抛异常）：重跑时没有源节点输入也能靠预置产物跑起来。
+     */
+    private Map<String, List<String>> parseInputSnapshot(String json) {
+        if (json == null || json.isBlank()) return new HashMap<>();
+        try {
+            Map<String, List<String>> m = objectMapper.readValue(json,
+                    new TypeReference<LinkedHashMap<String, List<String>>>() {});
+            return m == null ? new HashMap<>() : m;
+        } catch (Exception e) {
+            log.warn("[workflow] 解析 input_snapshot 失败（按空处理）", e);
+            return new HashMap<>();
+        }
+    }
+
+    /**
+     * 反解析上一轮的原始文件名（{@code input_file_names}）→ nodeId → 文件名数组。
+     */
+    private Map<String, List<String>> parseFileNames(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            Map<String, List<String>> m = objectMapper.readValue(json,
+                    new TypeReference<LinkedHashMap<String, List<String>>>() {});
+            return (m == null || m.isEmpty()) ? null : m;
+        } catch (Exception e) {
+            log.warn("[workflow] 解析 input_file_names 失败（按空处理）", e);
+            return null;
+        }
+    }
+
+    /**
+     * 构造 SSE 进度监听器（普通运行与<b>节点重跑</b>共用）。
+     *
+     * @param emitter        SSE 通道
+     * @param nodeNameMap    nodeId → 节点中文名
+     * @param chunkedNodeIds 本次运行内已推送过 chunk 的节点（text 节点不再重复推 output）
+     */
+    private WorkflowEngine.ProgressListener buildProgressListener(
+            org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter,
+            Map<String, String> nodeNameMap,
+            java.util.Set<String> chunkedNodeIds) {
+        return new WorkflowEngine.ProgressListener() {
+                                    @Override
+                                    public void onFileStart(int fileIndex, int fileTotal) {
+                                        sendEvent(emitter, Map.of("type", "file_start",
+                                                "fileIndex", fileIndex, "fileTotal", fileTotal));
+                                    }
+
+                                    @Override
+                                    public void onNodeStart(String nodeId, String nodeRef, int fileIndex, int fileTotal) {
+                                        Map<String, Object> m = new LinkedHashMap<>();
+                                        m.put("type", "node_start");
+                                        m.put("nodeId", nodeId);
+                                        m.put("nodeRef", nodeRef);
+                                        // 节点中文名（如「录音转写」）：取不到时为 null，
+                                        // 前端据此回退用 nodeRef 反查，不编造「节点1」之类占位符
+                                        m.put("nodeName", nodeNameMap.get(nodeId));
+                                        m.put("fileIndex", fileIndex);
+                                        m.put("fileTotal", fileTotal);
+                                        sendEvent(emitter, m);
+                                    }
+
+                                    @Override
+                                    public void onNodeChunk(String nodeId, int fileIndex, String chunk) {
+                                        chunkedNodeIds.add(nodeId);
+                                        Map<String, Object> m = new LinkedHashMap<>();
+                                        m.put("type", "chunk");
+                                        m.put("nodeId", nodeId);
+                                        m.put("fileIndex", fileIndex);
+                                        m.put("text", chunk);
+                                        sendEvent(emitter, m);
+                                    }
+
+                                    @Override
+                                    public void onNodeDone(String nodeId, int fileIndex, boolean ok, String output, String errMsg) {
+                                        Map<String, Object> m = new LinkedHashMap<>();
+                                        m.put("type", "node_done");
+                                        m.put("nodeId", nodeId);
+                                        // 同 node_start：带上节点中文名，前端无需再靠 nodeRef 反查
+                                        m.put("nodeName", nodeNameMap.get(nodeId));
+                                        m.put("fileIndex", fileIndex);
+                                        m.put("ok", ok);
+                                        m.put("errMsg", errMsg);
+                                        // 非 text 节点没有 chunk 帧，这里带上完整输出，避免前端丢内容；
+                                        // text 节点已通过 chunk 帧推送，front-end 自行拼接，故不带 output
+                                        m.put("output", chunkedNodeIds.contains(nodeId) ? null : output);
+                                        sendEvent(emitter, m);
+                                    }
+
+                                    @Override
+                                    public void onFileDone(int fileIndex, int fileTotal, boolean ok) {
+                                        sendEvent(emitter, Map.of("type", "file_done",
+                                                "fileIndex", fileIndex, "fileTotal", fileTotal, "ok", ok));
+                                    }
+        };
+    }
+
+    /**
+     * 落库运行终态（普通运行与<b>节点重跑</b>共用）。
+     */
+    private void persistTerminal(WorkflowRun run, WorkflowEngine.ExecutionResult er) {
+                        run.setStatus(er.status);
+                        run.setNodeResults(writeJson(er.nodeResults));
+                        run.setSuccessCount(er.successCount);
+                        run.setFailCount(er.failCount);
+                        run.setMaxDepth(er.depth);
+                        run.setDuration(er.duration);
+                        run.setFinishedAt(LocalDateTime.now());
+                        workflowRunMapper.updateById(run);
     }
 
     /** 发送一帧 SSE；失败只记日志，不中断主流程（客户端可能已断开） */

@@ -95,6 +95,40 @@ public class WorkflowController {
         return emitter;
     }
 
+    /**
+     * <b>节点重跑</b>（SSE）：以指定节点为起点，用它上游的已有产物重跑该节点及其下游。
+     *
+     * <p>帧类型与 {@code /run/stream} 完全一致（run_start / file_start / node_start /
+     * chunk / node_done / file_done / all_done / error），前端可复用同一套解析逻辑。
+     *
+     * <p>入参：{@code runId}（从哪一轮续）+ {@code fromNodeId}（从哪个节点开始），
+     * 可选 {@code inputs}（覆盖源节点输入，默认沿用上一轮）。
+     */
+    @PostMapping(value = "/{workflowId}/run/resume", produces = "text/event-stream;charset=UTF-8")
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter runResume(
+            @PathVariable String workflowId,
+            @RequestBody com.example.aitools.workflow.dto.WorkflowResumeRequest body,
+            HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(10 * 60 * 1000L);
+        emitter.onTimeout(() -> {
+            log.warn("[workflow] 节点重跑 SSE 超时 workflowId={}", workflowId);
+            try {
+                emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+                        .event().data("{\"type\":\"error\",\"message\":\"运行超时，请稍后重试\"}"));
+                emitter.complete();
+            } catch (Exception e) {
+                log.warn("[workflow] 节点重跑 SSE 超时收尾失败", e);
+            }
+        });
+        emitter.onError(t -> log.warn("[workflow] 节点重跑 SSE 连接异常: {}",
+                t == null ? "unknown" : t.getMessage(), t));
+        // 校验/建记录在请求线程内同步完成，异常由 GlobalExceptionHandler 处理
+        workflowService.runStreamResume(userId, workflowId, body, emitter);
+        return emitter;
+    }
+
     /** 运行历史列表（可按 workflowId 过滤） */
     @GetMapping("/runs")
     public Result<List<WorkflowRunVO>> runs(@RequestParam(required = false) String workflowId,

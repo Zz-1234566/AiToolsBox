@@ -248,10 +248,41 @@ public class WorkflowEngine {
                                                ProgressListener listener,
                                                Long userId, String runId,
                                                Map<String, List<String>> inputFileNames) {
+        return executeWithProgress(plan, sourceInputs, listener, userId, runId, inputFileNames, null);
+    }
+
+    /**
+     * 流式执行（带工具历史写入 + 源节点输入文件原始名 + <b>预置产物</b>）。
+     *
+     * @param inputFileNames nodeId → 原始文件名数组，与 sourceInputs 同序；可为 null（老数据/老前端）
+     * @param preset         预置产物（<b>节点重跑</b>场景）；普通运行为 null
+     */
+    public ExecutionResult executeWithProgress(WorkflowValidator.Plan plan,
+                                               Map<String, List<String>> sourceInputs,
+                                               ProgressListener listener,
+                                               Long userId, String runId,
+                                               Map<String, List<String>> inputFileNames,
+                                               PresetOutputs preset) {
         long start = System.currentTimeMillis();
 
         // 汇总容器：nodeId -> WorkflowNodeResult（outputs 按文件顺序累加）
         Map<String, WorkflowNodeResult> results = new LinkedHashMap<>();
+
+        // 【节点重跑】预置节点（上游、已跑过、不再执行）的上一轮结果先入汇总容器，
+        // 这样新 run 的 node_results 是**自包含**的 —— 前端展示整条链时不会缺上游节点。
+        if (preset != null && preset.results != null) {
+            for (Map.Entry<String, WorkflowNodeResult> e : preset.results.entrySet()) {
+                WorkflowNodeResult old = e.getValue();
+                if (old == null) continue;
+                WorkflowNodeResult copy = new WorkflowNodeResult();
+                copy.setStatus(old.getStatus());
+                copy.setInputs(old.getInputs() == null ? new ArrayList<>() : new ArrayList<>(old.getInputs()));
+                copy.setOutputs(old.getOutputs() == null ? new ArrayList<>() : new ArrayList<>(old.getOutputs()));
+                copy.setCostMs(old.getCostMs());
+                copy.setErrorMsg(old.getErrorMsg());
+                results.put(e.getKey(), copy);
+            }
+        }
 
         // 1) 找到源节点与其输入数组长度（= 文件数）
         List<WorkflowNode> sourceNodes = plan.levels.isEmpty() ? new ArrayList<>()
@@ -264,6 +295,13 @@ public class WorkflowEngine {
             if (n.getDeps() == null || n.getDeps().isEmpty()) {
                 List<String> in = sourceInputs == null ? null : sourceInputs.get(n.getNodeId());
                 fileTotal = Math.max(fileTotal, in == null ? 0 : in.size());
+            }
+        }
+        // 【节点重跑】预置场景：源节点不在本轮执行计划里（计划已从重跑节点所在层截断），
+        // 文件数要按**预置节点的输出条数**算，否则 fileTotal=0 会直接判失败。
+        if (fileTotal == 0 && preset != null && preset.outputs != null) {
+            for (List<String> arr : preset.outputs.values()) {
+                if (arr != null) fileTotal = Math.max(fileTotal, arr.size());
             }
         }
         // 无源节点输入 → 直接返回失败汇总（与 execute 的校验语义一致）
@@ -283,6 +321,19 @@ public class WorkflowEngine {
             if (listener != null) listener.onFileStart(fi, fileTotal);
 
             Map<String, List<String>> outputsByNode = new HashMap<>();
+            // 【节点重跑】把「上游节点本文件的产物」预置进 outputsByNode：
+            // 流式路径的 outputsByNode 是**每个文件重建**的（长度恒为 1），
+            // inputForFile 取的是 out.get(0) —— 所以这里只放**当前文件**那一项。
+            if (preset != null && preset.outputs != null) {
+                for (Map.Entry<String, List<String>> e : preset.outputs.entrySet()) {
+                    List<String> arr = e.getValue();
+                    if (arr != null && fi < arr.size()) {
+                        List<String> one = new ArrayList<>(1);
+                        one.add(arr.get(fi));
+                        outputsByNode.put(e.getKey(), one);
+                    }
+                }
+            }
             Set<String> failedNodes = new HashSet<>();
             boolean fileOk = true;
 
@@ -401,6 +452,31 @@ public class WorkflowEngine {
         er.duration = (int) (System.currentTimeMillis() - start);
         er.status = decideStatus(success, fail);
         return er;
+    }
+
+    /**
+     * 预置产物（<b>节点重跑</b>场景专用）。
+     *
+     * <p><b>用途</b>：重跑某个节点时，它的上游节点**不重新执行**，
+     * 而是直接复用上一轮跑出来的产物作为输入。
+     *
+     * <p><b>数据结构</b>：
+     * <ul>
+     *   <li>{@link #outputs}：nodeId → 该节点**按文件顺序**的输出数组
+     *       （长度 = 文件数，第 i 项 = 第 i 个文件的产物）——
+     *       与 {@code node_results[nodeId].outputs} 的落库结构一致；</li>
+     *   <li>{@link #results}：nodeId → 上一轮该节点的完整结果（状态/输入/耗时/错误），
+     *       用于让新 run 的 node_results 自包含（前端展示整条链时不缺上游节点）。</li>
+     * </ul>
+     *
+     * <p><b>注意</b>：流式执行路径里 {@code outputsByNode} 是**每个文件重建**的
+     * （长度恒为 1），所以引擎在文件循环内只取 preset.outputs 的**当前文件那一项**。
+     */
+    public static class PresetOutputs {
+        /** nodeId → 该节点按文件顺序的输出数组 */
+        public final Map<String, List<String>> outputs = new LinkedHashMap<>();
+        /** nodeId → 上一轮该节点的结果 */
+        public final Map<String, WorkflowNodeResult> results = new LinkedHashMap<>();
     }
 
     /**

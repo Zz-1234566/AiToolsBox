@@ -124,6 +124,31 @@ npm run dev:h5
 # 默认 http://localhost:3000
 ```
 
+#### H5 端口冲突自查（打开是别人的 401 页面？）
+
+浏览器打开 `http://localhost:3000` 却看到一个**陌生服务**返回的 401（响应体形如
+`{"status":"failed","retcode":1401,...}`，字段名不是本项目的 `code`/`message`），
+说明 **3000 端口被本机另一个程序占了**——Windows 上 `0.0.0.0:3000` 与 `127.0.0.1:3000`
+可以分别绑定同一个端口，浏览器解析 `localhost` 优先走 `127.0.0.1`，于是打到了那个程序上。
+
+```bash
+# 1) 看 3000 端口都被谁占了（Windows）
+netstat -ano | grep ":3000" | grep LISTENING
+# 2) 确认那个 PID 是什么程序
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'ProcessId=<上一步的PID>' | Select-Object ProcessId,CommandLine"
+```
+
+**三种解法**（任选其一）：
+
+| 做法 | 怎么做 |
+|---|---|
+| ① 换端口启动前端（最省事） | `VITE_DEV_PORT=5173 npm run dev:h5`，然后访问 `http://localhost:5173` |
+| ② 关掉占用 3000 的程序 | 找到上面的 PID，`taskkill /PID <PID> /F` |
+| ③ 用局域网 IP 访问 | dev server 绑的是 `0.0.0.0`，用 `http://<本机IP>:3000`（如 `http://10.14.0.69:3000`）访问，会绕过 `127.0.0.1` 上那个程序 |
+
+> 手机连同一个 Wi-Fi 调试 App 时**必须**用 ③ 里的局域网 IP ——
+> 手机上的 `localhost` 指的是手机自己。后端地址在 App 内「设置」页填同一个 IP 即可。
+
 ## 环境变量清单
 
 后端通过 `${ENV_VAR:default}` 形式从环境变量读取敏感配置（避免硬编码泄露）。**`application-dev.yml` 已在 `.gitignore` 中排除，提交仓库时不会被上传。**
