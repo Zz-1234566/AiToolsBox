@@ -65,15 +65,17 @@ Graduation project/
 |---|---|---|
 | 1 | `sql/init.sql` | 建库 `ai_toolbox` + 13 张表 + 工具/提示词/工作流初始数据 |
 | 2 | `sql/v1_2026_10_12_ai_model_upgrade.sql` | 建 `sys_user_ai_model`（用户自选 AI 模型，**AI 模型选择功能依赖此表**） |
-| 3 | `sql/v1_2026_10_12_ai_model_seeds.sql` | 系统模型注册表 `sys_ai_model` 的初始数据 |
-| 4 | `sql/v1_2026_10_12_image_bg_remover_seed.sql` | 图片背景去除工具的 seed |
-| 5 | `sql/v1_2026_10_26_batch_task_error_msg.sql` | `sys_batch_task` 加 `error_msg` 列（**批量任务依赖此列**，见下） |
+| 3 | `sql/v1_2026_10_12_ai_model_seeds.sql` | 系统模型注册表 `sys_ai_model` 的初始数据（MiniMax / 腾讯云 ASR） |
+| 4 | `sql/v1_2026_10_12_ai_model_deepseek_seed.sql` | DeepSeek 模型注册（BYOK，Key 字段全为 NULL，用户在「我的 AI 模型」页自配） |
+| 5 | `sql/v1_2026_10_12_image_bg_remover_seed.sql` | 图片背景去除工具的 seed |
+| 6 | `sql/v1_2026_10_26_batch_task_error_msg.sql` | `sys_batch_task` 加 `error_msg` 列（**批量任务依赖此列**，见下） |
 
 ```bash
 # 登录 MySQL 后依次执行
 mysql -u root -p < code/aiTools_backend/sql/init.sql
 mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_ai_model_upgrade.sql
 mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_ai_model_seeds.sql
+mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_ai_model_deepseek_seed.sql
 mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_12_image_bg_remover_seed.sql
 mysql -u root -p < code/aiTools_backend/sql/v1_2026_10_26_batch_task_error_msg.sql
 ```
