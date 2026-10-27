@@ -324,22 +324,45 @@ AI 办公类工具划分为两层，**目的是让每个工具都能作为工作
 
 ### 图片工具与本地 ONNX 模型
 
-`image-bg-remover`（图片背景去除）**不调用云端 AI**，由后端 ONNX Runtime 做 CPU 离线推理，
-需要随包携带 **1 个**模型文件。
+`image-bg-remover`（图片背景去除）**不调用云端 AI**，由后端 ONNX Runtime 做 CPU 离线推理。
 
-| 项 | 值 |
-|---|---|
-| 文件名 | `modnet_photographic_portrait_matting.onnx`（24.69 MB） |
-| 放置目录 | `code/aiTools_backend/src/main/resources/models/` |
-| 配置 | `segmentation.model-path` 指向它 + `segmentation.input-size: 512` |
-| 授权 | MODNet 官方仓库 Apache License 2.0 |
+**模型可插拔**：`segmentation.model` 决定用哪个分割模型，**换模型只改这一项** ——
+输入边长、归一化 mean·std、resize 口径、输出语义会**自动跟着模型走**
+（规格统一由 `common/SegmentationModelEnum` 提供，不在业务代码里手写）。
 
-#### 预处理口径（与 MODNet 官方一致）
+| model | 用途 | 输入 | 模型文件 | 体积 | 许可 |
+|---|---|---|---|---|---|
+| `modnet` | 人像 matting（默认） | 512² | `modnet_photographic_portrait_matting.onnx` | 25 MB | Apache-2.0 |
+| `rmbg-1.4` | 通用显著物 | 1024² | `rmbg_1_4.onnx` | 168 MB | bria RAIL（**仅非商用**） |
+
+放置目录：`code/aiTools_backend/src/main/resources/models/`
+
+> ⚠️ **打包注意**：模型放在 `resources/` 下会**被打进 jar**（RMBG-1.4 168MB → jar 多 168MB）。
+> 生产部署建议把模型**外挂**到包外，用 `segmentation.model-path` 指向绝对路径。
+
+> ⚠️ **模型未入库**（`.gitignore` 已排除 `*.onnx`），clone 后该目录是空的，
+> 图片工具启动即失败。获取方式见下。
+
+#### ⚠️ 换模型时最容易踩的三个坑
+
+1. **预处理口径**（mean/std、resize 方式）各模型不同，对不上**不会报错**，
+   只会静默输出错蒙版 —— 所以口径统一收在枚举里，配套单元测试逐个锁死。
+2. **输出语义**：不同模型的 ONNX 输出语义可能不同（0~1 概率 / 原始 logit）。
+   对 logit 一律做 min-max 归一化，会把真实置信度 0.7% 的背景像素抬到 **35% 不透明度**
+   → 抠出来是半透明鬼影。枚举里按模型区分 `PROBABILITY` / `LOGIT` 两种口径，
+   新接模型时**必须先实测输出值域**再定口径。
+3. **二值化阈值**：matting 类模型要保留软边（阈值 0），
+   二值分割类模型要在 sigmoid 之后按 0.5 切一刀，否则背景那点低置信度 alpha 会连成鬼影。
+
+#### 配置项
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|
-| `segmentation.preprocess-mode` | `keep-ratio-pad` | **官方口径**：保持长宽比缩放（长边→`input-size`）+ pad 成方形（pad 值 = 127 中灰）。官方 `src/models/modnet.py#preprocess` 就是这么做的。`squash`（直接压成方形）会把竖版人像**压扁**，模型看到的是变形的人，细长结构（手臂、发丝）最先断 —— 保留该值仅作 A/B 对照 |
-| `segmentation.mask-threshold` | `0` | 0 = 不二值化（官方推荐，保留半透明）；调小更激进（带出更多背景），调大更保守（边缘收缩） |
+| `segmentation.model` | `modnet` | **默认**分割模型（见上表）。用户在工具页选了别的模型时以请求参数为准 |
+| `segmentation.model-path` | 空 | 留空 = 按模型默认文件名取；填绝对路径 / `file:` 前缀 = **外挂模型**（热更模型不动包） |
+| `segmentation.input-size` | `0` | 0 = 用模型自带的边长 |
+| `segmentation.preprocess-mode` | 空 | 空 = 用模型官方口径；`keep-ratio-pad`（保持比例 + pad 127 中灰）/ `squash`（直接压成方形） |
+| `segmentation.mask-threshold` | `0` | 0 = 不二值化；调小更激进（带出更多背景），调大更保守（边缘收缩） |
 | `segmentation.feather-size` | `0` | 0 = 不羽化（MODNet 输出本身已连续，羽化反而模糊发丝） |
 | `segmentation.min-input-size` | `640` | 小图先放大再送模型，保留发丝级细节 |
 | `segmentation.max-image-pixels` | `40000000` | 解码**前**按像素总数拦超大图，避免 ARGB 缓冲把堆打爆 |
@@ -347,8 +370,12 @@ AI 办公类工具划分为两层，**目的是让每个工具都能作为工作
 > 模型只接受**方形**输入（非方形会在内部 Concat 节点维度不匹配报错），
 > 所以「保持长宽比」只能靠 **pad** 实现，不能直接送非方形。
 
-> ⚠️ **模型未入库**（`.gitignore` 已排除 `*.onnx`），clone 后该目录是空的，
-> 图片工具启动即失败。获取方式见下。
+#### 实测性能（16 GB / i7-12650H，纯 CPU 推理）
+
+| 模型 | 单张耗时 | 常驻内存 |
+|---|---|---|
+| MODNet 512² | 0.4 ~ 0.5 s | 186 MB |
+| RMBG-1.4 1024² | 1.3 s | 908 MB |
 
 #### 模型从哪来
 
@@ -363,6 +390,12 @@ ONNX 版由社区转换而来。三个可行来源：
    <https://github.com/ZHKKKe/MODNet/tree/master/onnx>
 3. **官方仓库** —— <https://github.com/ZHKKKe/MODNet>（Apache-2.0，含论文与 Colab 清单）
 
+RMBG-1.4 的 ONNX 由 HF 官方镜像仓库直接提供：
+
+- <https://huggingface.co/briaai/RMBG-1.4>（`onnx/model.onnx`，fp32 168MB）
+
+> 国内网络访问 HF 慢时，用镜像 `https://hf-mirror.com/<同样的路径>` 即可。
+
 #### 合成模式
 
 `image-bg-remover` 一个端点承担 3 种模式，由请求参数 `mode` 决定：
@@ -375,9 +408,13 @@ ONNX 版由社区转换而来。三个可行来源：
 
 抠图（ONNX 推理）环节三种模式完全共用，只有后处理合成策略不同。
 
-> ⚠️ **不要用 `u2netp.onnx` 顶替。** `SegmentationServiceImpl` 的预处理严格对齐 MODNet
-> （固定除以 255、mean/std 均为 0.5），而 U²-Net 用的是「整图 maxPix 做除数」那一套。
-> 喂错模型**不会报错**，只会静默输出错蒙版。仓库里原来的 `u2netp.onnx` 已删除。
+**分割模型可在工具页切换**：`pages/image-bg-remover.vue` 上有模型选择器，
+选中的模型随 `model` 参数传给 `POST /api/ai-office/image-bg-remover`；
+不传则用 `segmentation.model` 配的默认模型。
+
+> ⚠️ **不要用 `u2netp.onnx` 顶替。** U²-Net 用的是「整图 maxPix 做除数」那一套归一化，
+> 与本项目枚举里的任何口径都不一致；喂错模型**不会报错**，只会静默输出错蒙版。
+> 仓库里原来的 `u2netp.onnx` 已删除。
 
 #### 换成外挂模型
 

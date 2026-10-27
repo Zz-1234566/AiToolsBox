@@ -155,6 +155,11 @@ compress:
 # 获取方式见 README「图片工具与本地 ONNX 模型」小节
 segmentation:
   enabled: true
-  model-path: classpath:models/modnet_photographic_portrait_matting.onnx
-  input-size: 512
+  # 分割模型（可插拔）：modnet | rmbg-1.4
+  # 换模型只改这一项 —— 输入边长 / 归一化 mean·std / resize 口径会跟着模型走。
+  model: modnet
+  # 模型文件：留空则按 model 的默认文件名从 classpath:models/ 取
+  model-path:
+  # 输入边长：0 = 用模型自带的边长
+  input-size: 0
   max-image-pixels: 40000000

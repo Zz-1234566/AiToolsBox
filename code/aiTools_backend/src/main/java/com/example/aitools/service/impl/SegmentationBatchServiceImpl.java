@@ -2,6 +2,7 @@ package com.example.aitools.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.aitools.common.ToolCodes;
+import com.example.aitools.common.SegmentationModelEnum;
 import com.example.aitools.dto.BatchFilePayload;
 import com.example.aitools.dto.SegmentResult;
 import com.example.aitools.entity.AiTool;
@@ -42,7 +43,7 @@ public class SegmentationBatchServiceImpl implements SegmentationBatchService {
     @Override
     public void processImageBatch(Long userId, List<BatchFilePayload> payloads,
                                   String mode, String backgroundColor, byte[] backgroundImage,
-                                  String batchId) {
+                                  String batchId, SegmentationModelEnum model) {
         int fileCount = payloads == null ? 0 : payloads.size();
         try {
             if (!batchTaskService.markRunning(batchId)) {
@@ -63,7 +64,7 @@ public class SegmentationBatchServiceImpl implements SegmentationBatchService {
                 try {
                     // 3 模式合一：交由 SegmentationService 内部按 mode 分发
                     SegmentResult r = segmentationService.processImage(
-                            p.getContent(), mode, backgroundColor, backgroundImage);
+                            p.getContent(), mode, backgroundColor, backgroundImage, model);
                     // 产物落库（批量任务来源：写 batchId 让 completed 端点能反查）
                     // fileIndex 用「已处理文件数」区分同批次多张产物（0-based 整批位置）
                     ToolOutputVO output = toolOutputService.saveBatchFileOutput(

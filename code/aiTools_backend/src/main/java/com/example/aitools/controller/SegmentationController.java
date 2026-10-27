@@ -10,6 +10,7 @@ import com.example.aitools.exception.BusinessException;
 import com.example.aitools.service.BatchTaskService;
 import com.example.aitools.service.BatchUploadService;
 import com.example.aitools.service.SegmentationBatchService;
+import com.example.aitools.common.SegmentationModelEnum;
 import com.example.aitools.utils.AuthUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -96,6 +97,7 @@ public class SegmentationController {
             @RequestParam(value = "mode", defaultValue = "transparent") String mode,
             @RequestParam(value = "backgroundColor", required = false) String backgroundColor,
             @RequestParam(value = "background", required = false) MultipartFile background,
+            @RequestParam(value = "model", required = false) String model,
             HttpServletRequest request) {
 
         Long userId = authUtil.getUserIdFromRequest(request);
@@ -150,6 +152,15 @@ public class SegmentationController {
             throw new BusinessException(ResultCode.PARAM_MISSING.getCode(),
                     "image 模式必须上传 background 背景图");
         }
+        // 分割模型（工具页的模型选择器）：留空 = 用配置里的默认模型
+        SegmentationModelEnum segModel = null;
+        if (model != null && !model.isBlank()) {
+            segModel = SegmentationModelEnum.fromCode(model.trim());
+            if (segModel == null) {
+                throw new BusinessException(ResultCode.PARAM_ERROR.getCode(),
+                        "无法识别的分割模型：" + model + "，可选：modnet / rmbg-1.4");
+            }
+        }
         if (background != null && background.getSize() > Constants.MAX_FILE_SIZE) {
             throw new BusinessException(ResultCode.FILE_TOO_LARGE.getCode(),
                     Constants.fileSizeLimitMessage("背景图", Constants.MAX_FILE_SIZE));
@@ -157,8 +168,9 @@ public class SegmentationController {
 
         // 2) 同步建任务（HTTP 必须立即返回 batchId）
         String batchId = batchTaskService.createTask(userId, ToolCodes.IMAGE_BG_REMOVER, files.size());
-        log.info("[image-bg-remover] 创建批量任务 batchId={} userId={} fileCount={} mode={} hasBg={} bgColor={}",
-                batchId, userId, files.size(), modeNorm, background != null, backgroundColor);
+        log.info("[image-bg-remover] 创建批量任务 batchId={} userId={} fileCount={} mode={} hasBg={} bgColor={} model={}",
+                batchId, userId, files.size(), modeNorm, background != null, backgroundColor,
+                segModel != null ? segModel.getCode() : "(默认)");
 
         // 3) 同步把 MultipartFile 读到 byte[]（避开 Tomcat 异步线程跑批时临时文件已被清理）
         List<BatchFilePayload> payloads;
@@ -183,13 +195,14 @@ public class SegmentationController {
         final byte[] bgFinal = bgBytes;
         final String bgColorFinal = backgroundColor;
         final String modeFinal = modeNorm;
+        final SegmentationModelEnum modelFinal = segModel;
 
         // 4) 异步跑批（逐文件推理 / 落产物 / 记历史 / 汇总计数 全部在 Service 里，Controller 不写业务）
         try {
             batchExecutor.execute(() -> {
                 try {
                     segmentationBatchService.processImageBatch(
-                            userId, payloads, modeFinal, bgColorFinal, bgFinal, batchId);
+                            userId, payloads, modeFinal, bgColorFinal, bgFinal, batchId, modelFinal);
                 } finally {
                     // 清理批量临时文件：必须在 finally 里，异常时也要清
                     batchUploadService.cleanup(payloads);

@@ -36,6 +36,24 @@
           </view>
         </view>
 
+        <!-- ============ 分割模型选择器 ============ -->
+        <view class="model-picker">
+          <text class="model-picker__label">分割模型</text>
+          <view
+            v-for="m in MODEL_OPTIONS"
+            :key="m.code"
+            class="model-opt"
+            :class="{ 'model-opt--on': selectedModel === m.code }"
+            @click="selectedModel = m.code"
+          >
+            <view class="model-opt__radio" :class="{ 'model-opt__radio--on': selectedModel === m.code }"></view>
+            <view class="model-opt__text">
+              <text class="model-opt__name">{{ m.name }}</text>
+              <text class="model-opt__desc">{{ m.desc }}</text>
+            </view>
+          </view>
+        </view>
+
         <!-- 唯一按钮：去背景 -->
         <button
           class="btn-primary"
@@ -269,6 +287,15 @@ import { downloadOutput, saveLocalImageToAlbum, downloadToLocalPath } from '@/ut
 // jpg / jpeg / png / bmp / gif。webp 等不在白名单内的格式直接前端拦截，
 // 不送往后端，避免走到 service 才抛异常。
 const ALLOWED_EXTS = ['jpg', 'jpeg', 'png', 'bmp', 'gif']
+
+/**
+ * 可选分割模型（与后端 common/SegmentationModelEnum 的 code 一一对应）。
+ * desc 里是**实测数据**（16GB / i7-12650H 纯 CPU 推理），方便用户按需求选。
+ */
+const MODEL_OPTIONS = [
+  { code: 'modnet', name: 'MODNet', desc: '人像抠图 · 512² · 约 0.5 秒' },
+  { code: 'rmbg-1.4', name: 'RMBG-1.4', desc: '通用显著物 · 1024² · 约 1.3 秒 · 仅非商用' }
+]
 // 单张图片大小上限 20MB（与后端 multipart max-file-size / Constants.MAX_FILE_SIZE 一致）
 const MAX_FILE_SIZE = 20 * 1024 * 1024
 
@@ -314,6 +341,8 @@ export default {
       uploadedImage: null,    // 原图本地路径（H5：blob URL；小程序/APP：tempFilePaths[0]）
       _blobUrls: { preview: '', bg: '' },   // H5 端自己创建的 blob URL（换图/卸载时需 revoke）
       uploadedFileName: '',   // 文件名
+      MODEL_OPTIONS,          // 可选分割模型
+      selectedModel: 'modnet', // 选中的分割模型（默认 MODNet）
 
       // 状态 B 数据
       progress: 0,
@@ -701,9 +730,10 @@ export default {
 
       try {
         // 1) 提交任务：mode=transparent（一键去背景 → 透明 PNG）
-        // 不再传调参，MODNet 官方推荐默认（mt=0/fs=0/matte=none）由后端 yml 控制
+        // 不再传调参，阈值/羽化由后端 yml 控制；model 传用户在页面上选的分割模型
         const res = await imageBgRemover(this.uploadedImage, {
-          mode: 'transparent'
+          mode: 'transparent',
+          model: this.selectedModel
         })
         const data = (res && res.data) || null
         if (!res || res.code !== 200 || !data || !data.batchId) {
@@ -1654,6 +1684,60 @@ export default {
       padding: 8rpx 20rpx;
       border-radius: 999rpx;
       background: #EFF6FF;
+    }
+  }
+
+  /* ============ 分割模型选择器 ============ */
+  .model-picker {
+    margin-top: 32rpx;
+
+    &__label {
+      display: block;
+      font-size: 26rpx;
+      color: #6B7280;
+      margin-bottom: 16rpx;
+    }
+  }
+  .model-opt {
+    display: flex;
+    align-items: flex-start;
+    background: #FFFFFF;
+    border: 2rpx solid #E5E7EB;
+    border-radius: 16rpx;
+    padding: 20rpx;
+    margin-bottom: 16rpx;
+
+    &--on {
+      border-color: #3B82F6;
+      background: #EFF6FF;
+    }
+    &__radio {
+      width: 32rpx;
+      height: 32rpx;
+      border-radius: 50%;
+      border: 2rpx solid #CBD5E1;
+      margin-right: 16rpx;
+      margin-top: 4rpx;
+      flex-shrink: 0;
+
+      &--on {
+        border-color: #3B82F6;
+        background: #3B82F6;
+        box-shadow: inset 0 0 0 6rpx #EFF6FF;
+      }
+    }
+    &__text { flex: 1; }
+    &__name {
+      display: block;
+      font-size: 28rpx;
+      color: #374151;
+      font-weight: 600;
+    }
+    &__desc {
+      display: block;
+      font-size: 22rpx;
+      color: #9CA3AF;
+      margin-top: 6rpx;
     }
   }
 

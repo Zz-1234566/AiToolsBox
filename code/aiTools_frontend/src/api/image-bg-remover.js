@@ -22,12 +22,14 @@ import { uploadFile, request } from './request'
  * @param {Object} [opts]
  * @param {String} [opts.mode] - transparent | color | image，默认 transparent（去背景 → 透明 PNG）
  * @param {String} [opts.backgroundColor] - color 模式必传：red | blue | white
+ * @param {String} [opts.model] - 分割模型：modnet | rmbg-1.4；不传用后端配置的默认模型
  * @returns {Promise<{ code, data: { batchId, fileCount } }>}
  */
 export const imageBgRemover = (filePath, opts = {}) => {
   const formData = {}
   if (opts.mode) formData.mode = opts.mode
   if (opts.backgroundColor) formData.backgroundColor = opts.backgroundColor
+  if (opts.model) formData.model = opts.model
   return uploadFile('/api/ai-office/image-bg-remover', filePath, 'files', formData)
 }
 

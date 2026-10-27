@@ -1,5 +1,6 @@
 package com.example.aitools.config;
 
+import com.example.aitools.common.SegmentationModelEnum;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -10,10 +11,16 @@ import org.springframework.stereotype.Component;
  * 服务 {@code image-bg-remover} 图片去/换背景工具：
  * 本地 ONNX Runtime 做 CPU 离线推理，不依赖任何第三方云服务。
  * <p>
- * <b>当前模型</b>：MODNet（modnet_photographic_portrait_matting.onnx，24.69MB，Apache-2.0）。
- * 预处理严格对齐 MODNet 官方写法（固定除以 255、mean/std 均为 0.5），
- * <b>不能替换成 U²-Net 系列</b>——后者用「整图 maxPix 做除数」的归一化，喂进来不会报错，
- * 只会静默输出错蒙版。
+ * <b>模型可插拔</b>：{@code segmentation.model} 决定用哪个分割模型，
+ * 可选 {@code modnet} / {@code rmbg-1.4}
+ * （详见 {@link SegmentationModelEnum}）。
+ * <b>换模型时只改这一项</b>——输入边长、归一化 mean·std、resize 口径会
+ * <b>自动跟着模型走</b>，不需要手工对齐。
+ * <p>
+ * <b>为什么必须这样</b>：不同模型的预处理口径<b>互不相同</b>
+ * （MODNet 是 {@code mean/std=0.5} + 保持比例 pad，
+ * RMBG 是 {@code mean=0.5, std=1.0} + 直接 resize）。
+ * 口径对不上时<b>不会抛异常、不会报错</b>，只会静默输出错蒙版。
  * <p>
  * <b>modelPath 写法</b>：既支持 {@code classpath:models/x.onnx}（打进 jar 的默认模型），
  * 也支持普通文件路径 / {@code file:} 前缀（部署时换成外挂模型，便于热更模型不动包）。
@@ -31,12 +38,21 @@ public class SegmentationConfig {
     private Boolean enabled = true;
 
     /**
+     * 分割模型（可插拔）。
+     * <p>可选值见 {@link SegmentationModelEnum}：
+     * {@code modnet}（默认，人像 matting）/ {@code rmbg-1.4}（通用显著物，<b>仅非商用</b>）。
+     * <p>换模型只需改这一项，<b>输入边长 / 归一化 mean·std / resize 口径会自动跟着模型走</b>。
+     * <p><b>无法识别时回退到 {@code modnet}，不抛异常</b>——一个配置项不该把整个服务打挂。
+     */
+    private String model = "modnet";
+
+    /**
      * 模型文件位置。
      * <p>
      * 默认读 classpath 下的 MODNet（随 jar 发布，开箱即用）；
      * 若部署环境希望模型外挂，改成绝对路径或 {@code file:/opt/models/modnet_photographic_portrait_matting.onnx} 即可。
      */
-    private String modelPath = "classpath:models/modnet_photographic_portrait_matting.onnx";
+    private String modelPath;
 
     /**
      * 模型输入边长（当前 MODNet 导出为 512）。
@@ -44,7 +60,7 @@ public class SegmentationConfig {
      * 必须与所用模型的输入维度一致：推理输出 shape 会按此值强校验，不匹配即抛业务异常 ——
      * 与其让脏数据污染后续计算，不如在源头快速失败。
      */
-    private Integer inputSize = 512;
+    private Integer inputSize = 0;
 
     /**
      * 预处理方式：
@@ -59,7 +75,7 @@ public class SegmentationConfig {
      * <p>模型只接受方形输入（非方形会在内部 Concat 节点维度不匹配报错），
      * 所以「保持比例」必须靠 pad 实现，不能直接送非方形。
      */
-    private String preprocessMode = "keep-ratio-pad";
+    private String preprocessMode;
 
     /**
      * 允许解码的最大像素总数（宽 × 高），默认 4000 万（约 4000×10000）。
@@ -97,4 +113,64 @@ public class SegmentationConfig {
      * 大图（maxSide > 此值）直接 resize，不做无意义放大。
      */
     private Integer minInputSize = 640;
+
+    // ==================== 生效规格解析 ====================
+    // 规则：模型决定默认值，配置里显式给出的值覆盖模型默认值。
+    // 这样「换模型」只需改 model 一项，不必手工对齐 input-size / preprocess-mode / model-path。
+
+    /**
+     * 生效的分割模型。
+     * <p>配置值无法识别时<b>回退到 MODNet</b>，不抛异常——一个配置项不该把整个服务打挂。
+     */
+    public SegmentationModelEnum resolveModel() {
+        SegmentationModelEnum resolved = SegmentationModelEnum.fromCode(model);
+        return resolved != null ? resolved : SegmentationModelEnum.MODNET;
+    }
+
+    /**
+     * 生效的模型输入边长。
+     * <p>显式配置了 {@code input-size}（> 0）时用它，否则用模型自带的边长。
+     */
+    public int resolveInputSize() {
+        return (inputSize != null && inputSize > 0) ? inputSize : resolveModel().getInputSize();
+    }
+
+    /**
+     * 生效的模型文件路径。
+     * <p>显式配置了 {@code model-path} 时用它（部署时外挂模型、热更模型不动包），
+     * 否则按模型默认文件名从 {@code classpath:models/} 取。
+     */
+    public String resolveModelPath() {
+        return resolveModelPath(resolveModel());
+    }
+
+    /**
+     * 生效的模型文件路径（指定模型）。
+     * <p>
+     * <b>显式配置的 {@code model-path} 只对「配置里指定的那个模型」生效</b>
+     * （那是给配置模型做外挂 / 热更用的）；其它模型一律用各自的默认文件名，
+     * 否则会把 A 模型的路径喂给 B 模型（加载成功但静默输出错蒙版）。
+     *
+     * @param model 目标模型
+     */
+    public String resolveModelPath(SegmentationModelEnum model) {
+        if (model == resolveModel() && modelPath != null && !modelPath.isBlank()) {
+            return modelPath;
+        }
+        return model.getDefaultModelPath();
+    }
+
+    /**
+     * 生效的 resize 口径。
+     * <p>显式配置了 {@code preprocess-mode} 时用它（用于 A/B 对照），
+     * 否则用模型官方的口径（MODNet=keep-ratio-pad，RMBG-1.4=squash）。
+     */
+    public SegmentationModelEnum.ResizeMode resolveResizeMode() {
+        if (preprocessMode == null || preprocessMode.isBlank()) {
+            return resolveModel().getResizeMode();
+        }
+        return "squash".equalsIgnoreCase(preprocessMode.trim())
+                ? SegmentationModelEnum.ResizeMode.SQUASH
+                : SegmentationModelEnum.ResizeMode.KEEP_RATIO_PAD;
+    }
 }

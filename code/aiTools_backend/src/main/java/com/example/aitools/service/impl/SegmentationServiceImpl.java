@@ -6,6 +6,7 @@ import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 import com.example.aitools.common.BackgroundColorEnum;
 import com.example.aitools.common.ResultCode;
+import com.example.aitools.common.SegmentationModelEnum;
 import com.example.aitools.config.SegmentationConfig;
 import com.example.aitools.dto.SegmentResult;
 import com.example.aitools.exception.BusinessException;
@@ -34,18 +35,29 @@ import java.io.InputStream;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import com.example.aitools.common.MimeTypes;
 
 /**
- * 人像分割服务实现：本地 ONNX Runtime 加载 MODNet（modnet_photographic_portrait_matting），CPU 推理。
+ * 人像分割服务实现：本地 ONNX Runtime 加载分割模型，CPU 推理。
  * <p>
- * <b>预处理严格对齐 ZHKKKe/MODNet 官方</b>（{@code src/model.py}）：固定 {@code mean=[0.5,0.5,0.5]}、
- * {@code std=[0.5,0.5,0.5]}，像素除以 255 后再中心化到 {@code [-1,1]}。三个最易踩错的点：
+ * <b>模型可插拔</b>：具体用哪个模型由 {@code segmentation.model} 决定，
+ * 规格（输入边长 / 归一化 mean·std / resize 口径）统一由
+ * {@link SegmentationModelEnum} 提供，<b>换模型不需要改这里的任何一行</b>。
+ * <p>
+ * <b>各模型预处理口径互不相同，这是本类最容易踩的坑</b>：
+ * <ul>
+ *   <li>MODNet（{@code mean/std=0.5/0.5/0.5} + 保持比例 pad 127 中灰）</li>
+ *   <li>RMBG-1.4（{@code mean=0.5, std=1.0} + 直接 resize 成方形）</li>
+ * </ul>
+ * 口径对不上时<b>不会抛异常</b>，只会静默输出错蒙版，所以归一化公式统一走
+ * {@link SegmentationModelEnum#normalize(int, int)}，不允许在业务代码里手写。
+ * <p>
+ * 另两个历史踩坑点（MODNet 口径下）：
  * <ol>
  *   <li><b>归一化除数是「固定 255」而非整图 maxPix</b>。MODNet 官方就是固定 255；写 {@code maxPix}
  *       （rembg/u2netp 习惯）会让蒙版整体偏移，头发丝检测率显著下降。</li>
- *   <li><b>STD 必须是 0.5/0.5/0.5</b>。写 1.0/1.0/1.0 不会报错但效果差——只做了中心化没真正归一化，
- *       蒙版会偏向过曝区域。</li>
  *   <li><b>取张量值必须走 {@code getFloatBuffer()} 而非 {@code getValue()}</b>。
  *       4 维张量的 {@code getValue()} 返回的是嵌套数组，强转 {@code float[]} 会
  *       ClassCastException；{@code getFloatBuffer()} 拿到的是扁平 buffer，NCHW 布局下按行主序排布。</li>
@@ -70,31 +82,59 @@ public class SegmentationServiceImpl implements SegmentationService {
     private static final OrtEnvironment ENV = OrtEnvironment.getEnvironment();
 
     /**
-     * 模型会话单例（懒加载 + 双检锁）。
+     * 各模型的会话缓存（懒加载 + 双检锁，key = 模型）。
      * <p>
-     * <b>为什么必须是单例</b>：新建一次 {@code OrtSession} 要把 4.4MB 模型读进来并建图，
+     * <b>为什么按模型缓存</b>：调试页要能同时跑多个模型做 A/B 对照，
+     * 不能只有一个「当前模型」的 session。
+     * <p>
+     * <b>为什么必须缓存</b>：新建一次 {@code OrtSession} 要把模型读进来并建图，
      * 实测约 2 秒；而推理本身只要 146ms。若每次请求都新建 session，
      * 一次请求的开销会有 93% 花在加载模型上，且并发时内存里同时躺着 N 份模型。
      * <p>
      * <b>为什么懒加载</b>：模型加载要 2 秒，如果放在构造期会拖慢整个应用启动，
      * 且在 {@code segmentation.enabled=false} 的环境里属于无谓开销。
-     * 用 volatile + 双检锁保证只初始化一次，初始化失败也只记一次日志。
      */
-    private volatile OrtSession session;
+    private final Map<SegmentationModelEnum, ModelSession> sessions = new ConcurrentHashMap<>();
 
-    /** 模型输入节点名，懒加载时从 session 动态取一次后缓存 */
-    private volatile String inputName;
+    /**
+     * 模型会话：{@code OrtSession} + 该模型的输入节点名。
+     * <p>
+     * 输入节点名动态取，不硬编码：实测 MODNet 叫 {@code input.1}、
+ * 但别的模型可能叫别的（ONNX 图里的节点名随导出工具/版本变化），
+     * 写死会在换模型时静默失效。
+     */
+    private static final class ModelSession {
+        final OrtSession session;
+        final String inputName;
 
-    /** MODNet 均值（R/G/B，归一化 0~1 空间），ZHKKKe/MODNet 官方预处理 */
-    private static final float[] MEAN = {0.5f, 0.5f, 0.5f};
-
-    /** MODNet 标准差（R/G/B，归一化 0~1 空间），ZHKKKe/MODNet 官方预处理（=0.5/0.5/0.5） */
-    private static final float[] STD = {0.5f, 0.5f, 0.5f};
+        ModelSession(OrtSession session, String inputName) {
+            this.session = session;
+            this.inputName = inputName;
+        }
+    }
 
     private static final String OUTPUT_MIME = MimeTypes.PNG;
 
+    /**
+     * 对比页预览图的长边上限（像素）。
+     * <p>
+     * 原图 4000×3000 的透明 PNG 编码后有好几 MB，base64 再涨 1/3，
+     * 一个模型一条响应就撑爆 JSON。对比页只需要并排看效果，1000px 足够看发丝与边缘。
+     */
+    private static final int COMPARE_PREVIEW_MAX_SIDE = 1000;
+
     @Override
     public SegmentResult removeBackground(byte[] imageBytes, String backgroundColor) {
+        return removeBackground(imageBytes, backgroundColor, null);
+    }
+
+    /**
+     * 去背景并合成底色，可显式指定分割模型（工具页的模型选择器用）。
+     *
+     * @param model 分割模型；null = 用配置里的默认模型
+     */
+    private SegmentResult removeBackground(byte[] imageBytes, String backgroundColor,
+                                           SegmentationModelEnum model) {
         // 1) 前置校验：总开关 + 入参
         if (!Boolean.TRUE.equals(segmentationConfig.getEnabled())) {
             throw ErrorFactory.of(ResultCode.SEGMENT_MODEL_UNAVAILABLE);
@@ -102,35 +142,20 @@ public class SegmentationServiceImpl implements SegmentationService {
         if (imageBytes == null || imageBytes.length == 0) {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请先选择要处理的证件照");
         }
-        // 底色在入口就解析：非法值早失败，避免白白跑完 146ms 推理再报错
+        // 底色在入口就解析：非法值早失败，避免白白跑完推理再报错
         BackgroundColorEnum color = BackgroundColorEnum.fromCode(backgroundColor);
 
-        BufferedImage source = decodeWithPixelLimit(imageBytes);
+        // 2) 分割：显式指定模型时用该模型自己的规格，否则用配置解析出来的
+        SegmentationModelEnum useModel = model != null ? model : segmentationConfig.resolveModel();
+        int inputSize = model != null ? model.getInputSize() : segmentationConfig.resolveInputSize();
+        SegmentationModelEnum.ResizeMode resizeMode = model != null
+                ? model.getResizeMode() : segmentationConfig.resolveResizeMode();
+        MaskResult masked = segment(imageBytes, useModel, inputSize, resizeMode);
 
-        int width = source.getWidth();
-        int height = source.getHeight();
+        // 3) 按蒙版 alpha 混合底色
+        byte[] output = composite(masked.source, masked.mask, masked.maskW, masked.maskH, color);
 
-        // 2) 小图先放大（不动大图）：300px 头像放大到 640 再送 320，模型看到的细节翻 4 倍
-        BufferedImage upscaled = upscaleIfTooSmall(source);
-
-        // 3) 预处理：按官方口径（保持长宽比 + pad 成方形）→ 归一化 → NCHW
-        int inputSize = segmentationConfig.getInputSize();
-        PaddedInput padded = preprocessForModel(upscaled, inputSize);
-        float[] input = toInputTensor(padded.image, inputSize);
-
-        // 4) 推理 → 0~255 灰度蒙版（模型尺寸）
-        int[] mask = predictMask(input, inputSize);
-
-        // 5) 蒙版二值化 + 羽化：让 alpha 边缘平滑（头发丝自然）。
-        //    走 yml 配置（公开端点不接受用户参数，与 image-bg-remover 工具分流）。
-        int[] maskRefined = refineMask(mask, inputSize,
-                segmentationConfig.getMaskThreshold(), segmentationConfig.getFeatherSize());
-
-        // 6) 裁掉 pad 区（得到与原图同长宽比的蒙版）→ 双线性放大回原图 → 混合底色
-        int[] valid = cropValidRegion(maskRefined, inputSize, padded);
-        byte[] output = composite(source, valid, padded.w, padded.h, color);
-
-        return new SegmentResult(output, width, height, OUTPUT_MIME);
+        return new SegmentResult(output, masked.width, masked.height, OUTPUT_MIME);
     }
 
     @Override
@@ -143,30 +168,107 @@ public class SegmentationServiceImpl implements SegmentationService {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请先选择要处理的图片");
         }
 
+        // 2) 分割（用配置里的模型）
+        SegmentationModelEnum model = segmentationConfig.resolveModel();
+        MaskResult masked = segment(imageBytes, model,
+                segmentationConfig.resolveInputSize(), segmentationConfig.resolveResizeMode());
+
+        // 3) 透明合成
+        byte[] output = compositeTransparent(masked.source, masked.mask, masked.maskW, masked.maskH);
+
+        return new SegmentResult(output, masked.width, masked.height, OUTPUT_MIME);
+    }
+
+    @Override
+    public SegmentResult removeBackgroundTransparent(byte[] imageBytes, SegmentationModelEnum model) {
+        if (imageBytes == null || imageBytes.length == 0) {
+            throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请先选择要处理的图片");
+        }
+        if (model == null) {
+            throw ErrorFactory.of(ResultCode.PARAM_ERROR, "未指定分割模型");
+        }
+
+        // 显式指定模型时，输入边长与 resize 口径一律用**该模型自己的**官方规格，
+        // 不受配置里的 input-size / preprocess-mode 影响（那是给「默认模型」做覆盖用的）。
+        MaskResult masked = segment(imageBytes, model, model.getInputSize(), model.getResizeMode());
+        byte[] output = compositeTransparent(masked.source, masked.mask, masked.maskW, masked.maskH);
+
+        return new SegmentResult(output, masked.width, masked.height, OUTPUT_MIME);
+    }
+
+    /**
+     * 分割核心：解码 → 小图放大 → 预处理 → 归一化 → 推理 → 蒙版精修 → 裁掉 pad 区。
+     * <p>
+     * 三种去/换背景模式的差异只在<b>最后的合成</b>，前面的分割流程完全共用。
+     *
+     * @param imageBytes  原始图片字节
+     * @param model       分割模型（决定归一化口径与会话）
+     * @param inputSize   模型输入边长
+     * @param resizeMode  resize 口径（保持比例 pad / 直接压成方形）
+     */
+    private MaskResult segment(byte[] imageBytes, SegmentationModelEnum model,
+                               int inputSize, SegmentationModelEnum.ResizeMode resizeMode) {
         BufferedImage source = decodeWithPixelLimit(imageBytes);
         int width = source.getWidth();
         int height = source.getHeight();
 
-        // 2) 小图先放大（不动大图）：保留发丝级细节
+        // 小图先放大（不动大图）：300px 头像放大到 640 再送模型，模型看到的细节翻 4 倍
         BufferedImage upscaled = upscaleIfTooSmall(source);
 
-        // 3) 预处理（官方口径：保持长宽比 + pad 成方形）→ 推理 → 透明合成
-        int inputSize = segmentationConfig.getInputSize();
-        PaddedInput padded = preprocessForModel(upscaled, inputSize);
-        float[] input = toInputTensor(padded.image, inputSize);
-        int[] mask = predictMask(input, inputSize);
-        // 蒙版二值化 + 羽化（走 yml 配置）
-        int[] maskRefined = refineMask(mask, inputSize,
-                segmentationConfig.getMaskThreshold(), segmentationConfig.getFeatherSize());
-        // 裁掉 pad 区 → 得到与原图同长宽比的蒙版
-        int[] valid = cropValidRegion(maskRefined, inputSize, padded);
-        byte[] output = compositeTransparent(source, valid, padded.w, padded.h);
+        // 预处理：按模型口径（保持长宽比 + pad 成方形 / 直接压成方形）→ 归一化 → NCHW
+        PaddedInput padded = preprocessForModel(upscaled, inputSize, resizeMode);
+        float[] input = toInputTensor(padded.image, inputSize, model);
 
-        return new SegmentResult(output, width, height, OUTPUT_MIME);
+        // 推理 → 0~255 灰度蒙版（模型尺寸）
+        int[] mask = predictMask(input, inputSize, model);
+
+        // 蒙版二值化 + 羽化：让 alpha 边缘平滑（头发丝自然）。
+        // 阈值优先级：模型推荐值 > yml 配置。
+        // MODNet / RMBG 都用 yml 的 0（不二值化，保留半透明）。
+        double threshold = model.getDefaultMaskThreshold() != null
+                ? model.getDefaultMaskThreshold()
+                : segmentationConfig.getMaskThreshold();
+        int[] maskRefined = refineMask(mask, inputSize, threshold, segmentationConfig.getFeatherSize());
+
+        // 裁掉 pad 区（得到与原图同长宽比的蒙版）
+        int[] valid = cropValidRegion(maskRefined, inputSize, padded);
+
+        return new MaskResult(source, valid, padded.w, padded.h, width, height);
+    }
+
+    /**
+     * 分割核心的中间产物：原图 + 裁掉 pad 区后的蒙版。
+     */
+    private static final class MaskResult {
+        final BufferedImage source;
+        final int[] mask;
+        final int maskW;
+        final int maskH;
+        final int width;
+        final int height;
+
+        MaskResult(BufferedImage source, int[] mask, int maskW, int maskH, int width, int height) {
+            this.source = source;
+            this.mask = mask;
+            this.maskW = maskW;
+            this.maskH = maskH;
+            this.width = width;
+            this.height = height;
+        }
     }
 
     @Override
     public SegmentResult changeBackground(byte[] foregroundImage, byte[] backgroundImage) {
+        return changeBackground(foregroundImage, backgroundImage, null);
+    }
+
+    /**
+     * 换背景图，可显式指定分割模型（工具页的模型选择器用）。
+     *
+     * @param model 分割模型；null = 用配置里的默认模型
+     */
+    private SegmentResult changeBackground(byte[] foregroundImage, byte[] backgroundImage,
+                                           SegmentationModelEnum model) {
         if (foregroundImage == null || foregroundImage.length == 0) {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请上传要处理的图片");
         }
@@ -175,7 +277,9 @@ public class SegmentationServiceImpl implements SegmentationService {
         }
 
         // 1) 前景去背景 → 透明 PNG
-        SegmentResult fg = removeBackgroundTransparent(foregroundImage);
+        SegmentResult fg = model != null
+                ? removeBackgroundTransparent(foregroundImage, model)
+                : removeBackgroundTransparent(foregroundImage);
         BufferedImage fgImg = bytesToImage(fg.getImageBytes());
         // 2) 背景图解码（不做去背景）
         BufferedImage bgImg = decodeWithPixelLimit(backgroundImage);
@@ -222,6 +326,13 @@ public class SegmentationServiceImpl implements SegmentationService {
     @Override
     public SegmentResult processImage(byte[] imageBytes, String mode,
                                       String backgroundColor, byte[] backgroundImage) {
+        return processImage(imageBytes, mode, backgroundColor, backgroundImage, null);
+    }
+
+    @Override
+    public SegmentResult processImage(byte[] imageBytes, String mode,
+                                      String backgroundColor, byte[] backgroundImage,
+                                      SegmentationModelEnum model) {
         if (imageBytes == null || imageBytes.length == 0) {
             throw ErrorFactory.of(ResultCode.PARAM_MISSING, "请先选择要处理的图片");
         }
@@ -234,18 +345,20 @@ public class SegmentationServiceImpl implements SegmentationService {
         switch (m) {
             case "transparent":
                 // 单纯去背景，输出透明 PNG（走 yml 配置：mask-threshold / feather-size）
-                return removeBackgroundTransparent(imageBytes);
+                return model != null
+                        ? removeBackgroundTransparent(imageBytes, model)
+                        : removeBackgroundTransparent(imageBytes);
             case "color":
                 if (backgroundColor == null || backgroundColor.isBlank()) {
                     throw ErrorFactory.of(ResultCode.PARAM_MISSING, "color 模式必须指定底色（red/blue/white）");
                 }
-                return removeBackground(imageBytes, backgroundColor);
+                return removeBackground(imageBytes, backgroundColor, model);
             case "image":
                 if (backgroundImage == null || backgroundImage.length == 0) {
                     throw ErrorFactory.of(ResultCode.PARAM_MISSING, "image 模式必须上传背景图");
                 }
                 // 走「透明 PNG + 叠到 bg」路径
-                return changeBackground(imageBytes, backgroundImage);
+                return changeBackground(imageBytes, backgroundImage, model);
             default:
                 throw ErrorFactory.of(ResultCode.PARAM_ERROR,
                         "mode 必须是 transparent / color / image，当前: " + mode);
@@ -377,17 +490,19 @@ public class SegmentationServiceImpl implements SegmentationService {
         // pad 到方形：pad 值用 127（中灰），与官方 pad_divide_by 一致
         BufferedImage padded = new BufferedImage(size, size, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = padded.createGraphics();
+        // 有效区域（居中放置，与官方一致）
+        int ox = (size - nw) / 2;
+        int oy = (size - nh) / 2;
         try {
             g.setColor(new Color(127, 127, 127));
             g.fillRect(0, 0, size, size);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g.drawImage(scaled, 0, 0, null);
+            // 内容必须画在 (ox, oy)——与下面返回的有效区域严格一致。
+            // 画在 (0,0) 而按居中裁蒙版，会让非方形图的蒙版整体错位（原实现就是这个 bug）。
+            g.drawImage(scaled, ox, oy, null);
         } finally {
             g.dispose();
         }
-        // 有效区域（居中放置，与官方一致）
-        int ox = (size - nw) / 2;
-        int oy = (size - nh) / 2;
         return new PaddedInput(padded, ox, oy, nw, nh);
     }
 
@@ -409,14 +524,17 @@ public class SegmentationServiceImpl implements SegmentationService {
     }
 
     /**
-     * 预处理统一入口：按 {@code segmentation.preprocess-mode} 选择
-     * 「保持比例 + pad」（官方口径，默认）或「压扁成方形」。
+     * 预处理统一入口：按<b>模型官方口径</b>选择
+     * 「保持比例 + pad」（MODNet）或「压扁成方形」（RMBG-1.4）。
      *
+     * @param src        原图
+     * @param size       方形边长（= 模型输入边长）
+     * @param resizeMode resize 口径
      * @return 方形输入图 + 有效区域（两种模式下都有效：squash 时有效区域 = 整个方形）
      */
-    private PaddedInput preprocessForModel(BufferedImage src, int size) {
-        String mode = segmentationConfig.getPreprocessMode();
-        if (mode == null || mode.isBlank() || "squash".equalsIgnoreCase(mode)) {
+    private PaddedInput preprocessForModel(BufferedImage src, int size,
+                                           SegmentationModelEnum.ResizeMode resizeMode) {
+        if (resizeMode == SegmentationModelEnum.ResizeMode.SQUASH) {
             // squash：整张方形都是有效内容
             return new PaddedInput(resize(src, size, size), 0, 0, size, size);
         }
@@ -497,30 +615,33 @@ public class SegmentationServiceImpl implements SegmentationService {
     }
 
     /**
-     * 把图片转成 NCHW 排布的 float 数组并按 ZHKKKe/MODNet 官方预处理归一化。
+     * 把图片转成 NCHW 排布的 float 数组，并按<b>模型自己的</b>归一化口径处理。
      * <p>
-     * 归一化公式 {@code (v / 255 - mean[c]) / std[c]}，{@code mean=[0.5,0.5,0.5]}、
-     * {@code std=[0.5,0.5,0.5]}，最终把像素压到 {@code [-1, 1]}。这是 MODNet 官方推荐写法，
-     * 与 rembg/u2netp 的「整图 maxPix 做除数」不同——后者是给 U²-Net 用的，不能套到 MODNet 上。
+     * 公式 {@code (v / 255 - mean[c]) / std[c]}，mean/std 由
+     * {@link SegmentationModelEnum#normalize(int, int)} 提供：
+     * <ul>
+     *   <li>MODNet —— {@code mean=std=0.5}，像素压到 {@code [-1,1]}（官方推荐写法）</li>
+     *   <li>RMBG-1.4 —— {@code mean=0.5, std=1.0}</li>
+     * </ul>
+     * 与 rembg/u2netp 的「整图 maxPix 做除数」不同——后者是给 U²-Net 用的，不能套到这些模型上。
      *
-     * @param image     已缩放到模型尺寸的图片
-     * @param size      边长
+     * @param image 已缩放到模型尺寸的图片
+     * @param size  边长
+     * @param model 分割模型（决定归一化口径）
      * @return 长度 {@code 3 * size * size} 的 float 数组，索引顺序 C=0,H=1,W=2
      */
-    private float[] toInputTensor(BufferedImage image, int size) {
+    private float[] toInputTensor(BufferedImage image, int size, SegmentationModelEnum model) {
         int planeSize = size * size;
         float[] tensor = new float[3 * planeSize];
 
-        // MODNet 官方：固定除以 255，把像素压到 [0, 1] 后再做中心化
-        final float inv255 = 1.0f / 255.0f;
         // 按通道各写一张平面（NCHW）
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 int rgb = image.getRGB(x, y);
                 int idx = y * size + x;
-                tensor[idx]                    = ((((rgb >> 16) & 0xFF) * inv255) - MEAN[0]) / STD[0];
-                tensor[planeSize + idx]        = ((((rgb >>  8) & 0xFF) * inv255) - MEAN[1]) / STD[1];
-                tensor[2 * planeSize + idx]    = ((( rgb         & 0xFF) * inv255) - MEAN[2]) / STD[2];
+                tensor[idx]                 = model.normalize((rgb >> 16) & 0xFF, 0);
+                tensor[planeSize + idx]     = model.normalize((rgb >> 8) & 0xFF, 1);
+                tensor[2 * planeSize + idx] = model.normalize(rgb & 0xFF, 2);
             }
         }
         return tensor;
@@ -533,13 +654,15 @@ public class SegmentationServiceImpl implements SegmentationService {
      *
      * @param input     NCHW 输入数据
      * @param inputSize 模型输入边长
+     * @param model     分割模型（决定用哪个会话）
      * @return 灰度蒙版（一维数组，行优先）
      */
-    private int[] predictMask(float[] input, int inputSize) {
-        OrtSession ortSession = getSession();
+    private int[] predictMask(float[] input, int inputSize, SegmentationModelEnum model) {
+        ModelSession modelSession = getModelSession(model);
+        OrtSession ortSession = modelSession.session;
         long[] shape = {1, 3, inputSize, inputSize};
         try (OnnxTensor tensor = OnnxTensor.createTensor(ENV, FloatBuffer.wrap(input), shape);
-             OrtSession.Result result = ortSession.run(java.util.Map.of(inputName, tensor))) {
+             OrtSession.Result result = ortSession.run(java.util.Map.of(modelSession.inputName, tensor))) {
 
             OnnxTensor output = (OnnxTensor) result.get(0);
 
@@ -561,27 +684,16 @@ public class SegmentationServiceImpl implements SegmentationService {
             int planeSize = inputSize * inputSize;
 
             // 取第 0 个通道（outShape[1] 恒为 1，但下标 0 兼容多通道侧输出模型）
-            float min = Float.MAX_VALUE;
-            float max = -Float.MAX_VALUE;
+            float[] raw = new float[planeSize];
             for (int i = 0; i < planeSize; i++) {
-                float v = buffer.get(i);
-                if (v < min) min = v;
-                if (v > max) max = v;
+                raw[i] = buffer.get(i);
             }
 
-            // 用实际 min/max 做归一化（rembg u2net.py 的做法），再 *255 转灰度蒙版
-            float range = max - min;
-            int[] mask = new int[planeSize];
-            if (range <= 0f) {
-                // 全图同一值（纯色图 / 模型无输出）：没有前景可言，整图判为背景
-                log.warn("[segment] 模型输出为常量值，按全背景处理");
-                return mask;
-            }
-            for (int i = 0; i < planeSize; i++) {
-                float norm = (buffer.get(i) - min) / range;
-                mask[i] = Math.round(Math.min(1f, Math.max(0f, norm)) * 255f);
-            }
-            return mask;
+            // 按**模型自己的输出语义**换算：
+            // MODNet / RMBG 输出的是概率（min-max 拉伸）；
+            // 若接的模型输出的是 logit，则要先 sigmoid（见 SegmentationModelEnum.OutputMode）。
+            // 混用会让抠图变成半透明鬼影，详见 SegmentationModelEnum.OutputMode 的注释。
+            return rawOutputToMask(raw, model.getOutputMode());
         } catch (OrtException e) {
             log.error("[segment] ONNX 推理失败", e);
             throw ErrorFactory.of(ResultCode.SEGMENT_INFER_FAILED);
@@ -589,25 +701,72 @@ public class SegmentationServiceImpl implements SegmentationService {
     }
 
     /**
-     * 取（懒加载）模型会话单例。
+     * 把模型原始输出换算成 0~255 灰度蒙版（包级可见，供单元测试锁住口径）。
      *
-     * @return 已就绪的 OrtSession
+     * @param raw  模型输出（{@code PROBABILITY} 口径下是 0~1 概率；{@code LOGIT} 口径下是原始 logit）
+     * @param mode 输出语义
+     * @return 灰度蒙版（行优先，长度 = raw.length）
      */
-    private OrtSession getSession() {
-        OrtSession local = session;
+    static int[] rawOutputToMask(float[] raw, SegmentationModelEnum.OutputMode mode) {
+        int n = raw.length;
+        int[] mask = new int[n];
+
+        if (mode == SegmentationModelEnum.OutputMode.LOGIT) {
+            // logit → sigmoid → 概率，**不再做 min-max**：
+            // sigmoid 本身就是标定过的概率；再 min-max 会把有效区间压成窄带，
+            // 真实置信度 0.7% 的背景会被抬到 35% 不透明度 → 抠出来稀碎。
+            for (int i = 0; i < n; i++) {
+                float p = 1f / (1f + (float) Math.exp(-raw[i]));
+                mask[i] = Math.round(Math.min(1f, Math.max(0f, p)) * 255f);
+            }
+            return mask;
+        }
+
+        // PROBABILITY：按整图 min/max 拉伸（MODNet / RMBG 既有行为，保持不变）
+        float min = Float.MAX_VALUE;
+        float max = -Float.MAX_VALUE;
+        for (float v : raw) {
+            if (v < min) min = v;
+            if (v > max) max = v;
+        }
+        float range = max - min;
+        if (range <= 0f) {
+            // 全图同一值（纯色图 / 模型无输出）：没有前景可言，整图判为背景
+            log.warn("[segment] 模型输出为常量值，按全背景处理");
+            return mask;
+        }
+        for (int i = 0; i < n; i++) {
+            float norm = (raw[i] - min) / range;
+            mask[i] = Math.round(Math.min(1f, Math.max(0f, norm)) * 255f);
+        }
+        return mask;
+    }
+
+    /**
+     * 取（懒加载）指定模型的会话。
+     *
+     * @param model 分割模型
+     * @return 已就绪的会话（含输入节点名）
+     */
+    private ModelSession getModelSession(SegmentationModelEnum model) {
+        ModelSession local = sessions.get(model);
         if (local != null) {
             return local;
         }
         synchronized (this) {
-            if (session == null) {
-                session = createSession();
-                // 输入节点名动态取，不硬编码：实测该模型叫 "input.1"，
-                // 但 ONNX 图里的节点名随导出工具/版本变化，写死会在换模型时静默失效
-                inputName = session.getInputNames().iterator().next();
-                log.info("[segment] ONNX 模型加载完成 input={} outputs={}",
-                        inputName, session.getOutputNames());
+            local = sessions.get(model);
+            if (local == null) {
+                OrtSession created = createSession(model);
+                // 输入节点名动态取，不硬编码：实测 MODNet 叫 "input.1"、
+                // 不同模型的节点名不一样（ONNX 图里的名字随导出工具/版本变化），
+                // 写死会在换模型时静默失效
+                String name = created.getInputNames().iterator().next();
+                local = new ModelSession(created, name);
+                sessions.put(model, local);
+                log.info("[segment] ONNX 模型加载完成 model={} input={} outputs={}",
+                        model.getCode(), name, created.getOutputNames());
             }
-            return session;
+            return local;
         }
     }
 
@@ -618,13 +777,14 @@ public class SegmentationServiceImpl implements SegmentationService {
      * 因为 {@code createSession(String)} 只接受真实文件路径，jar 内模型没有独立路径；
      * 外挂文件模型走路径构造器，让 Runtime 自己做内存映射、少占一份堆。
      */
-    private OrtSession createSession() {
-        String modelPath = segmentationConfig.getModelPath();
+    private OrtSession createSession(SegmentationModelEnum model) {
+        String modelPath = segmentationConfig.resolveModelPath(model);
         try {
             Resource resource = new DefaultResourceLoader().getResource(modelPath);
             if (!resource.exists()) {
-                log.error("[segment] 模型文件不存在 path={}", modelPath);
-                throw ErrorFactory.of(ResultCode.SEGMENT_MODEL_UNAVAILABLE);
+                log.error("[segment] 模型文件不存在 path={} model={}", modelPath, model.getCode());
+                throw ErrorFactory.of(ResultCode.SEGMENT_MODEL_UNAVAILABLE,
+                        "分割模型文件不存在（" + model.getCode() + "），请检查 models 目录");
             }
             OrtSession created;
             if (resource.isFile() && "file".equals(resource.getURL().getProtocol())) {
@@ -638,22 +798,23 @@ public class SegmentationServiceImpl implements SegmentationService {
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {
-            log.error("[segment] ONNX 模型加载失败 path={}", modelPath, e);
-            throw ErrorFactory.of(ResultCode.SEGMENT_MODEL_UNAVAILABLE);
+            log.error("[segment] ONNX 模型加载失败 path={} model={}", modelPath, model.getCode(), e);
+            throw ErrorFactory.of(ResultCode.SEGMENT_MODEL_UNAVAILABLE,
+                    "分割模型加载失败（" + model.getCode() + "）");
         }
     }
 
     /** 应用关闭时释放模型内存，避免重启期间内存被旧进程占着 */
     @PreDestroy
     public void destroy() {
-        OrtSession local = session;
-        if (local != null) {
+        for (Map.Entry<SegmentationModelEnum, ModelSession> entry : sessions.entrySet()) {
             try {
-                local.close();
+                entry.getValue().session.close();
             } catch (OrtException e) {
-                log.warn("[segment] 关闭 ONNX session 失败", e);
+                log.warn("[segment] 关闭 ONNX session 失败 model={}", entry.getKey().getCode(), e);
             }
         }
+        sessions.clear();
     }
 
     // ==================== 缩放 ====================

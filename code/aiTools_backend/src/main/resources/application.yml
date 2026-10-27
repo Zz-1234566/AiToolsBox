@@ -51,14 +51,23 @@ file:
 # 人像分割（image-bg-remover）
 segmentation:
   enabled: true
-  # 预处理方式：
-  #   keep-ratio-pad —— **MODNet 官方口径**（默认）：保持长宽比缩放（长边→input-size）
-  #                     + pad 成方形（pad 值 = 127 中灰）。官方 src/models/modnet.py#preprocess
-  #                     就是这么做的。squash 会把竖版人像压扁，模型看到的是变形的人。
-  #   squash         —— 直接 resize 成 input-size×input-size（旧行为，留作 A/B 回退开关）
+  # 分割模型（可插拔）：
+  #   modnet    —— MODNet，人像 matting，24.7MB，Apache-2.0，512²
+  #   rmbg-1.4  —— BRIA RMBG-1.4，通用显著物，168MB，**仅非商用**，1024²
+  # **换模型只改这一项**：输入边长、归一化 mean·std、resize 口径会自动跟着模型走，
+  # 不需要手工对齐（口径对不上不会报错，只会静默输出错蒙版）。
+  # 可选：modnet（人像 matting）/ rmbg-1.4（通用显著物，仅非商用）
+  model: modnet
+  # 模型文件位置。留空 = 按 model 的默认文件名从 classpath:models/ 取；
+  # 填绝对路径或 file: 前缀 = 外挂模型（热更模型不动包）。
+  model-path:
+  # 模型输入边长。0 = 用模型自带的边长（一般不要改，改了必须与模型实际输入一致）。
+  input-size: 0
+  # 预处理方式。留空 = 用模型官方的口径：
+  #   keep-ratio-pad —— 保持长宽比缩放 + pad 成方形（pad 值 = 127 中灰）。MODNet 用这个。
+  #   squash         —— 直接 resize 成方形。RMBG-1.4 用这个。
   # 模型只接受方形输入（非方形会在内部 Concat 节点维度不匹配报错），所以保持比例必须靠 pad。
-  preprocess-mode: keep-ratio-pad
-  input-size: 512
+  preprocess-mode:
   # 蒙版二值化阈值（0~1）。**0 = 不二值化**（MODNet 官方推荐，保留半透明）；
   # 调小更激进（带出更多背景），调大更保守（边缘收缩）。
   mask-threshold: 0

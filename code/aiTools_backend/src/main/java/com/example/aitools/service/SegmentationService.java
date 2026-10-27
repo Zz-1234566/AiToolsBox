@@ -1,5 +1,6 @@
 package com.example.aitools.service;
 
+import com.example.aitools.common.SegmentationModelEnum;
 import com.example.aitools.dto.SegmentResult;
 
 /**
@@ -38,6 +39,23 @@ public interface SegmentationService {
                                 String backgroundColor, byte[] backgroundImage);
 
     /**
+     * 3 模式合一入口，<b>显式指定分割模型</b>（工具页的模型选择器用）。
+     * <p>
+     * 指定模型时，该模型的输入边长 / 归一化口径 / resize 口径**全部按它自己的规格走**，
+     * 不受配置里的 {@code input-size} / {@code preprocess-mode} 影响
+     * （那两个是给「配置里的默认模型」做覆盖用的）。
+     *
+     * @param imageBytes      原始图片字节
+     * @param mode            transparent / color / image（大小写不敏感）
+     * @param backgroundColor mode=color 时必填
+     * @param backgroundImage mode=image 时必填
+     * @param model           分割模型；null = 用配置里的默认模型
+     */
+    SegmentResult processImage(byte[] imageBytes, String mode,
+                                String backgroundColor, byte[] backgroundImage,
+                                SegmentationModelEnum model);
+
+    /**
      * 去背景并合成指定底色。
      * <p>
      * 流程：解码 → 缩放到模型输入尺寸 → 归一化送 ONNX 推理 → 取第 0 个输出的首通道
@@ -63,6 +81,20 @@ public interface SegmentationService {
      * @return 透明 PNG 字节 + 宽高信息
      */
     SegmentResult removeBackgroundTransparent(byte[] imageBytes);
+
+    /**
+     * 去背景，输出透明 PNG，并<b>显式指定分割模型</b>。
+     * <p>
+     * 给工具页的模型选择器用：用户选了哪个模型，就用哪个模型的规格推理。
+     * <b>输入边长与 resize 口径一律用该模型自己的官方规格</b>，
+     * 不受配置里的 {@code input-size} / {@code preprocess-mode} 影响
+     * （那两个是给「配置里的默认模型」做覆盖用的）。
+     *
+     * @param imageBytes 原始图片字节
+     * @param model      分割模型（null 视为参数错误）
+     * @return 透明 PNG 字节 + 宽高信息
+     */
+    SegmentResult removeBackgroundTransparent(byte[] imageBytes, SegmentationModelEnum model);
 
     /**
      * 换背景图：fg 去背景（透明 PNG）+ 叠到用户上传的 bg 之上，输出 JPG。

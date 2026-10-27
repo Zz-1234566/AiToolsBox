@@ -1,5 +1,6 @@
 package com.example.aitools.service;
 
+import com.example.aitools.common.SegmentationModelEnum;
 import com.example.aitools.dto.BatchFilePayload;
 
 import java.util.List;
@@ -37,7 +38,7 @@ public interface SegmentationBatchService {
      */
     void processImageBatch(Long userId, List<BatchFilePayload> payloads,
                            String mode, String backgroundColor, byte[] backgroundImage,
-                           String batchId);
+                           String batchId, SegmentationModelEnum model);
 
     /**
      * 批量任务前置失败（读文件失败 / 线程池拒绝）时把任务置为失败。
