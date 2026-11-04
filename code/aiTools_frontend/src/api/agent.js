@@ -71,3 +71,16 @@ export const getAgentRun = (runId) => {
     method: 'GET'
   })
 }
+
+/**
+ * 取消一次正在运行的智能体
+ * @param {String} runId 运行 ID（运行首帧下发）
+ * @returns {Promise<{ code, data: true }>}
+ */
+export const cancelAgentRun = (runId) => {
+  return request({
+    url: '/api/agent/cancel',
+    method: 'POST',
+    data: { runId }
+  })
+}

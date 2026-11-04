@@ -33,6 +33,15 @@ public interface AgentService {
                String modelCode, Consumer<String> onFrame);
 
     /**
+     * 取消一次正在运行的智能体。
+     *
+     * @param userId 用户 ID（只能取消自己的）
+     * @param runId  运行 ID（由首帧 {@code FRAME_RUN} 下发）
+     * @return true = 已发出取消信号；false = 该运行不存在或已结束
+     */
+    boolean cancel(Long userId, String runId);
+
+    /**
      * 我最近的智能体运行记录（不含步骤明细，避免列表响应体膨胀）。
      *
      * @param userId 用户 ID
@@ -62,4 +71,6 @@ public interface AgentService {
     String FRAME_ANSWER = "答案";
     /** 帧前缀：全部完成 */
     String FRAME_DONE = "完成";
+    /** 帧前缀：本次运行的 runId（**第一帧**，前端据此才能调取消） */
+    String FRAME_RUN = "运行";
 }

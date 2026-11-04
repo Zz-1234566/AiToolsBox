@@ -461,8 +461,21 @@ RMBG-1.4 的 ONNX 由 HF 官方镜像仓库直接提供：
 | 接口 | 说明 |
 |---|---|
 | `POST /api/agent/run` | 跑一次智能体（SSE 流式）。入参 `{ goal, modelCode, files:[{name,url}] }` |
+| `POST /api/agent/cancel` | 取消正在运行的智能体（入参 `{ runId }`，runId 由运行首帧下发） |
 | `GET /api/agent/runs?limit=20` | 我最近的运行记录（不含步骤明细） |
 | `GET /api/agent/runs/{runId}` | 运行详情（含步骤明细） |
+
+**App 端可用性**（这三件事在 H5 端测不出来，单列出来）：
+
+- 页面必须挂 `<sse-renderjs />`（`#ifdef APP-PLUS`）—— App 端 SSE 由视图层发起 XHR，
+  页面不注册组件，请求会直接报「流式组件未就绪」
+- 自动滚动用 `scroll-into-view` + 末尾锚点（`scroll-top` 设大值在 App 端不可靠）
+- **App 端附件只能选图片**：`uni.chooseFile` / `chooseMessageFile` 在 App 端不被支持，
+  App 端走 `uni.chooseImage`；文档 / 录音请在 H5 端上传
+
+**错误码**（7xxxx 段「工作流 / 智能体编排」）：`70007` 格式错误 / `70008` 动作不完整 /
+`70009` 工具连续失败 / `70010` 步数用尽 / `70011` 已取消 / `70012` 记录不存在 /
+`70013` 所选模型不可用。
 
 **SSE 帧约定**（与项目现有标记格式一致）：
 

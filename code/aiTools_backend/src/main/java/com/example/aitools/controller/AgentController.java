@@ -2,6 +2,7 @@ package com.example.aitools.controller;
 
 import com.example.aitools.agent.AgentAttachment;
 import com.example.aitools.agent.AgentService;
+import com.example.aitools.agent.dto.AgentCancelRequest;
 import com.example.aitools.agent.dto.AgentRunRequest;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
@@ -81,6 +82,29 @@ public class AgentController {
         return StreamHelper.stream(agentExecutor, emitter ->
                 agentService.run(userId, req.getGoal(), attachments, req.getModelCode(),
                         StreamHelper.asChunkConsumer(emitter)));
+    }
+
+    /**
+     * 取消一次正在运行的智能体。
+     * <p>
+     * runId 由运行时的**首帧**下发（{@code --- [运行:xxx] ---}）——
+     * 前端必须先拿到它才能调取消。
+     *
+     * @param req 含 runId
+     */
+    @PostMapping("/cancel")
+    public Result<Boolean> cancel(@RequestBody AgentCancelRequest req, HttpServletRequest request) {
+        Long userId = authUtil.getUserIdFromRequest(request);
+        if (req == null || req.getRunId() == null || req.getRunId().isBlank()) {
+            throw new BusinessException(ResultCode.PARAM_MISSING.getCode(), "缺少运行 ID");
+        }
+        boolean cancelled = agentService.cancel(userId, req.getRunId());
+        if (!cancelled) {
+            // 已经跑完 / 正在收尾 / 不是自己的运行 —— 都当「没得取消」
+            throw new BusinessException(ResultCode.AGENT_RUN_NOT_FOUND.getCode(),
+                    "该运行已结束或不存在，无法取消");
+        }
+        return Result.success("已发送取消请求", true);
     }
 
     /**

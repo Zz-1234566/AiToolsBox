@@ -14,7 +14,7 @@ import lombok.Getter;
  *   4xxxx  OCR 识别         智能识别、票据识别
  *   5xxxx  文档处理         文档转文本、文档解析
  *   6xxxx  音频处理         录音转写
- *   7xxxx  工作流           编排、节点、运行
+ *   7xxxx  工作流 / 智能体    编排、节点、运行、智能体
  *   8xxxx  文件 / 存储      上传、COS、本地存储
  *   9xxxx  参数 / 系统      通用参数校验、系统内部错误
  * </pre>
@@ -78,13 +78,28 @@ public enum ResultCode {
     AUDIO_FAILED(60001, "录音处理失败，请稍后重试"),
     AUDIO_UNSUPPORTED(60002, "暂不支持该音频格式"),
 
-    // ==================== 7xxxx 工作流 ====================
+    // ==================== 7xxxx 工作流 / 智能体 ====================
     WORKFLOW_INVALID(70001, "工作流配置有误，请检查节点设置"),
     WORKFLOW_RUN_FAILED(70002, "工作流运行失败"),
     WORKFLOW_DEPTH_EXCEEDED(70003, "工作流层数超过上限"),
     WORKFLOW_CYCLE(70004, "工作流存在循环依赖"),
     WORKFLOW_TYPE_MISMATCH(70005, "节点连线类型不匹配"),
     WORKFLOW_NODE_FAILED(70006, "节点执行失败"),
+    // ---- 智能体（70007 起）----
+    /** 模型输出无法解析为约定的动作 JSON */
+    AGENT_PARSE_FAILED(70007, "模型未能按约定格式输出，请重试"),
+    /** 动作不完整（缺 tool / 缺 output / 动作类型未知） */
+    AGENT_ACTION_INVALID(70008, "模型返回的动作不完整，已终止"),
+    /** 连续多次工具调用失败 */
+    AGENT_TOOL_FAILED(70009, "工具连续调用失败，已终止"),
+    /** 达到最大步数仍未得出结论 */
+    AGENT_STEPS_EXCEEDED(70010, "已达到最大步数，仍未得出结论"),
+    /** 用户主动取消 */
+    AGENT_CANCELLED(70011, "已取消"),
+    /** 运行记录不存在（或不属于当前用户） */
+    AGENT_RUN_NOT_FOUND(70012, "运行记录不存在"),
+    /** 所选模型不可用（BYOK 记录不存在 / 能力不匹配 / 凭据无效） */
+    AGENT_MODEL_UNAVAILABLE(70013, "所选模型不可用，请重新选择"),
 
     // ==================== 8xxxx 文件 / 存储 ====================
     FILE_UNSUPPORTED(80001, "不支持的文件类型"),

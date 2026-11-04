@@ -1,5 +1,10 @@
 <template>
   <view class="page">
+    <!-- App 端 SSE 传输组件（视图层发起 XHR）；H5 端用原生 XHR，不需要此组件 -->
+    <!-- #ifdef APP-PLUS -->
+    <sse-renderjs />
+    <!-- #endif -->
+
     <!-- ============ 顶栏 ============ -->
     <view class="topbar">
       <view class="topbar__back" hover-class="topbar__back--hover" @click="goBack">
@@ -11,7 +16,7 @@
       </view>
     </view>
 
-    <scroll-view scroll-y class="page-content" :scroll-top="scrollTop" scroll-with-animation>
+    <scroll-view scroll-y class="page-content" :scroll-into-view="scrollAnchor" scroll-with-animation>
       <!-- ============ 输入区（未开始运行时） ============ -->
       <view v-if="!started" class="input-area">
         <text class="input-area__label">你的目标</text>
@@ -32,7 +37,12 @@
             <view class="attach-area__add" @click="onPickFiles">+ 添加</view>
           </view>
           <view v-if="attachments.length === 0" class="attach-area__empty">
+            <!-- #ifdef APP-PLUS -->
+            App 端支持选择图片作为附件（文档 / 录音请在 H5 端上传）
+            <!-- #endif -->
+            <!-- #ifndef APP-PLUS -->
             支持图片 / PDF / Word / TXT / 音频，智能体会自己决定用哪个工具处理
+            <!-- #endif -->
           </view>
           <view v-for="(a, i) in attachments" :key="a.url" class="attach-item">
             <text class="attach-item__name">{{ a.name }}</text>
@@ -91,7 +101,7 @@
         <view v-if="answer" class="answer-card">
           <text class="answer-card__label">最终答案</text>
           <!-- App 端不能用 v-html —— MarkdownView 已按端分流（H5 v-html / App mp-html） -->
-          <MarkdownView class="answer-card__md" :source="answer" />
+          <MarkdownView class="answer-card__md" :source="answer" :streaming="typing" />
         </view>
 
         <!-- 出错 -->
@@ -99,14 +109,18 @@
           <text class="error-card__text">{{ errorMsg }}</text>
         </view>
 
-        <!-- 运行中指示 -->
+        <!-- 运行中指示 + 取消 -->
         <view v-if="running" class="running">
           <text class="running__text">智能体正在思考…</text>
+          <view v-if="runId" class="running__cancel" @click="onCancel">取消</view>
         </view>
 
         <!-- 完成后：再问一个 -->
         <button v-if="!running" class="btn-secondary" @click="reset">再问一个</button>
       </view>
+
+      <!-- 自动滚动锚点：scroll-into-view 比 scroll-top 设大值可靠（App 端尤其） -->
+      <view id="agent-bottom" class="bottom-anchor"></view>
     </scroll-view>
   </view>
 </template>
@@ -114,9 +128,11 @@
 <script setup>
 import { ref, nextTick } from 'vue'
 import MarkdownView from '@/components/MarkdownView.vue'
-import { agentRun, uploadAgentFile } from '@/api/agent'
+import { agentRun, uploadAgentFile, cancelAgentRun } from '@/api/agent'
+import { listUserAiModels } from '@/api/aiModel'
 import { pickFiles } from '@/utils/filePicker'
 import { safeBack } from '@/utils/pageTransition'
+import SseRenderjs from '@/components/sse-renderjs/sse-renderjs.vue'
 
 const goal = ref('')
 const attachments = ref([])
@@ -124,8 +140,11 @@ const started = ref(false)
 const running = ref(false)
 const steps = ref([])
 const answer = ref('')
+/** 是否正在逐字输出（MarkdownView 在此期间走纯文本分支，避免每个字重解析 markdown） */
+const typing = ref(false)
 const errorMsg = ref('')
-const scrollTop = ref(0)
+const scrollAnchor = ref('')
+const runId = ref('')
 
 /** 用户自选模型（BYOK）；留空 = 用系统默认 */
 const modelIndex = ref(0)
@@ -156,14 +175,33 @@ const loadModels = async () => {
 }
 loadModels()
 
-/** 选附件：先上传拿 URL（智能体的 SSE 走 JSON body，带不了 multipart） */
+/**
+ * 选附件：先上传拿 URL（智能体的 SSE 走 JSON body，带不了 multipart）。
+ *
+ * <p>⚠️ <b>App 端只能选图片</b>：文档/音频走的是 {@code uni.chooseFile} /
+ * {@code uni.chooseMessageFile}，这两个在 App 端**不被支持**
+ * （uni-app 官方只在 H5 与小程序提供；App 端要么上插件市场，要么用 plus.io 自绘）。
+ * 所以这里按端分流：App 端用全平台都支持的 {@code uni.chooseImage}，
+ * H5 端才能选文档/音频。
+ */
 const onPickFiles = async () => {
+  const remain = Math.max(1, 10 - attachments.value.length)
+  // #ifdef APP-PLUS
   const res = await pickFiles({
-    count: 10 - attachments.value.length,
-    fileType: 'all',
+    count: Math.min(remain, 9),      // chooseImage 单次最多 9 张
+    fileType: 'image',
+    sourceType: ['album', 'camera'],
+    fileLabel: '图片'
+  })
+  // #endif
+  // #ifndef APP-PLUS
+  const res = await pickFiles({
+    count: remain,
+    fileType: 'file',
     sourceType: ['album', 'camera'],
     fileLabel: '附件'
   })
+  // #endif
   if (!res.ok) {
     if (res.reason !== 'cancelled') {
       uni.showToast({ title: res.message || '选择失败', icon: 'none' })
@@ -208,8 +246,10 @@ const pushStep = (step) => {
 
 const scrollToBottom = async () => {
   await nextTick()
-  // 页面内容高度随步骤增长，用一个大值触发滚到底
-  scrollTop.value = 999999
+  // 用 scroll-into-view + 锚点元素（App 端 scroll-top 设大值不可靠）
+  scrollAnchor.value = ''
+  await nextTick()
+  scrollAnchor.value = 'agent-bottom'
 }
 
 const onStart = async () => {
@@ -233,7 +273,10 @@ const onStart = async () => {
           const idx = marker.indexOf(':')
           const kind = idx >= 0 ? marker.slice(0, idx) : marker
           const body = idx >= 0 ? marker.slice(idx + 1) : ''
-          if (kind === '思考') {
+          if (kind === '运行') {
+            // 首帧：拿到 runId（取消接口的入参）
+            runId.value = body
+          } else if (kind === '思考') {
             chunkTarget = 'answer'
             pushStep({ type: 'thought', text: body })
           } else if (kind === '工具') {
@@ -257,13 +300,14 @@ const onStart = async () => {
               return
             }
           }
-          answer.value += text
-          scrollToBottom()
+          appendAnswer(text)
         },
         onDone: () => {
+          flushAnswer()
           running.value = false
         },
         onError: (err) => {
+          flushAnswer()
           running.value = false
           errorMsg.value = (err && err.message) || '智能体运行失败，请重试'
         }
@@ -275,6 +319,17 @@ const onStart = async () => {
   }
 }
 
+/** 取消本次运行 */
+const onCancel = async () => {
+  if (!runId.value || !running.value) return
+  try {
+    await cancelAgentRun(runId.value)
+    uni.showToast({ title: '已发送取消请求', icon: 'none' })
+  } catch (e) {
+    uni.showToast({ title: (e && e.message) || '取消失败', icon: 'none' })
+  }
+}
+
 const reset = () => {
   started.value = false
   running.value = false
@@ -283,6 +338,8 @@ const reset = () => {
   errorMsg.value = ''
   goal.value = ''
   attachments.value = []
+  runId.value = ''
+  typing.value = false
   chunkTarget = 'answer'
 }
 </script>
@@ -531,5 +588,21 @@ const reset = () => {
   padding: 24rpx 0;
 
   &__text { font-size: 24rpx; color: #9CA3AF; }
+
+  &__cancel {
+    display: inline-block;
+    margin-top: 16rpx;
+    padding: 12rpx 40rpx;
+    border-radius: 999rpx;
+    border: 2rpx solid #E5E7EB;
+    background: #FFFFFF;
+    font-size: 25rpx;
+    color: #6B7280;
+  }
+}
+
+/* 自动滚动锚点（不可见） */
+.bottom-anchor {
+  height: 1rpx;
 }
 </style>

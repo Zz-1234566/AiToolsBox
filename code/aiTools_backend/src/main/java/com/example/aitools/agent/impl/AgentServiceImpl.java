@@ -14,6 +14,7 @@ import com.example.aitools.vo.AgentRunVO;
 import com.example.aitools.ai.AiClient;
 import com.example.aitools.ai.ResolvedCredential;
 import com.example.aitools.common.Constants;
+import com.example.aitools.exception.BusinessException;
 import com.example.aitools.exception.ErrorFactory;
 import com.example.aitools.service.ModelCredentialResolver;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -65,6 +68,15 @@ public class AgentServiceImpl implements AgentService {
     private final ModelCredentialResolver credentialResolver;
     private final AgentRunMapper agentRunMapper;
 
+    /**
+     * 运行中的智能体 → 取消标志。
+     * <p>
+     * <b>为什么用内存标志而不是直接 interrupt 线程</b>：interrupt 会在任意位置抛
+     * InterruptedException，可能打断「写运行记录」这类收尾动作，留下半截数据；
+     * 标志位是<b>协作式</b>的 —— 循环在每个自然检查点看一眼，不点了就干净退出。
+     */
+    private final Map<String, AtomicBoolean> runningAgents = new ConcurrentHashMap<>();
+
     @Override
     public String run(Long userId, String goal, List<AgentAttachment> attachments,
                       String modelCode, Consumer<String> onFrame) {
@@ -76,6 +88,10 @@ public class AgentServiceImpl implements AgentService {
         // 0) 先建「运行中」记录：这样即使进程被 kill / 用户关页面，
         //    也留下一条「运行中」的记录（可被识别为异常中断），而不是什么都查不到
         String runId = createRunRecord(userId, goal);
+        AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        runningAgents.put(runId, cancelFlag);
+        // 首帧就把 runId 下发：前端要靠它才能调取消（取消接口的入参就是 runId）
+        onFrame.accept(frame(FRAME_RUN, runId));
 
         // 1) 工具清单（DB 生成）+ system 提示词
         List<AgentToolCatalog.AgentTool> tools = catalog.listTools();
@@ -90,10 +106,11 @@ public class AgentServiceImpl implements AgentService {
         ResolvedCredential cred = resolveCred(userId, modelCode);
 
         try {
-            return doRun(userId, runId, messages, attachments, cred, onFrame);
+            return doRun(userId, runId, messages, attachments, cred, cancelFlag, onFrame);
         } catch (Exception e) {
             // 兜底：SSE 断开（用户关页面）会抛 IOException，
             // 这时运行记录不能停在「运行中」—— 标成失败，列表里能看出这次没跑完
+            runningAgents.remove(runId);
             failRunRecord(runId, "运行中断：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()),
                     new ArrayList<>(), start);
             throw e;
@@ -105,7 +122,9 @@ public class AgentServiceImpl implements AgentService {
      */
     private String doRun(Long userId, String runId, List<Map<String, String>> messages,
                          List<AgentAttachment> attachments,
-                         ResolvedCredential cred, Consumer<String> onFrame) {
+                         ResolvedCredential cred,
+                         AtomicBoolean cancelFlag,
+                         Consumer<String> onFrame) {
         long start = System.currentTimeMillis();
         List<AgentStep> steps = new ArrayList<>();
 
@@ -116,6 +135,11 @@ public class AgentServiceImpl implements AgentService {
         String lastToolOutput = null;
 
         while (step < Constants.AGENT_MAX_STEPS) {
+            // 取消检查点：每一步开始前看一眼（协作式，不用 interrupt）
+            if (cancelFlag.get()) {
+                cancelRunRecord(runId, steps, start);
+                throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_CANCELLED, "已取消");
+            }
             String raw = aiClient.chatMessages(messages, cred);
 
             AgentAction action = AgentActionParser.parse(raw);
@@ -124,7 +148,7 @@ public class AgentServiceImpl implements AgentService {
                 if (parseFailures >= Constants.AGENT_PARSE_RETRY) {
                     String msg = "模型未能按约定格式输出，已重试 " + Constants.AGENT_PARSE_RETRY + " 次仍失败";
                     failRunRecord(runId, msg, steps, start);
-                    throw ErrorFactory.of(com.example.aitools.common.ResultCode.AI_SERVICE_ERROR, msg);
+                    throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_PARSE_FAILED, msg);
                 }
                 parseFailures++;
                 messages.add(message("assistant", raw == null ? "" : raw));
@@ -140,7 +164,7 @@ public class AgentServiceImpl implements AgentService {
                 // 动作不完整（缺 tool / 缺 output / action 类型未知）→ 重试纠正也没用，直接终止
                 String msg = "模型返回的动作不完整（action=" + action.getAction() + "），已终止";
                 failRunRecord(runId, msg, steps, start);
-                throw ErrorFactory.of(com.example.aitools.common.ResultCode.AI_SERVICE_ERROR, msg);
+                throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_ACTION_INVALID, msg);
             }
 
             if (action.getThought() != null && !action.getThought().isBlank()) {
@@ -153,6 +177,7 @@ public class AgentServiceImpl implements AgentService {
                 onFrame.accept(action.getOutput());
                 onFrame.accept(frame(FRAME_DONE, ""));
                 completeRunRecord(runId, action.getOutput(), steps, start);
+                runningAgents.remove(runId);
                 log.info("[agent] 完成 runId={} step={} cost={}ms", runId, step, System.currentTimeMillis() - start);
                 return runId;
             }
@@ -172,7 +197,7 @@ public class AgentServiceImpl implements AgentService {
                 if (consecutiveFailures >= Constants.AGENT_MAX_CONSECUTIVE_FAILURES) {
                     String msg = "连续 " + consecutiveFailures + " 次工具调用失败，已终止";
                     failRunRecord(runId, msg, steps, start);
-                    throw ErrorFactory.of(com.example.aitools.common.ResultCode.AI_SERVICE_ERROR, msg);
+                    throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_TOOL_FAILED, msg);
                 }
                 continue;
             }
@@ -230,13 +255,61 @@ public class AgentServiceImpl implements AgentService {
         String answer = (action != null && action.getOutput() != null && !action.getOutput().isBlank())
                 ? action.getOutput()
                 : "已达到最大步数（" + Constants.AGENT_MAX_STEPS + "）仍未得出结论。";
+        if (answer.startsWith("已达到最大步数")) {
+            failRunRecord(runId, com.example.aitools.common.ResultCode.AGENT_STEPS_EXCEEDED.getMessage(), steps, start);
+        }
         onFrame.accept(frame(FRAME_ANSWER, ""));
         onFrame.accept(answer);
         onFrame.accept(frame(FRAME_DONE, ""));
         completeRunRecord(runId, answer, steps, start);
+        runningAgents.remove(runId);
         log.info("[agent] 步数用尽，返回兜底结论 runId={} step={} cost={}ms",
                 runId, step, System.currentTimeMillis() - start);
         return runId;
+    }
+
+    // ==================== 取消 ====================
+
+    @Override
+    public boolean cancel(Long userId, String runId) {
+        if (runId == null || runId.isBlank()) {
+            return false;
+        }
+        // 只允许取消「自己且正在运行」的：先查库确认归属，再置标志
+        AgentRun run = agentRunMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<AgentRun>()
+                        .eq(AgentRun::getRunId, runId)
+                        .eq(AgentRun::getUserId, userId)
+                        .last("LIMIT 1"));
+        if (run == null) {
+            return false;
+        }
+        AtomicBoolean flag = runningAgents.get(runId);
+        if (flag == null) {
+            // 已经跑完了（或正在收尾）→ 没有可取消的运行
+            return false;
+        }
+        flag.set(true);
+        log.info("[agent] 收到取消请求 runId={}", runId);
+        return true;
+    }
+
+    /** 取消收尾：记录标「已取消」（不是「失败」——用户主动停的） */
+    private void cancelRunRecord(String runId, List<AgentStep> steps, long start) {
+        runningAgents.remove(runId);
+        try {
+            AgentRun run = new AgentRun();
+            run.setRunId(runId);
+            run.setStatus(com.example.aitools.common.AgentRunStatusEnum.CANCELLED.getCode());
+            run.setStepCount(steps == null ? 0 : steps.size());
+            run.setDuration((int) (System.currentTimeMillis() - start));
+            run.setSteps(com.example.aitools.agent.AgentStepsCodec.toJson(steps));
+            run.setFinishedAt(LocalDateTime.now());
+            agentRunMapper.update(run, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<AgentRun>()
+                    .eq(AgentRun::getRunId, runId));
+        } catch (Exception e) {
+            log.warn("[agent] 取消收尾落库失败 runId={}", runId, e);
+        }
     }
 
     // ==================== 运行记录 ====================
@@ -430,11 +503,18 @@ public class AgentServiceImpl implements AgentService {
      * 解析调用凭据：用户显式选了模型就按 modelCode 查，否则走默认三级回退。
      */
     private ResolvedCredential resolveCred(Long userId, String modelCode) {
-        if (modelCode != null && !modelCode.isBlank()) {
-            credentialResolver.requireCapability(modelCode, "text");
-            return credentialResolver.resolveByModelCode(userId, modelCode, null);
+        try {
+            if (modelCode != null && !modelCode.isBlank()) {
+                credentialResolver.requireCapability(modelCode, "text");
+                return credentialResolver.resolveByModelCode(userId, modelCode, null);
+            }
+            return credentialResolver.resolve(userId, "text", null);
+        } catch (BusinessException e) {
+            // 模型不存在 / 能力不匹配 / 凭据无效 —— 归到智能体自己的错误码，
+            // 前端才能给出「所选模型不可用，请重新选择」而不是笼统的参数错误
+            throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_MODEL_UNAVAILABLE,
+                    e.getMessage() == null ? "所选模型不可用，请重新选择" : e.getMessage());
         }
-        return credentialResolver.resolve(userId, "text", null);
     }
 
     private Map<String, String> message(String role, String content) {

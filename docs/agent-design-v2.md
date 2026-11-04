@@ -406,7 +406,26 @@ SSE 接入复用 `utils/sseBridge.js`（已解决 App 端 SSE 差异）。
 | 第 1 批 | `AiClient.chatMessages` 多轮重载、协议解析器（**14 个单测**）、工具目录、提示词构造、ReAct 循环、SSE 端点、前端页面 + 首页入口 | ✅ 已完成 |
 | 第 2 批 | `sys_agent_run` 建表 + 落库 + 历史查询接口（列表/详情）+ 工具历史 `source_type=3` | ✅ 已完成 |
 | 第 3 批 | 前端历史页（列表 + 详情弹层）、附件上传、BYOK 模型选择器 | ✅ 已完成 |
-| 第 4 批 | 协议重试与截断策略调优、错误码与取消、README + 交接文档 | 🟡 README 已补；错误码收敛与「取消」按钮待做 |
+| 第 4 批 | 取消按钮、独立错误码段、答案打字机、README + 交接文档 | ✅ 已完成 |
+
+### 第 4 批：App 端可用性收口
+
+这一批的目标是「**实际可落地的 App 智能体**」——把前面提到的功能全部做到能真用。
+动手前先做了一次**端到端链路核查**，结果发现 **3 个只有真机才会暴露的问题**：
+
+| # | 问题 | 后果 | 修法 |
+|---|---|---|---|
+| 1 | **App 端 SSE 缺 `<sse-renderjs>` 组件** | App 端请求直接失败：「流式组件未就绪，请返回上一页重试」（`stream.js` 靠 `getSseEmitter()` 拿视图层组件，页面不注册就没有） | agent 页加 `<sse-renderjs />`（`#ifdef APP-PLUS`）+ 引入组件。**已用 App 端产物验证**：`createVNode(vi)` 在 agent 页出现，H5 产物里则没有 |
+| 2 | **自动滚动用 `scroll-top` 设大值** | App 端滚不到底（scroll-view 的 scroll-top 对超大值不可靠） | 改成 `scroll-into-view` + 末尾锚点元素（两端通用） |
+| 3 | **附件选择走 `fileType: 'file'`** | App 端**选不了文档/录音**（`uni.chooseFile` / `chooseMessageFile` 在 App 端不被支持） | 按端分流：App 端走全平台都支持的 `uni.chooseImage`（只能选图片，界面上明确提示），H5 端才放开全部类型 |
+
+> 这三条都属于「**H5 端测不出来**」的问题 —— 所以 App 端产物必须单独构建、单独验。
+
+| 新增 | 说明 |
+|---|---|
+| 取消功能 | 协作式取消：内存里 `runId → AtomicBoolean`，循环在每个自然检查点看一眼。<b>不用 interrupt</b>（interrupt 会在任意位置抛异常，可能打断「写运行记录」这类收尾动作，留下半截数据）。首帧下发 runId（`--- [运行:xxx] ---`），前端据此调 `POST /api/agent/cancel` |
+| 独立错误码 | `7xxxx` 段扩成「工作流 / 智能体编排」，新增 7 个：`AGENT_PARSE_FAILED` / `AGENT_ACTION_INVALID` / `AGENT_TOOL_FAILED` / `AGENT_STEPS_EXCEEDED` / `AGENT_CANCELLED` / `AGENT_RUN_NOT_FOUND` / `AGENT_MODEL_UNAVAILABLE`（前后端一一对应） |
+| 答案打字机 | 答案在动作 JSON 的 `output` 字段里是**整段**到达的；前端收到后逐字吐出，视觉效果一样且**不动协议**。打字期间 MarkdownView 走 `streaming` 纯文本分支（避免每个字重解析 markdown） |
 
 ### 第 2~3 批补上的东西
 
@@ -426,7 +445,14 @@ SSE 接入复用 `utils/sseBridge.js`（已解决 App 端 SSE 差异）。
 
 | 项 | 原因 |
 |---|---|
-| 「取消」按钮 | 现在只能靠关页面触发取消（记录会标失败），没有主动取消的入口 |
-| 错误码收敛 | 智能体目前复用 `AI_SERVICE_ERROR` / `PARAM_ERROR`，没有独立错误码段 |
-| 答案打字机效果 | 最终答案在 JSON 的 `output` 字段里，是整段出现的（要打字机得改协议或做增量解析） |
+| **App 端只能选图片附件** | `uni.chooseFile` / `chooseMessageFile` 在 App 端不被支持。要放开文档/录音得上插件市场（iOS 还要原生插件）或用 `plus.io` 自绘文件选择器 —— 是个独立模块，不在本次范围 |
 | 工作流的逐帧日志 | 交接 §7.4 那个痛点**只在智能体这条链路解决了**（steps 存了），工作流仍是只存终态 |
+| 答案的真·流式 | 打字机是前端模拟的；要模型边写边吐得改协议（让答案单独走一条流），代价大，暂不做 |
+
+### App 端已知限制（使用时要知道的）
+
+| 限制 | 说明 |
+|---|---|
+| 附件仅图片 | 见上表；App 端想传文档/录音请在 H5 端上传 |
+| 一次运行独占一个线程 | 智能体跑在 `agentExecutor`（core 2 / max 4），并发上限低是刻意的 —— 一次运行 = 多次 LLM 调用，是长任务 |
+| 需要登录 | SSE 走 Bearer token；App 端由 renderjs 组件带 token |
