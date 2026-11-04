@@ -443,6 +443,43 @@ RMBG-1.4 的 ONNX 由 HF 官方镜像仓库直接提供：
 
 **相关表**：`sys_workflow`（工作流定义）、`sys_workflow_run`（运行历史）、`sys_tool_output`（节点产物）；DDL 均在 `code/aiTools_backend/sql/init.sql`（本地另有 `init_workflow.sql` 等拆分脚本，**未入库**）。
 
+## 智能体模块（Agent）
+
+用户只给一个**自然语言目标**，智能体（LLM）运行时自己决定调哪个工具、传什么参数、调几次，
+直到产出答案。工具页入口在**首页 → 智能体**。
+
+| 能力 | 说明 |
+|---|---|
+| 工具清单 | **从 `sys_aitools_tool` 动态生成**（description + input_type + output_type），不维护代码里的注册表 |
+| 可用工具 | `audio-transcribe` / `doc-to-text` / `doc-keypoint-extract` / `ocr-recognize` / `work-summary` / `weekly-report` / `meeting-minutes`（image→image 与 none 类型的工具被排除：产物不是文本，喂不回上下文） |
+| 动作协议 | 模型输出**文本 JSON**（`{"thought":..,"action":"tool_call","tool":..,"args":{..}}` / `{"action":"final","output":..}`），解析器带容错（代码围栏、前后废话、字符串里的花括号） |
+| 执行循环 | ReAct 单循环，**四条硬约束**：步数 ≤ 8、解析失败只纠正 1 次、连续工具失败 2 次即停、工具结果回灌前截断 2000 字 |
+| 附件 | 先 `POST /api/file/upload` 上传拿 URL，智能体只收 JSON（App 端 SSE 走 renderjs 层，带不了 multipart）；模型侧只见 `file_1`/`file_2` 这样的稳定 ID |
+| BYOK | 支持用户自带模型 Key（`ModelCredentialResolver`）—— 智能体最烧 token，必须让用户能用自己的额度 |
+| 运行记录 | `sys_agent_run` 表，`steps` 存每一步（想什么/调了什么/结果/耗时），前端「智能体记录」页可回看 |
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/agent/run` | 跑一次智能体（SSE 流式）。入参 `{ goal, modelCode, files:[{name,url}] }` |
+| `GET /api/agent/runs?limit=20` | 我最近的运行记录（不含步骤明细） |
+| `GET /api/agent/runs/{runId}` | 运行详情（含步骤明细） |
+
+**SSE 帧约定**（与项目现有标记格式一致）：
+
+```
+--- [思考:xxx] ---          模型这一步在想什么
+--- [工具:xxx 耗时 123ms] --- 开始调用某个工具
+（普通 chunk）                工具结果正文
+--- [工具结果结束:xxx] ---   工具结果结束
+--- [答案] ---               之后的普通 chunk 是最终答案
+--- [完成] ---               全部结束
+```
+
+> 智能体走**独立线程池**（`agentExecutor`，core 2 / max 4）：一次运行会占住一个线程几十秒到几分钟，
+> 不能和「一问一答」的首字延迟敏感的 SSE 工具池抢线程。
+
+设计文档见 `docs/agent-design-v2.md`（含现状勘测、流程评审与实施状态）。
+
 ## 其他模块
 
 | 模块 | 接口前缀 | 说明 |
@@ -453,6 +490,7 @@ RMBG-1.4 的 ONNX 由 HF 官方镜像仓库直接提供：
 | 提示词 | `/api/prompt` | 系统提示词查询 + 用户自定义提示词 CRUD + AI 生成 |
 | 收藏 | `/api/favorite` | 工具/提示词收藏（`sys_user_favorite`，DDL 见 `sql/init.sql`） |
 | 图片处理 | `/api/ai-office/image-bg-remover` | 人像分割（本地 ONNX 离线推理） |
+| 智能体 | `/api/agent` | 目标 → LLM 自主选工具 → 答案（SSE） |
 | 文件 | `/api/file/upload` | 通用文件上传（COS / 本地，按 `prefix` 分目录） |
 
 ## 用户角色与权限

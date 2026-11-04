@@ -38,6 +38,15 @@ public class ExecutorConfig {
     public static final String BATCH_EXECUTOR = "batchExecutor";
 
     /**
+     * 智能体线程池 bean 名。
+     * <p>
+     * <b>为什么单开一个池</b>：智能体一次运行会占住一个线程**几十秒到几分钟**
+     * （模型决策 + 工具执行交替）。而 {@link #STREAM_EXECUTOR} 是给「一问一答」的
+     * SSE 工具用的（首字延迟敏感），被智能体长任务占满 → 普通工具全部排队。
+     */
+    public static final String AGENT_EXECUTOR = "agentExecutor";
+
+    /**
      * 批量任务池的<b>最大线程数</b>（= 同时处理的重任务数上限）。
      *
      * <p><b>为什么必须限制</b>：批量任务里最吃内存的不是上传（文件已流式落盘），
@@ -97,6 +106,24 @@ public class ExecutorConfig {
         executor.setAwaitTerminationSeconds(30);
         executor.initialize();
         log.info("SSE stream executor initialized: core=8, max=32, queue=100");
+        return executor.getThreadPoolExecutor();
+    }
+
+    @Bean(name = AGENT_EXECUTOR)
+    public ExecutorService agentExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        // 刻意压得比 SSE 池小得多：一次智能体运行 = 多次 LLM 调用 + 若干工具执行，
+        // 是**长任务**，并发数高只会让每个用户都等更久，还把模型侧的并发配额打满。
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(4);
+        executor.setQueueCapacity(20);
+        executor.setKeepAliveSeconds(120);
+        executor.setThreadNamePrefix("agent-run-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        executor.initialize();
+        log.info("Agent executor initialized: core=2, max=4, queue=20");
         return executor.getThreadPoolExecutor();
     }
 

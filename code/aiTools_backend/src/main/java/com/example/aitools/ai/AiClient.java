@@ -36,17 +36,14 @@ public class AiClient {
 
     /**
      * 带超时的 RestTemplate：连接 10s、读 {ai.minimax-text.timeout-seconds}（默认 60s）。
-     * <p>
-     * 必须设置超时——默认的 SimpleClientHttpRequestFactory 超时为 0（无限），
-     * AI 端出现半开连接（发着发着不再发数据）时 readLine() 会永久阻塞，
-     * 逐步占满 SSE 线程池导致全体用户流式功能不可用。
      */
     private final RestTemplate aiRestTemplate;
 
     /**
      * 调用文本模型对话接口
+     *
      * @param systemPrompt 系统提示词
-     * @param userPrompt 用户提示词
+     * @param userPrompt   用户提示词
      * @return AI 返回的文本内容
      */
     public String chat(String systemPrompt, String userPrompt) {
@@ -64,6 +61,27 @@ public class AiClient {
      * @param cred         凭据（可为 null —— 走 .env 兜底）
      */
     public String chat(String systemPrompt, String userPrompt, ResolvedCredential cred) {
+        return chatMessages(buildMessages(systemPrompt, userPrompt), cred);
+    }
+
+    /**
+     * 调用文本模型对话接口（**多轮 messages**）。
+     * <p>
+     * 智能体（agent）需要把「上一轮的动作 JSON」和「工具执行结果」作为
+     * assistant / user 消息回灌，让模型继续决策 —— 现有的
+     * {@code chat(system, user)} 只能表达一问一答，撑不起多轮。
+     * <p>
+     * messages 元素约定：{@code {"role": "system"|"user"|"assistant", "content": "..."}}。
+     * 角色顺序由调用方保证（system 必须在最前）。
+     *
+     * @param messages 消息列表（不可为空）
+     * @param cred     凭据（可为 null —— 走 .env 兜底）
+     * @return AI 返回的文本内容
+     */
+    public String chatMessages(List<Map<String, String>> messages, ResolvedCredential cred) {
+        if (messages == null || messages.isEmpty()) {
+            throw new RuntimeException("AI 调用失败：消息列表为空");
+        }
         try {
             RestTemplate restTemplate = aiRestTemplate;
 
@@ -74,18 +92,6 @@ public class AiClient {
             requestBody.put("model", cred != null && cred.apiModel() != null ? cred.apiModel() : aiConfig.getModel());
             requestBody.put("stream", false);
             requestBody.put("thinking", Map.of("type", "disabled"));
-
-            List<Map<String, String>> messages = new ArrayList<>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                Map<String, String> sysMsg = new HashMap<>();
-                sysMsg.put("role", "system");
-                sysMsg.put("content", systemPrompt);
-                messages.add(sysMsg);
-            }
-            Map<String, String> userMsg = new HashMap<>();
-            userMsg.put("role", "user");
-            userMsg.put("content", userPrompt);
-            messages.add(userMsg);
             requestBody.put("messages", messages);
 
             // 构建请求头
@@ -117,6 +123,24 @@ public class AiClient {
     }
 
     /**
+     * 拼 system + user 两条消息（{@link #chat(String, String, ResolvedCredential)} 的原有行为）。
+     */
+    private List<Map<String, String>> buildMessages(String systemPrompt, String userPrompt) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            Map<String, String> sysMsg = new HashMap<>();
+            sysMsg.put("role", "system");
+            sysMsg.put("content", systemPrompt);
+            messages.add(sysMsg);
+        }
+        Map<String, String> userMsg = new HashMap<>();
+        userMsg.put("role", "user");
+        userMsg.put("content", userPrompt == null ? "" : userPrompt);
+        messages.add(userMsg);
+        return messages;
+    }
+
+    /**
      * 流式调用文本模型（SSE），每收到一个内容块回调 onChunk
      * @param systemPrompt 系统提示词
      * @param userPrompt 用户提示词
@@ -127,7 +151,7 @@ public class AiClient {
     }
 
     /**
-     * 流式调用文本模型（带凭据覆盖）。
+     * 流式调用文本模型（SSE），带凭据覆盖。
      *
      * @param cred 凭据（可为 null —— 走 .env 兜底）
      */

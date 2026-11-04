@@ -35,6 +35,20 @@
       </view>
     </section>
 
+    <!-- 智能体入口（项目收官功能：给目标，AI 自己决定调哪些工具） -->
+    <view class="agent-entry" @click="goAgent">
+      <view class="agent-entry__icon">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2l2.4 6.2L21 10.5l-6.6 2.3L12 19l-2.4-6.2L3 10.5l6.6-2.3L12 2z" />
+        </svg>
+      </view>
+      <view class="agent-entry__text">
+        <text class="agent-entry__name">智能体</text>
+        <text class="agent-entry__desc">说清你的目标，AI 自己挑工具、拆步骤、给答案</text>
+      </view>
+      <text class="agent-entry__arrow">›</text>
+    </view>
+
     <!-- 热门工具（2 列卡） -->
     <section class="section">
       <view class="section__header">
@@ -128,6 +142,10 @@ const recentTools = ref(Object.keys(TOOLS).slice(0, 1).map(id => {
 
 function goToSearch() {
   uni.navigateTo({ url: '/pages/search' })
+}
+/** 进入智能体页（子页面，用 navigateTo） */
+function goAgent() {
+  uni.navigateTo({ url: '/pages/agent' })
 }
 function goToCategory() {
   // ⚠️ category 在 pages.json 的 tabBar.list 里，navigateTo 指向 tabBar 页
@@ -248,6 +266,33 @@ onShow(() => {
 }
 
 /* ===== 工具卡 ===== */
+/* ============ 智能体入口 ============ */
+.agent-entry {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
+  border: 2rpx solid #E0E7FF;
+  border-radius: 20rpx;
+  padding: 24rpx;
+  margin: 24rpx 32rpx 8rpx;
+
+  &__icon {
+    width: 72rpx;
+    height: 72rpx;
+    border-radius: 18rpx;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 20rpx;
+    svg { width: 36rpx; height: 36rpx; fill: #6366F1; }
+  }
+  &__text { flex: 1; }
+  &__name { display: block; font-size: 30rpx; font-weight: 600; color: #1F2937; }
+  &__desc { display: block; font-size: 23rpx; color: #6B7280; margin-top: 6rpx; }
+  &__arrow { font-size: 40rpx; color: #9CA3AF; margin-left: 12rpx; }
+}
+
 /* 用 flex 替代 grid：uni-app H5 下 grid-template-columns 的 fr 解析异常，
    会把列撑到内容宽度导致横向溢出（实测 430px 视口下卡片宽 685px） */
 .tool-grid {

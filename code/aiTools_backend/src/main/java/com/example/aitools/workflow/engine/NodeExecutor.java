@@ -217,12 +217,12 @@ public class NodeExecutor {
         }
         switch (inputType == null ? "" : inputType) {
             case "audio":
-                return transcribeService.transcribe(toMultipart(input, "audio.mp3")).getText();
+                return transcribeService.transcribe(toMultipartFile(input, "audio.mp3")).getText();
             case "document":
             case "file":
-                return documentParser.parse(toMultipart(input, fileNameOf(input)));
+                return documentParser.parse(toMultipartFile(input, fileNameOf(input)));
             case "image":
-                return ocrService.recognizeText(toMultipart(input, fileNameOf(input)));
+                return ocrService.recognizeText(toMultipartFile(input, fileNameOf(input)));
             case "text":
                 return aiText(toolCode, input, params);
             case "none":
@@ -230,6 +230,22 @@ public class NodeExecutor {
             default:
                 throw new BusinessException(ResultCode.WORKFLOW_INVALID.getCode(), "不支持的节点输入类型");
         }
+    }
+
+    /**
+     * 文本加工：走 AI（复用公共提示词解析，与工具入口同一套逻辑）。
+     * <p>
+     * <b>为什么暴露成 public</b>：智能体拿到一段文字后要调用某个文本加工工具
+     * （如「重点提取」）时走这里 —— 提示词解析（用户选的 → 工具系统默认）只此一份实现，
+     * 智能体另写一份必然与工具页的行为漂移。
+     *
+     * @param toolCode 工具编码（用于回退该工具的系统默认提示词）
+     * @param content  待加工的正文
+     * @param params  节点参数（promptFormat / promptGenerate / promptId 等），可为 null
+     * @return AI 加工后的文本
+     */
+    public String processText(String toolCode, String content, Map<String, String> params) {
+        return aiText(toolCode, content, params);
     }
 
     /**
@@ -296,8 +312,11 @@ public class NodeExecutor {
      * 说明：当前 FileStorageService 只提供 store（无读回），工作流采用「运行时上传」方案，
      * 因此输入直接是上传文件的本地路径或 data URL（H5），此处统一包装成内存版 MultipartFile。
      * 预留：后续如需支持"历史文件复用"，在此处改为从存储服务读回。
+     * <p>
+     * <b>为什么是 public</b>：智能体（agent）要复用同一套「本地路径 / data URL / http URL → 字节」
+     * 的处理，不能另写一份（两处一旦口径不同，文件类工具就会时好时坏）。
      */
-    private org.springframework.web.multipart.MultipartFile toMultipart(String pathOrDataUrl, String fallbackName) {
+    public org.springframework.web.multipart.MultipartFile toMultipartFile(String pathOrDataUrl, String fallbackName) {
         try {
             // 1) data URL（data:application/pdf;base64,xxxx）→ 解码
             if (pathOrDataUrl.startsWith("data:")) {

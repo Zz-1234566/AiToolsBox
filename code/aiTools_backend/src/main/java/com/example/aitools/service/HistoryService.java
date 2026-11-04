@@ -63,6 +63,15 @@ public interface HistoryService {
                                    String inputContent, String runId, String nodeId, String nodeName);
 
     /**
+     * 智能体调用工具的历史（来源标记 = {@code Constants#HISTORY_SOURCE_AGENT}）。
+     * <p>
+     * 与工作流节点历史<b>分开记</b>：两者共用一张表，但 source_type 不同 ——
+     * 否则「智能体调的工具」会被误认成「工作流节点」，在历史列表里分不清来源。
+     */
+    Long createAgentToolHistory(Long userId, Long toolId, Long modelId, String aiCode,
+                                String inputContent, String runId, String stepName);
+
+    /**
      * 查询用户最近历史（组装主表+明细+文件+工具名），取 10 条
      */
     List<HistoryVO> listRecent(Long userId, int limit);

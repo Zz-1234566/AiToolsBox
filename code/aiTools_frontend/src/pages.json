@@ -23,7 +23,9 @@
     { "path": "pages/tool-custom", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/tool-processing", "style": { "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
     { "path": "pages/my-models", "style": { "navigationBarTitleText": "我的 AI 模型", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
-    { "path": "pages/image-bg-remover", "style": { "navigationBarTitleText": "图片背景去除", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } }
+    { "path": "pages/image-bg-remover", "style": { "navigationBarTitleText": "图片背景去除", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/agent", "style": { "navigationBarTitleText": "智能体", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } },
+    { "path": "pages/agent-history", "style": { "navigationBarTitleText": "智能体记录", "navigationStyle": "custom", "app-plus": { "animationType": "slide-in-right", "animationDuration": 300 } } }
   ],
   "globalStyle": {
     "navigationBarTextStyle": "black",

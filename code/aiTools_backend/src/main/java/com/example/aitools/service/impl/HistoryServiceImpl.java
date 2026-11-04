@@ -136,12 +136,29 @@ public class HistoryServiceImpl implements HistoryService {
     @Override
     public Long createWorkflowNodeHistory(Long userId, Long toolId, Long modelId, String aiCode,
                                           String inputContent, String runId, String nodeId, String nodeName) {
+        return createNodeHistory(userId, toolId, modelId, aiCode, inputContent, runId, nodeId,
+                nodeName, Constants.HISTORY_SOURCE_WORKFLOW);
+    }
+
+    @Override
+    public Long createAgentToolHistory(Long userId, Long toolId, Long modelId, String aiCode,
+                                       String inputContent, String runId, String stepName) {
+        return createNodeHistory(userId, toolId, modelId, aiCode, inputContent, runId, null,
+                stepName, Constants.HISTORY_SOURCE_AGENT);
+    }
+
+    /**
+     * 写一条「节点/步骤级」的工具调用历史（工作流与智能体共用实现，只是 source_type 不同）。
+     */
+    private Long createNodeHistory(Long userId, Long toolId, Long modelId, String aiCode,
+                                   String inputContent, String runId, String nodeId, String nodeName,
+                                   int sourceType) {
         History history = new History();
         history.setUserId(userId);
         history.setToolId(toolId);
         history.setModelId(modelId);
         history.setAiCode(aiCode);
-        history.setSourceType(Constants.HISTORY_SOURCE_WORKFLOW);
+        history.setSourceType(sourceType);
         history.setRunId(runId);
         history.setNodeId(nodeId);
         history.setNodeName(nodeName);

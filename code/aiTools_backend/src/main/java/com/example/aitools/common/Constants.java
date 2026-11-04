@@ -255,6 +255,9 @@ public class Constants {
     /** 历史来源：工作流节点调用（带 runId / nodeId / nodeName） */
     public static final int HISTORY_SOURCE_WORKFLOW = 2;
 
+    /** 历史来源：智能体调用（智能体在运行时调用工具产生的历史） */
+    public static final int HISTORY_SOURCE_AGENT = 3;
+
     /** 默认历史记录查询条数 */
     public static final int HISTORY_LIST_DEFAULT_LIMIT = 10;
 
@@ -305,4 +308,16 @@ public class Constants {
 
     /** 工作流名称最大长度 */
     public static final int WORKFLOW_NAME_MAX_LENGTH = 64;
+
+    // ==================== 智能体（Agent） ====================
+    // 为什么要有上限：智能体是「LLM 自己决定下一步」的循环，
+    // 没有硬上限就可能无限调工具（烧 token + 占线程）。
+    /** 单次运行最大步数（工具调用次数） */
+    public static final int AGENT_MAX_STEPS = 8;
+    /** 模型输出无法解析时的重试次数（把错误回灌给模型让它自己纠正） */
+    public static final int AGENT_PARSE_RETRY = 1;
+    /** 连续工具失败多少次后终止本轮 */
+    public static final int AGENT_MAX_CONSECUTIVE_FAILURES = 2;
+    /** 工具结果回灌上下文时的最大字符数（超长截断，防 token 爆炸） */
+    public static final int AGENT_TOOL_RESULT_MAX_CHARS = 2000;
 }
