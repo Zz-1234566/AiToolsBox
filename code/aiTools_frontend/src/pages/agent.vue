@@ -157,8 +157,12 @@
       </view>
     </view>
 
-    <!-- 底部输入条（参考豆包：上方输入，下方工具 + 模型选择 + 发送） -->
+    <!-- 底部输入条（参考豆包：上方引用块 + 输入，下方工具 + 模型选择 + 发送） -->
     <view class="composer">
+      <view v-if="quotedText" class="quote-bar">
+        <text class="quote-bar__txt">{{ quotedText }}</text>
+        <text class="quote-bar__x" @click="quotedText = ''">×</text>
+      </view>
       <input v-model="goal" class="composer__input" placeholder="发消息或按住空格说话..." :disabled="running" />
       <view class="composer__row">
         <view class="composer__plus" @click="onPickFiles">＋</view>
@@ -197,6 +201,8 @@ onShow(() => {
 const goal = ref('')
 /** 已发送的用户消息（输入框发送后会被清空，气泡仍要保留原文） */
 const sentGoal = ref('')
+/** 引用块：显示在输入框上方，随消息一起发出，可点 × 移除 */
+const quotedText = ref('')
 const attachments = ref([])
 
 /** 附件类型（决定图标）：doc / image / audio / file */
@@ -409,9 +415,14 @@ const finishRun = () => {
 }
 
 const onStart = async () => {
-  if (running.value || !goal.value.trim()) return
-  sentGoal.value = goal.value.trim()
+  const typed = goal.value.trim()
+  if (running.value || (!typed && !quotedText.value)) return
+  // 引用块随消息一起发出（拼在用户问题前面，便于模型理解上下文）
+  sentGoal.value = quotedText.value
+    ? (quotedText.value + (typed ? '\n\n' + typed : ''))
+    : typed
   goal.value = ''
+  quotedText.value = ''
   return runAgent()
 }
 
@@ -426,13 +437,11 @@ const copyAnswer = () => {
   copyRaw(answer.value, '回答')
 }
 
-/** 引用答案：把开头一段放进输入框，用户接着追问 */
+/** 引用答案：在输入框上方生成引用块，随下一条消息一起发送 */
 const quoteAnswer = () => {
   const text = String(answer.value || '').replace(/\s+/g, ' ').trim()
   if (!text) return
-  const snippet = text.length > 60 ? text.slice(0, 60) + '…' : text
-  goal.value = (goal.value ? goal.value + ' ' : '') + '「' + snippet + '」'
-  uni.showToast({ title: '已引用到输入框', icon: 'none' })
+  quotedText.value = text.length > 300 ? text.slice(0, 300) + '…' : text
 }
 
 /** 真正发起一次运行（首次发送与重新生成共用） */
@@ -553,6 +562,7 @@ const reset = () => {
   errorMsg.value = ''
   goal.value = ''
   sentGoal.value = ''
+  quotedText.value = ''
   attachments.value = []
   runStartAt.value = 0
   runEndAt.value = 0
@@ -746,6 +756,32 @@ $ref-sub: var(--text-secondary);
 .card__chev { width: 28rpx; height: 28rpx; color: $ref-sub; transition: transform 0.2s ease; }
 .card__chev--collapsed { transform: rotate(180deg); }
 .card--answer { font-size: 27rpx; color: $ref-ink; line-height: 1.7; }
+.quote-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12rpx;
+  margin-bottom: 14rpx;
+  padding: 12rpx 16rpx;
+  border-radius: 12rpx;
+  background: var(--bg-gray);
+  border-left: 6rpx solid var(--brand-primary);
+}
+.quote-bar__txt {
+  flex: 1;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.quote-bar__x {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  line-height: 1.2;
+  color: var(--text-tertiary);
+}
 .ans-foot {
   margin-top: 20rpx;
   padding-top: 18rpx;
