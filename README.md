@@ -4,7 +4,7 @@
 
 ## 项目简介
 
-一个面向移动端 / H5 的 AI 工具箱 App，当前已实现 **7 个工具**：文档提取、录音转写、会议纪要、重点提取、工作总结、周报生成（AI 办公），以及图片背景去除（本地 ONNX 抠图，不走云端 AI）。加工层工具调用 MiniMax 文本模型 M2.7（OpenAI 兼容协议），多模态与语音识别用 M3 / asr-1.0，结果支持 SSE 流式打字机效果。各工具可被编排成**工作流流水线**一次跑完。
+一个面向移动端 / H5 的 AI 工具箱 App，当前已实现 **7 个工具**：文档提取、录音转写、会议纪要、重点提取、工作总结、周报生成（AI 办公），以及图片背景去除（本地 ONNX 抠图，不走云端 AI）。加工层工具与工作流节点调用 DeepSeek V4.1 Flash（OpenCode Go 套餐，OpenAI 兼容协议），图片理解走同一多模态模型，录音转写走腾讯云 ASR，结果支持 SSE 流式打字机效果。各工具可被编排成**工作流流水线**一次跑完。
 
 ## 技术栈
 
@@ -65,7 +65,7 @@ Graduation project/
 |---|---|---|
 | 1 | `sql/init.sql` | 建库 `ai_toolbox` + 13 张表 + 工具/提示词/工作流初始数据 |
 | 2 | `sql/v1_2026_10_12_ai_model_upgrade.sql` | 建 `sys_user_ai_model`（用户自选 AI 模型，**AI 模型选择功能依赖此表**） |
-| 3 | `sql/v1_2026_10_12_ai_model_seeds.sql` | 系统模型注册表 `sys_ai_model` 的初始数据（MiniMax / 腾讯云 ASR） |
+| 3 | `sql/v1_2026_10_12_ai_model_seeds.sql` | 系统模型注册表 `sys_ai_model` 的初始数据（历史种子，具体模型以实际配置为准） |
 | 4 | `sql/v1_2026_10_12_ai_model_deepseek_seed.sql` | DeepSeek 模型注册（BYOK，Key 字段全为 NULL，用户在「我的 AI 模型」页自配） |
 | 5 | `sql/v1_2026_10_12_image_bg_remover_seed.sql` | 图片背景去除工具的 seed |
 | 6 | `sql/v1_2026_10_26_batch_task_error_msg.sql` | `sys_batch_task` 加 `error_msg` 列（**批量任务依赖此列**，见下） |
@@ -180,16 +180,19 @@ powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'ProcessId
 | `COS_SECRET_KEY` | ⛔ 可选 | 腾讯云 COS SecretKey | 同上 |
 | `COS_BUCKET` | ⛔ 可选 | 腾讯云 COS **桶名**（如 `ai-tools-box-1419900334`）。`cos.enabled=true` 时**必填**，缺失会回退到占位符桶名导致上传失败 | 腾讯云控制台 → 对象存储 → 存储桶列表 |
 | `COS_REGION` | ⛔ 可选 | COS 地域（如 `ap-guangzhou`），需与桶所在地域一致 | 同上 |
-| `AI_MINIMAX_TEXT_API_KEY` | ✅ | MiniMax API Key，用于**文本模型** `MiniMax-M2.7`（会议纪要 / 重点提取 / 工作总结 / 周报） | MiniMax 开放平台 → API Keys |
-| `AI_MINIMAX_API_KEY` | ✅ | MiniMax API Key，用于 **M3 多模态**与**语音识别**（文件解读 / 录音转写 minimax 通道） | 同上 |
+| `AI_LLM_API_URL` / `AI_LLM_API_KEY` / `AI_LLM_MODEL` | ✅ | 文本与多模态模型（OpenCode Go 套餐，OpenAI 兼容协议）。默认模型 `deepseek-v4.1-flash`，接口 `https://opencode.ai/inference/go/v1/chat/completions` | OpenCode Console → API Key |
+| `AI_OPENCODEGO_API_URL` / `AI_OPENCODEGO_API_KEY` / `AI_OPENCODEGO_MODEL` | ✅ | 智能体（ReAct 循环）专用模型，同上套餐；`/source` 需支持工具调用 | 同上 |
 | `ASR_TENCENT_ENABLED` / `ASR_APP_ID` / `ASR_SECRET_ID` / `ASR_SECRET_KEY` / `ASR_REGION` | ⛔ 可选 | 腾讯云语音识别通道；`ASR_SECRET_*` 留空自动复用 `COS_SECRET_*` | 腾讯云语音识别控制台 |
 | `ASR_FFMPEG_PATH` | ⛔ 可选 | ffmpeg 可执行文件路径，留空走系统 PATH | 自设 |
 | `SYS_AI_MODEL_KEY` | ⛔ 可选 | 系统 AI 模型注册表 `sys_ai_model` 的密钥加密主密钥 | 自设 |
 
-> ⚠️ **两个 MiniMax Key 别搞混**：配置里有两套独立入口 ——
-> `ai.minimax-text`（读 `AI_MINIMAX_TEXT_API_KEY`，模型 `MiniMax-M2.7`）服务加工层 4 个工具；
-> `ai.minimax` + `asr`（读 `AI_MINIMAX_API_KEY`，模型 `MiniMax-M3` / `asr-1.0`）服务多模态与转写。
-> 只配其中一个会导致另一半功能 401。
+> ⚠️ **AI 调用通道**：
+> - 文本 / 工作流节点 / 多模态读图 → `ai.text` 与 `ai.vision`（`AI_LLM_*`）
+> - 智能体 → `ai.agent`（`AI_OPENCODEGO_*`）
+> - 录音转写 → 腾讯云 ASR（`ASR_TENCENT_*`），不经大模型
+>
+> Go 套餐端点必须是 `https://opencode.ai/inference/go/v1/...`（按量付费端点是 `/inference/openai/v1`），
+> 且请求需带 `x-opencode-session` 头，缺失会返回 400 `MissingSessionID`。
 
 > **PowerShell 临时设置示例**（当前会话有效）：
 > ```powershell
@@ -207,8 +210,8 @@ powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter 'ProcessId
 - `spring.datasource.url`（MySQL 连接串）
 - `spring.mail.host: smtp.qq.com` / `port: 465`
 - `cos.region: ap-guangzhou`
-- `ai.minimax-text.api-url: https://api.minimaxi.com/v1/text/chatcompletion_v2`（官方 V2 文本入口）
-- `ai.minimax-text.model: MiniMax-M2.7`
+- `ai.text.api-url: https://opencode.ai/inference/go/v1/chat/completions`
+- `ai.text.model: deepseek-v4.1-flash`
 
 ## 已实现的 AI 工具
 
@@ -544,48 +547,36 @@ SELECT id, account, username, role FROM sys_user WHERE dr = 0;
 2. **若曾在其他平台 / 旧仓库提交过任何含真实密钥的文件，请立即轮换**：
    - QQ 邮箱授权码
    - 腾讯云 COS SecretId / SecretKey
-   - MiniMax API Key（文本模型）
+   - OpenCode Go API Key（大模型）
    - JWT Secret
 3. **提交后**仍建议轮换一次——GitHub 即使删除 commit，历史中仍可恢复。
 4. 腾讯云子账号请使用 **最小权限策略**（仅授权所需存储桶的读写）。
 
-## 录音转写双引擎（MiniMax / 腾讯云）
+## 录音转写（腾讯云）
 
-`audio-transcribe` 支持两个转写通道，前端在录音转写页可手动选择，整批文件共用同一引擎。
+`audio-transcribe` 只有**腾讯云**一条转写通道：云 API `CreateRecTask`（录音文件识别）+ `DescribeTaskStatus` 轮询。
+音频先经 ffmpeg 统一转成 16kHz 单声道 mp3，再以 `SourceType=1` 内联 base64 提交。
 
-| 引擎 | 标识 | 实现 | 特点 |
-|---|---|---|---|
-| MiniMax | `minimax` | `MinimaxClient.chatAudio`（M3 多模态） | 默认通道，通用转写 |
-| 腾讯云 | `tencent` | 云 API `CreateRecTask`（录音文件识别）+ `DescribeTaskStatus` 轮询 | 支持**热词表**，术语识别更准 |
-
-**调用方式**（两个接口都支持，不传则用 `asr.engine` 配置值，默认 `minimax`）：
+**调用方式**：
 
 ```bash
 curl -X POST "http://localhost:8080/api/ai-office/meeting-minutes/transcribe?engine=tencent" \
      -H "Authorization: Bearer $TOKEN" -F "file=@audio.mp3"
 ```
 
+> `engine` 参数仅为接口兼容保留（历史前端会传），当前后端忽略该值、固定走腾讯云。
+
 **配置**（`.env`，`application-dev.yml` 的 `asr.tencent` 段读取）：
 
 ```
-ASR_TENCENT_ENABLED=true        # 是否启用腾讯云通道
+ASR_TENCENT_ENABLED=true        # 是否启用腾讯云通道（必须为 true）
 ASR_APP_ID=                     # 腾讯云语音识别控制台 →「账户信息」（ASR 专用）
 ASR_SECRET_ID=                  # 可选，留空自动复用 COS_SECRET_ID
 ASR_SECRET_KEY=                 # 可选，留空自动复用 COS_SECRET_KEY
 ```
 
-**降级规则**（`TranscribeService#resolveEngine`）：
-
-- 前端传 `engine=tencent` 但 `enabled=false` 或 `ASR_APP_ID` 为空 → **自动回落 minimax**，不报错
-- 传入无法识别的引擎值 → 兜底 minimax
-- 工作流引擎（`NodeExecutor`）暂不支持指定引擎，统一走默认引擎
-
-**实测数据**（30 秒中文音频，2026-10-08）：
-
-| 引擎 | 耗时 | 返回格式 |
-|---|---|---|
-| 腾讯云 | 5.3s | 带 `[起始时间,结束时间]` 时间戳前缀 |
-| MiniMax | 1.6s | 纯文本，无时间戳 |
+**未启用时的行为**：`enabled=false` 或缺少 `ASR_APP_ID` 时，接口直接返回中文错误
+「语音识别服务未启用，请检查腾讯云 ASR 配置」，不再静默降级到其他通道。
 
 > **腾讯云通道的 3.7MB 限制**：`CreateRecTask` 走 `SourceType=1` 内联 base64 时 `Data` 字段上限 5MB，
 > 反推原始音频上限约 3.7MB（`asr.tencent.max-audio-bytes`）。

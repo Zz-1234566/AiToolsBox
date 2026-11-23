@@ -18,12 +18,12 @@
 | 组件 | 能力 | 对智能体的含义 |
 |---|---|---|
 | `ai/AiClient` | OpenAI 兼容文本：`chat` / `chatStream`，BYOK 覆盖 key/url/model | **只支持 system+user 两条消息**，没有 messages 数组重载 → 智能体要的多轮必须自己拼 |
-| `ai/MinimaxClient` | 多模态：`chatImage` / `chatImages` / `chatAudio` / `chatText` | 视觉/音频理解能力已有，但**只出不进**，不能当工具 |
+| `ai/AiVisionClient` | 多模态：`chatImage` / `chatImages` / `chatText` | 视觉理解能力已有，但**只出不进**，不能当工具 |
 | `ai/TencentAsrClient` | 腾讯云 ASR | 录音转写已有 |
 | `ai/ResolvedCredential` | BYOK 凭据 | 用户可自带模型 Key —— 智能体最该支持这个（烧 token 最凶） |
 
 > ⚠️ **关键缺口**：`AiClient` **没有原生 function calling**（请求体只有 `model/stream/thinking/messages`），
-> 也没有 `tools` 参数。MiniMax 的 OpenAI 兼容接口本身是支持的，但项目**没有暴露这个能力**。
+> 也没有 `tools` 参数。所选模型的 OpenAI 兼容接口本身是支持的，但项目**没有暴露这个能力**。
 
 ### 1.2 工具层 —— 智能体的「手脚」
 
