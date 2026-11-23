@@ -100,7 +100,8 @@
             <MarkdownView :source="answer" :streaming="running" />
           </view>
 
-          <!-- 答案操作：复制 / 重新生成 / 引用 -->
+          <!-- 答案免责声明 + 操作：复制 / 重新生成 / 引用 -->
+          <view v-if="answer && !running" class="ans-disclaimer">本回答由AI生成，内容仅供参考，请仔细甄别</view>
           <view v-if="answer && !running" class="ans-acts">
             <view class="ans-act" @click="copyAnswer">
               <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
@@ -744,7 +745,13 @@ $ref-sub: var(--text-secondary);
 .card__chev { width: 28rpx; height: 28rpx; color: $ref-sub; transition: transform 0.2s ease; }
 .card__chev--collapsed { transform: rotate(180deg); }
 .card--answer { font-size: 27rpx; color: $ref-ink; line-height: 1.7; }
-.ans-acts { display: flex; gap: 14rpx; margin-top: 14rpx; }
+.ans-disclaimer {
+  margin-top: 18rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+.ans-acts { display: flex; gap: 14rpx; margin-top: 12rpx; }
 .ans-act {
   display: flex;
   align-items: center;
