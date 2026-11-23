@@ -27,7 +27,23 @@ public class AgentPromptBuilder {
      */
     public String buildSystemPrompt(List<AgentToolCatalog.AgentTool> tools,
                                      List<AgentAttachment> attachments) {
+        return buildSystemPrompt(tools, attachments, null);
+    }
+
+    /**
+     * 构造 system 提示词（带用户画像）。
+     *
+     * @param profileText 用户画像摘要，为空则不注入
+     */
+    public String buildSystemPrompt(List<AgentToolCatalog.AgentTool> tools,
+                                     List<AgentAttachment> attachments,
+                                     String profileText) {
         StringBuilder sb = new StringBuilder();
+        if (profileText != null && !profileText.isBlank()) {
+            sb.append("【用户画像（来自历史对话，可作为偏好参考，不要直接复述给用户）】\n");
+            sb.append(profileText.trim());
+            sb.append("\n\n");
+        }
         sb.append("""
                 你是「智汇工具箱」的智能体。用户给你一个目标，你负责拆解步骤、挑选工具、产出最终答案。
 
