@@ -323,4 +323,10 @@ public class Constants {
 
     /** OpenCode Go 通道要求的客户端标识（Go 会拒绝通用 SDK / HTTP 库的 User-Agent） */
     public static final String AI_CLIENT_USER_AGENT = "zhihui-toolbox/1.0";
+
+    /** 当前默认模型的上下文窗口（deepseek-v4.1-flash = 1,000,000），仅用于日志估算占比 */
+    public static final int AGENT_CONTEXT_WINDOW_TOKENS = 1_000_000;
+
+    /** 上下文占比告警阈值（百分比）：超过即提示需要压缩 */
+    public static final int AGENT_CONTEXT_WARN_PERCENT = 60;
 }

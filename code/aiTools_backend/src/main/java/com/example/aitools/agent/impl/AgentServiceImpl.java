@@ -144,6 +144,9 @@ public class AgentServiceImpl implements AgentService {
                 cancelRunRecord(runId, steps, start);
                 throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_CANCELLED, "已取消");
             }
+            // 上下文占用估算：只做日志与告警，不参与截断决策
+            logContextUsage(runId, step, messages);
+
             // 思考阶段计时：先通知前端，模型返回后给最终耗时
             onFrame.accept(frame(FRAME_THOUGHT_START, ""));
             long thinkStart = System.currentTimeMillis();
@@ -242,8 +245,11 @@ public class AgentServiceImpl implements AgentService {
             String forModel = toolOutput;
             boolean truncated = false;
             if (forModel != null && forModel.length() > Constants.AGENT_TOOL_RESULT_MAX_CHARS) {
+                int beforeTokens = com.example.aitools.common.TokenEstimator.estimate(forModel);
                 forModel = forModel.substring(0, Constants.AGENT_TOOL_RESULT_MAX_CHARS) + "…（结果已截断）";
                 truncated = true;
+                log.info("[agent] 工具结果截断 tool={} 原 {} 字符（约 {} tokens）→ 保留 {} 字符",
+                        tool.getCode(), toolOutput.length(), beforeTokens, Constants.AGENT_TOOL_RESULT_MAX_CHARS);
             }
             onFrame.accept(forModel == null ? "" : forModel);
             onFrame.accept(frame(FRAME_TOOL_END, truncated ? "已截断" : ""));
@@ -550,6 +556,24 @@ public class AgentServiceImpl implements AgentService {
     }
 
     /** 过程帧：{@code --- [内容] ---}（与项目现有 SSE 标记格式一致） */
+    /**
+     * 打印当前上下文的估算占用。
+     * <p>
+     * 只读不改：不做任何裁剪，避免影响执行语义。
+     * 占比超过 {@link Constants#AGENT_CONTEXT_WARN_PERCENT} 时打 WARN，提示需要考虑压缩策略。
+     */
+    private void logContextUsage(String runId, int step, List<Map<String, String>> messages) {
+        int tokens = com.example.aitools.common.TokenEstimator.estimateMessages(messages);
+        int window = Constants.AGENT_CONTEXT_WINDOW_TOKENS;
+        int percent = window <= 0 ? 0 : (int) Math.round(tokens * 100.0 / window);
+        log.info("[agent] 上下文占用 runId={} step={} messages={} ≈{} tokens（窗口 {}k 的 {}%）",
+                runId, step, messages.size(), tokens, window / 1000, percent);
+        if (percent >= Constants.AGENT_CONTEXT_WARN_PERCENT) {
+            log.warn("[agent] 上下文占比 {}% 已达阈值 {}%，建议启用摘要压缩或滑动窗口 runId={}",
+                    percent, Constants.AGENT_CONTEXT_WARN_PERCENT, runId);
+        }
+    }
+
     private String frame(String prefix, String content) {
         String body = content == null ? "" : content.replace("\r", " ").replace("\n", " ");
         return "--- [" + prefix + (body.isEmpty() ? "" : ":" + body) + "] ---";
