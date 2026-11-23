@@ -3,8 +3,36 @@
     <!-- 头部 -->
     <view class="wf-head">
       <text class="wf-head__title">工作流</text>
-      <view class="wf-create" @click="goCreate">
-        <text>＋ 创建工作流</text>
+      <view class="wf-help" @click="showHelp"><text>?</text></view>
+    </view>
+
+    <!-- 主操作：设计稿是整行大按钮，不再挤在标题栏里 -->
+    <view class="wf-cta" @click="goCreate">
+      <text>＋ 创建工作流</text>
+    </view>
+
+    <!-- 运行结果统计（设计：三宫格） -->
+    <view v-if="runStats.total > 0" class="wf-stats">
+      <view class="wf-stat">
+        <view class="wf-stat__ci wf-stat__ci--ok">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </view>
+        <text class="wf-stat__lb">全部成功</text>
+        <text class="wf-stat__nm">{{ runStats.ok }}</text>
+      </view>
+      <view class="wf-stat">
+        <view class="wf-stat__ci wf-stat__ci--warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        </view>
+        <text class="wf-stat__lb">部分失败</text>
+        <text class="wf-stat__nm">{{ runStats.partial }}</text>
+      </view>
+      <view class="wf-stat">
+        <view class="wf-stat__ci wf-stat__ci--err">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </view>
+        <text class="wf-stat__lb">全部失败</text>
+        <text class="wf-stat__nm">{{ runStats.fail }}</text>
       </view>
     </view>
 
@@ -14,43 +42,57 @@
          会被浏览器钳到当时的可滚动上限，于是「恢复」永远停在很靠上的位置。
          保留列表节点 = 恢复期间文档高度不变，滚动位置与时机解耦。 -->
     <view v-if="workflows.length === 0 && !loading" class="redesign-empty">
-      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">🔗</text></view>
+      <view class="redesign-empty__icon">
+        <svg viewBox="0 0 24 24" style="width:72rpx;height:72rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.6;stroke-linecap:round;">
+          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+        </svg>
+      </view>
       <text class="redesign-empty__text">还没有创建工作流</text>
       <view class="wf-create" @click="goCreate"><text>去创建</text></view>
     </view>
 
+    <view v-if="workflows.length > 0" class="wf-sec">
+      <text class="wf-sec__t">我的工作流</text>
+    </view>
+
     <block v-if="workflows.length > 0">
       <view v-for="wf in workflows" :key="wf.workflowId" class="wf-card">
-        <view class="wf-card__top">
-          <view class="tool-avatar" :class="'tool-avatar--' + firstIcon(wf)">
-            <text class="ta-emoji">{{ firstEmoji(wf) }}</text>
+        <view class="wf-card__hd">
+          <view class="wf-card__ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#F5671D" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/>
+              <path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/>
+            </svg>
           </view>
-          <view class="wf-card__main">
-            <text class="wf-card__title">{{ wf.name }}</text>
-            <text class="wf-card__desc">{{ wf.description || '无描述' }}</text>
-            <view class="wf-card__meta">
-              <text class="wf-meta">{{ wf.nodeCount }} 个节点</text>
-              <text class="wf-meta">{{ wf.maxDepth }} 层</text>
-            </view>
-            <text class="wf-card__time">创建：{{ wf.createTime }}</text>
-          </view>
+          <text class="wf-card__title">{{ wf.name }}</text>
+          <text class="wf-card__more">⋮</text>
         </view>
+        <text class="wf-card__desc">{{ wf.description || '无描述' }}</text>
+
+        <view v-if="chainOf(wf).length" class="wf-chain">
+          <template v-for="(n,i) in chainOf(wf)" :key="i">
+            <text v-if="i" class="wf-chain__ar">→</text>
+            <text class="wf-chain__n">{{ n }}</text>
+          </template>
+        </view>
+
+        <text class="wf-meta">{{ wf.nodeCount }} 个节点 · {{ wf.maxDepth }} 层 · {{ wf.createTime }}</text>
+
         <view class="wf-card__acts">
           <view class="wf-act wf-act--primary" @click="openRun(wf)">
             <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             <text>运行</text>
           </view>
-          <view class="wf-act__sep"></view>
           <view class="wf-act" @click="viewRuns(wf)">
             <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 117 7 6.96 6.96 0 01-4.95-2.05l-1.42 1.42A9 9 0 1013 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/></svg>
             <text>历史</text>
           </view>
-          <view class="wf-act__sep"></view>
           <view class="wf-act" @click="goEdit(wf)">
             <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
             <text>编辑</text>
           </view>
-          <view class="wf-act__sep"></view>
           <view class="wf-act wf-act--danger" @click="remove(wf)">
             <svg class="wf-act__icon" viewBox="0 0 24 24"><path d="M6 19a2 2 0 002 2h8a2 2 0 002-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
             <text>删除</text>
@@ -223,12 +265,41 @@ const runInputs = reactive({})
 
 const runsVisible = ref(false)
 const runs = ref([])
+/* 运行结果分布（页面顶部三宫格）：只统计终态，运行中/待运行不计入 */
+const runStats = ref({ total: 0, ok: 0, partial: 0, fail: 0 })
+
+const loadRunStats = async () => {
+  try {
+    const res = await workflowRunsApi(undefined, 200)
+    const list = (res && res.data) || []
+    const stats = { total: 0, ok: 0, partial: 0, fail: 0 }
+    list.forEach((r) => {
+      // 2 全部成功 / 3 部分失败 / 4 全部失败（与后端 WorkflowRunStatusEnum 一致）
+      if (r.status === 2) { stats.ok++; stats.total++ }
+      else if (r.status === 3) { stats.partial++; stats.total++ }
+      else if (r.status === 4) { stats.fail++; stats.total++ }
+    })
+    runStats.value = stats
+  } catch (e) { /* 统计失败不影响主流程 */ }
+}
 /** 历史列表状态筛选：all / ok / fail（后端 status 2=成功 3=部分失败 4=失败） */
 const runFilter = ref('all')
 
 const toolByCode = (code) => tools.value.find(t => t.toolCode === code)
 
 /** 卡片头像：取第一个节点的工具类型 */
+const chainOf = (wf) => (wf.nodes || [])
+  .map(n => n.nodeName || n.name || n.nodeRef || '')
+  .filter(Boolean)
+  .slice(0, 4)
+
+const showHelp = () => uni.showModal({
+  title: '工作流',
+  content: '把多个工具串成一条流水线：上游节点的输出会成为下游节点的输入，一次运行跑完整条链。',
+  showCancel: false,
+  confirmText: '知道了'
+})
+
 const firstNode = (wf) => (wf.nodes && wf.nodes[0]) || null
 const iconTypeOf = (code) => {
   const c = code || ''
@@ -334,6 +405,7 @@ onShow(async () => {
   // 首次进入必定要拉；之后只有脏了才拉
   if (listDirty || !workflows.value.length) {
     await loadList()
+    loadRunStats()
     listDirty = false
   }
   // 从运行页返回时（该跑完了），历史弹层若还开着要重拉，否则看不到刚产生的记录
@@ -611,8 +683,12 @@ const runFirstErr = (r) => {
 @import '@/styles/animations.scss';
 
 .wf-page {
+  /* 参考图取样 #F6F6FB；不能再用 var(--bg-page)（那是暖米色，和其余 4 屏不一致） */
   min-height: 100vh;
-  background: #F9FAFB;
+  /* #ifdef H5 */
+  min-height: calc(100vh - var(--window-bottom, 0px));
+  /* #endif */
+  background: var(--bg-page);
   padding-bottom: 40rpx;
   /* 遮罩定位基准：让 wf-loading-mask 能覆盖整页 */
   position: relative;
@@ -641,17 +717,23 @@ const runFirstErr = (r) => {
      ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
   padding: calc(32rpx + var(--status-bar-height, 0px)) 32rpx 24rpx;
 }
+.wf-help {
+  width: 48rpx; height: 48rpx; border-radius: 50%;
+  border: 2rpx solid #D8D8E0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26rpx; color: #8E8E96;
+}
 .wf-head__title {
   flex: 1;
   font-size: 48rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
 }
 .wf-create {
   height: 72rpx;
   padding: 0 28rpx;
   border-radius: 9999rpx;
-  background: #3B82F6;
+  background: var(--brand-primary);
   color: #fff;
   font-size: 26rpx;
   font-weight: 600;
@@ -659,51 +741,125 @@ const runFirstErr = (r) => {
   align-items: center;
 }
 
-.wf-card {
-  background: #fff;
-  border-radius: 24rpx;
-  padding: 32rpx;
+.wf-cta {
+  height: 96rpx;
   margin: 0 32rpx 24rpx;
-  box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
+  border-radius: 999rpx;
+  background: #F5671D;
+  color: #fff;
+  font-size: 30rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.wf-cta:active { opacity: 0.9; }
+
+.wf-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18rpx;
+  padding: 0 32rpx;
+  margin-top: 28rpx;
+}
+.wf-stat {
+  background: var(--bg-card);
+  border: 1rpx solid var(--border-color);
+  border-radius: 28rpx;
+  padding: 24rpx 16rpx;
+  text-align: center;
+}
+.wf-stat__ci {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  margin: 0 auto 10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wf-stat__ci svg { width: 28rpx; height: 28rpx; }
+.wf-stat__ci--ok { background: var(--color-success-bg); color: var(--color-success); }
+.wf-stat__ci--warn { background: var(--color-warning-bg); color: var(--color-warning); }
+.wf-stat__ci--err { background: var(--color-danger-bg); color: var(--color-danger); }
+.wf-stat__lb {
+  display: block;
+  font-size: 21rpx;
+  color: var(--text-tertiary);
+}
+.wf-stat__nm {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 44rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wf-sec { padding: 8rpx 40rpx 18rpx; }
+.wf-sec__t { font-size: 34rpx; font-weight: 700; color: var(--text-primary); }
+
+.wf-card {
+  background: var(--bg-card);
+  border-radius: 32rpx;
+  padding: 28rpx 26rpx 20rpx;
+  margin: 0 32rpx 24rpx;
+}
+.wf-card__hd { display: flex; align-items: center; gap: 16rpx; }
+.wf-card__ico {
+  width: 64rpx; height: 64rpx; border-radius: 18rpx;
+  background: #FDEDE4;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.wf-card__ico svg { width: 38rpx; height: 38rpx; }
+.wf-card__title { flex: 1; min-width: 0; font-size: 32rpx; font-weight: 700; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-card__more { font-size: 34rpx; color: #B4B4BE; padding: 0 4rpx; }
+.wf-card__desc { display: block; margin-top: 14rpx; font-size: 25rpx; color: var(--text-secondary); line-height: 1.5; }
+.wf-chain {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8rpx;
+  margin-top: 16rpx;
+}
+.wf-chain__n {
+  font-size: 22rpx; color: var(--text-secondary);
+  background: var(--bg-gray); border-radius: 8rpx; padding: 6rpx 12rpx;
+}
+.wf-chain__ar { font-size: 22rpx; color: #C0C0CA; }
 .wf-card__top { display: flex; gap: 24rpx; }
 .wf-card__main { flex: 1; min-width: 0; }
 .wf-card__title {
   display: block;
   font-size: 28rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 .wf-card__desc {
   display: block;
   font-size: 26rpx;
-  color: #4B5563;
+  color: var(--text-secondary);
   margin-top: 8rpx;
 }
 .wf-card__meta { display: flex; gap: 32rpx; margin-top: 12rpx; }
-.wf-meta { font-size: 22rpx; color: #9CA3AF; }
+.wf-meta { display: block; margin-top: 14rpx; font-size: 22rpx; color: var(--text-tertiary); }
 .wf-card__time {
   display: block;
   font-size: 22rpx;
-  color: #D1D5DB;
+  color: var(--text-tertiary);
   margin-top: 8rpx;
 }
 
-.wf-card__acts {
-  display: flex;
-  align-items: center;
-  border-top: 2rpx solid #F3F4F6;
-  margin-top: 24rpx;
-  padding-top: 24rpx;
-}
+.wf-card__acts { display: flex; align-items: center; gap: 12rpx; margin-top: 22rpx; }
 .wf-act {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-  font-size: 24rpx;
-  color: #4B5563;
+  height: 60rpx;
+  border-radius: 12rpx;
+  background: var(--bg-gray);
+  font-size: 23rpx;
+  color: var(--text-primary);
 }
 .wf-act__icon {
   width: 30rpx;
@@ -711,9 +867,9 @@ const runFirstErr = (r) => {
   fill: currentColor;
   flex-shrink: 0;
 }
-.wf-act--primary { color: #3B82F6; font-weight: 500; }
-.wf-act--danger { color: #EF4444; }
-.wf-act__sep { width: 2rpx; height: 28rpx; background: #F3F4F6; }
+.wf-act--primary { color: var(--text-primary); font-weight: 500; }
+.wf-act--danger { color: var(--text-primary); }
+
 
 /* 弹层 */
 .mask {
@@ -735,7 +891,7 @@ const runFirstErr = (r) => {
      ⚠️ 写在 85vh 之后以覆盖它（max-height 重复声明后者生效），
         --kb 未定义时 calc(85vh - 0px) 与 85vh 等价。 */
   max-height: calc(85vh - var(--kb, 0px));
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 32rpx 32rpx 0 0;
   /* App 端 iOS 底部 Home 指示条安全区（对齐 tool-common.vue:3197 的项目范式） */
   padding: 40rpx 32rpx calc(48rpx + env(safe-area-inset-bottom, 0rpx));
@@ -743,10 +899,10 @@ const runFirstErr = (r) => {
   display: flex;
   flex-direction: column;
 }
-.sheet__title { font-size: 34rpx; font-weight: 700; color: #111827; }
+.sheet__title { font-size: 34rpx; font-weight: 700; color: var(--text-primary); }
 .sheet__desc {
   font-size: 24rpx;
-  color: #4B5563;
+  color: var(--text-secondary);
   margin: 16rpx 0 8rpx;
   background: #F8FAFF;
   border-radius: 16rpx;
@@ -757,7 +913,7 @@ const runFirstErr = (r) => {
 .run-node {
   padding: 24rpx;
   background: #FCFDFF;
-  border: 2rpx solid #E5E7EB;
+  border: 2rpx solid var(--border-color);
   border-radius: 20rpx;
   margin-bottom: 24rpx;
 }
@@ -765,9 +921,9 @@ const runFirstErr = (r) => {
   display: block;
   font-size: 28rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
-.run-node__tool { font-size: 22rpx; color: #9CA3AF; font-weight: 400; }
+.run-node__tool { font-size: 22rpx; color: var(--text-tertiary); font-weight: 400; }
 /* 节点卡头：图标 + 名称 + 工具描述 */
 .run-node__head {
   display: flex;
@@ -779,8 +935,8 @@ const runFirstErr = (r) => {
   width: 64rpx;
   height: 64rpx;
   border-radius: 16rpx;
-  background: #EFF6FF;
-  color: #2563EB;
+  background: var(--brand-primary-light);
+  color: var(--brand-primary-hover);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -792,29 +948,31 @@ const runFirstErr = (r) => {
   display: block;
   margin-top: 4rpx;
   font-size: 22rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   line-height: 1.4;
 }
 .run-node__text {
   width: 100%;
   min-height: 180rpx;
-  border: 2rpx solid #E5E7EB;
+  border: 2rpx solid var(--border-color);
   border-radius: 16rpx;
   padding: 20rpx;
   font-size: 26rpx;
   box-sizing: border-box;
-  background: #fff;
+  background: var(--bg-card);
 }
 .run-node__file { display: flex; align-items: center; gap: 20rpx; }
 .file-pick {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 16rpx 36rpx;
-  background: #EFF6FF;
-  color: #2563EB;
+  background: var(--brand-primary-light);
+  color: var(--brand-primary-hover);
   border-radius: 9999rpx;
   font-size: 26rpx;
   font-weight: 500;
 }
-.file-name { font-size: 24rpx; color: #9CA3AF; }
+.file-name { font-size: 24rpx; color: var(--text-tertiary); }
 
 /* 已选文件列表（工作流节点上传后显示文件名，点击下载） */
 .run-files { margin-top: 12rpx; }
@@ -824,14 +982,14 @@ const runFirstErr = (r) => {
   gap: 10rpx;
   padding: 14rpx 16rpx;
   margin-top: 8rpx;
-  background: #F9FAFB;
+  background: var(--bg-page);
   border-radius: 12rpx;
 }
 .run-file-item__icon { font-size: 26rpx; }
 .run-file-item__name {
   flex: 1;
   font-size: 24rpx;
-  color: #2563EB;
+  color: var(--brand-primary-hover);
   text-decoration: underline;
   overflow: hidden;
   white-space: nowrap;
@@ -842,7 +1000,7 @@ const runFirstErr = (r) => {
 .run-stats { display: flex; gap: 16rpx; margin-bottom: 24rpx; }
 .run-stat {
   flex: 1;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 22rpx 20rpx;
   box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.06);
@@ -853,18 +1011,18 @@ const runFirstErr = (r) => {
   font-size: 34rpx;
   font-weight: 700;
   line-height: 44rpx;
-  color: #111827;
+  color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
-.run-stat--ok .run-stat__v { color: #047857; }
-.run-stat__u { font-size: 22rpx; font-weight: 600; color: #9CA3AF; margin-left: 2rpx; }
-.run-stat__l { display: block; font-size: 21rpx; color: #9CA3AF; margin-top: 6rpx; }
+.run-stat--ok .run-stat__v { color: var(--color-success); }
+.run-stat__u { font-size: 22rpx; font-weight: 600; color: var(--text-tertiary); margin-left: 2rpx; }
+.run-stat__l { display: block; font-size: 21rpx; color: var(--text-tertiary); margin-top: 6rpx; }
 
 .run-seg {
   display: flex;
   gap: 4rpx;
   padding: 6rpx;
-  background: #F3F4F6;
+  background: var(--bg-gray);
   border-radius: 16rpx;
   margin-bottom: 24rpx;
 }
@@ -877,14 +1035,14 @@ const runFirstErr = (r) => {
   justify-content: center;
   gap: 8rpx;
   font-size: 25rpx;
-  color: #4B5563;
+  color: var(--text-secondary);
 }
-.run-seg__i--on { background: #fff; color: #3B82F6; font-weight: 600; box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.06); }
+.run-seg__i--on { background: var(--bg-card); color: var(--brand-primary); font-weight: 600; box-shadow: 0 2rpx 6rpx rgba(0, 0, 0, 0.06); }
 .run-seg__c { font-size: 21rpx; font-weight: 600; opacity: 0.6; }
 
 .run-item {
   padding: 24rpx;
-  border: 2rpx solid #F3F4F6;
+  border: 2rpx solid var(--border-color);
   border-radius: 16rpx;
   margin-bottom: 16rpx;
   background: #FCFDFF;
@@ -896,7 +1054,7 @@ const runFirstErr = (r) => {
   min-width: 0;
   font-size: 27rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -912,21 +1070,21 @@ const runFirstErr = (r) => {
   font-weight: 600;
   flex-shrink: 0;
 }
-.run-pill--ok { background: #D1FAE5; color: #047857; }
-.run-pill--run { background: #EFF6FF; color: #3B82F6; }
-.run-pill--fail { background: #FEE2E2; color: #DC2626; }
+.run-pill--ok { background: var(--color-success-bg); color: var(--color-success); }
+.run-pill--run { background: var(--brand-primary-light); color: var(--brand-primary); }
+.run-pill--fail { background: var(--color-danger-bg); color: var(--color-danger); }
 .run-item__dot {
   width: 10rpx;
   height: 10rpx;
   border-radius: 50%;
-  background: #3B82F6;
+  background: var(--brand-primary);
   animation: breathe 1.5s ease-in-out infinite;
 }
-.run-item__time { display: block; font-size: 22rpx; color: #9CA3AF; margin-top: 6rpx; }
+.run-item__time { display: block; font-size: 22rpx; color: var(--text-tertiary); margin-top: 6rpx; }
 .run-item__meta {
   display: block;
   font-size: 24rpx;
-  color: #111827;
+  color: var(--text-primary);
   font-weight: 500;
   margin-top: 8rpx;
 }
@@ -935,16 +1093,16 @@ const runFirstErr = (r) => {
   margin-top: 14rpx;
   padding: 10rpx 14rpx;
   border-radius: 8rpx;
-  background: #FEE2E2;
+  background: var(--color-danger-bg);
   font-size: 21rpx;
   line-height: 30rpx;
-  color: #B91C1C;
+  color: var(--color-danger);
   word-break: break-all;
 }
 .run-item__act {
   display: block;
   font-size: 24rpx;
-  color: #3B82F6;
+  color: var(--brand-primary);
   margin-top: 12rpx;
   text-align: right;
 }
@@ -956,24 +1114,24 @@ const runFirstErr = (r) => {
   height: 12rpx;
   border-radius: 50%;
   flex-shrink: 0;
-  background: #F3F4F6;
+  background: var(--bg-gray);
 }
-.run-mini__p--done { background: #10B981; }
-.run-mini__p--fail { background: #EF4444; }
-.run-mini__p--run { background: #3B82F6; }
-.run-mini__l { flex: 1; height: 3rpx; background: #F3F4F6; }
-.run-mini__l--done { background: #10B981; }
-.run-mini__l--fail { background: #EF4444; }
-.run-mini__l--run { background: linear-gradient(90deg, #10B981, #3B82F6); }
-.run-mini__l--blk { background: repeating-linear-gradient(90deg, #D1D5DB 0 4rpx, transparent 4rpx 10rpx); }
+.run-mini__p--done { background: var(--color-success); }
+.run-mini__p--fail { background: var(--color-danger); }
+.run-mini__p--run { background: var(--brand-primary); }
+.run-mini__l { flex: 1; height: 3rpx; background: var(--bg-gray); }
+.run-mini__l--done { background: var(--color-success); }
+.run-mini__l--fail { background: var(--color-danger); }
+.run-mini__l--run { background: linear-gradient(90deg, var(--color-success), var(--brand-primary)); }
+.run-mini__l--blk { background: repeating-linear-gradient(90deg, var(--border-color) 0 4rpx, transparent 4rpx 10rpx); }
 .run-mini__t {
   margin-left: auto;
   padding-left: 16rpx;
   font-size: 20rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   white-space: nowrap;
 }
-.run-mini__t--stop { color: #DC2626; font-weight: 600; }
+.run-mini__t--stop { color: var(--color-danger); font-weight: 600; }
 
 .safe-bottom { height: 40rpx; }
 </style>
