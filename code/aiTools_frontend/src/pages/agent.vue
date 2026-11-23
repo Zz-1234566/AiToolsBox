@@ -212,13 +212,16 @@
       <view class="composer__row">
         <view class="composer__plus" @click="onPickFiles">＋</view>
         <view class="composer__ctx">
-          <text v-if="ctxTokens > 0" class="composer__ctx-t">
-            上下文 {{ ctxPercent }}% / {{ ctxWindowLabel }}
+          <svg class="composer__ctx-ring" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="var(--border-color)" stroke-width="3"/>
+            <circle cx="12" cy="12" r="9" fill="none" stroke="var(--brand-primary)" stroke-width="3"
+                    stroke-linecap="round" transform="rotate(-90 12 12)"
+                    :stroke-dasharray="ctxDash" />
+          </svg>
+          <text class="composer__ctx-t">
+            <text v-if="ctxTokens > 0">上下文 {{ ctxPercent }}% / {{ ctxWindowLabel }}</text>
+            <text v-else>上下文 — / {{ ctxWindowLabel }}</text>
           </text>
-          <text v-else class="composer__ctx-t">上下文 — / {{ ctxWindowLabel }}</text>
-          <view class="composer__ctx-bar">
-            <view class="composer__ctx-fill" :style="{ width: Math.min(100, ctxPercent) + '%' }"></view>
-          </view>
         </view>
         <view class="composer__model" @click="showModelMenu = !showModelMenu">
           <text class="composer__model-t">{{ modelNames[modelIndex] }}</text>
@@ -274,6 +277,13 @@ const ctxPercent = computed(() => {
   if (!ctxTokens.value || !ctxWindow.value) return 0
   const p = (ctxTokens.value * 100) / ctxWindow.value
   return p >= 1 ? Math.round(p * 10) / 10 : Math.round(p * 100) / 100
+})
+/** 圆环进度：dasharray = 可见弧长 空格 周长 */
+const RING_CIRCUMFERENCE = 2 * Math.PI * 9
+const ctxDash = computed(() => {
+  const p = Math.max(0, Math.min(100, ctxPercent.value || 0))
+  const arc = (RING_CIRCUMFERENCE * p) / 100
+  return arc.toFixed(2) + ' ' + RING_CIRCUMFERENCE.toFixed(2)
 })
 const ctxWindowLabel = computed(() => {
   const w = ctxWindow.value || 0
@@ -1025,24 +1035,17 @@ $ref-sub: var(--text-secondary);
   gap: 10rpx;
   padding: 0 8rpx;
 }
+.composer__ctx-ring {
+  width: 26rpx;
+  height: 26rpx;
+  flex-shrink: 0;
+}
 .composer__ctx-t {
   font-size: 20rpx;
   color: var(--text-tertiary);
   white-space: nowrap;
-}
-.composer__ctx-bar {
-  flex: 1;
-  min-width: 40rpx;
-  height: 8rpx;
-  border-radius: 999rpx;
-  background: var(--bg-gray);
   overflow: hidden;
-}
-.composer__ctx-fill {
-  height: 100%;
-  border-radius: 999rpx;
-  background: var(--brand-primary);
-  transition: width 0.3s ease;
+  text-overflow: ellipsis;
 }
 .composer__gap { flex: 1; }
 .composer__model {
