@@ -341,7 +341,8 @@ const fmtMs = (ms) => {
 
 /** 步骤副标题：思考=已完成；工具=执行中（实时）/ 耗时 xxx */
 const stepStatusText = (st) => {
-  if (st.running) return '执行中 ' + fmtMs(nowTick.value - (st.startAt || nowTick.value))
+  const label = st.type === 'thought' ? '思考中 ' : '执行中 '
+  if (st.running) return label + fmtMs(nowTick.value - (st.startAt || nowTick.value))
   if (st.costMs != null) return '耗时 ' + fmtMs(st.costMs)
   return '已完成'
 }
@@ -419,9 +420,24 @@ const onStart = async () => {
           if (kind === '运行') {
             // 首帧：拿到 runId（取消接口的入参）
             runId.value = body
+          } else if (kind === '思考开始') {
+            // 模型开始思考：插入进行中的步骤，本地计时
+            pushStep({ type: 'thought', text: '正在思考…', running: true, startAt: Date.now() })
           } else if (kind === '思考') {
             chunkTarget = 'answer'
-            pushStep({ type: 'thought', text: body })
+            const last = steps.value[steps.value.length - 1]
+            if (last && last.type === 'thought' && last.running) {
+              last.text = body
+            } else {
+              pushStep({ type: 'thought', text: body, running: true, startAt: Date.now() })
+            }
+          } else if (kind === '思考耗时') {
+            // 本步思考结束：写入最终耗时
+            const last = steps.value[steps.value.length - 1]
+            if (last && last.running) {
+              last.running = false
+              last.costMs = Number(body) || (Date.now() - (last.startAt || Date.now()))
+            }
           } else if (kind === '工具开始') {
             // 工具刚开跑：立刻插入一条进行中的步骤，前端本地计时
             pushStep({ type: 'tool', title: body, result: '', running: true, startAt: Date.now() })

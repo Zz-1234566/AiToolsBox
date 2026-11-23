@@ -144,7 +144,11 @@ public class AgentServiceImpl implements AgentService {
                 cancelRunRecord(runId, steps, start);
                 throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_CANCELLED, "已取消");
             }
+            // 思考阶段计时：先通知前端，模型返回后给最终耗时
+            onFrame.accept(frame(FRAME_THOUGHT_START, ""));
+            long thinkStart = System.currentTimeMillis();
             String raw = aiClient.chatMessages(messages, cred);
+            long thinkCost = System.currentTimeMillis() - thinkStart;
 
             AgentAction action = AgentActionParser.parse(raw);
             if (action == null) {
@@ -174,6 +178,8 @@ public class AgentServiceImpl implements AgentService {
             if (action.getThought() != null && !action.getThought().isBlank()) {
                 onFrame.accept(frame(FRAME_THOUGHT, action.getThought()));
             }
+            // 收尾：把本步耗时告诉前端（空思考也要发，保证步骤能结束计时）
+            onFrame.accept(frame(FRAME_THOUGHT_COST, String.valueOf(thinkCost)));
 
             // --- 收尾：模型给出最终答案 ---
             if (AgentAction.ACTION_FINAL.equals(action.getAction())) {
