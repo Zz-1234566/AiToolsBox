@@ -1,143 +1,177 @@
 <template>
   <view class="page">
-    <!-- App 端 SSE 传输组件（视图层发起 XHR）；H5 端用原生 XHR，不需要此组件 -->
     <!-- #ifdef APP-PLUS -->
     <sse-renderjs />
     <!-- #endif -->
 
-    <!-- ============ 顶栏 ============ -->
     <view class="topbar">
-      <view class="topbar__back" hover-class="topbar__back--hover" @click="goBack">
-        <text class="topbar__back-icon">‹</text>
+      <view class="topbar__text">
+        <text class="topbar__title">智能体</text>
+        <text class="topbar__sub">把复杂任务交给 AI，自动调用工具完成</text>
       </view>
-      <text class="topbar__title">智能体</text>
-      <view class="topbar__history" hover-class="topbar__history--hover" @click="goHistory">
-        <text class="topbar__history-text">记录</text>
+      <view class="topbar__avatar">
+        <view class="ai-avatar-wrap" :class="robotStateClass">
+          <image class="ai-avatar" :src="ROBOT_BASE" mode="aspectFit" />
+          <view v-if="stateBadge" class="ai-badge">
+            <text v-if="stateBadge === 'question'" class="ai-badge__q">?</text>
+            <svg v-else class="ai-badge__ico" viewBox="0 0 24 24" fill="none"
+                 stroke="#F5671D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18h6M10 21h4"/>
+              <path d="M12 3a6 6 0 00-3.4 10.9V16h6.8v-2.1A6 6 0 0012 3z"/>
+            </svg>
+          </view>
+        </view>
       </view>
     </view>
 
-    <scroll-view scroll-y class="page-content" :scroll-into-view="scrollAnchor" scroll-with-animation>
-      <!-- ============ 输入区（未开始运行时） ============ -->
-      <view v-if="!started" class="input-area">
-        <text class="input-area__label">你的目标</text>
-        <textarea
-          class="input-area__textarea"
-          v-model="goal"
-          placeholder="例如：把这份会议录音整理成会议纪要，并列出待办事项"
-          :maxlength="2000"
-          :disabled="running"
-          auto-height
-        />
-        <text class="input-area__hint">{{ goal.length }}/2000</text>
+    <!-- 欢迎态 -->
+    <view v-if="!started" class="welcome">
+      <image class="welcome__robot" :src="ROBOT_BASE" mode="aspectFit" />
+      <text class="welcome__t1">你好，我是 AI 助手</text>
+      <text class="welcome__t2">有什么可以帮你？</text>
+      <text class="sugs__label">试试这样问我：</text>
+      <view class="sugs">
+        <view class="sug" @click="goal = '帮我生成一份工作总结，并列出待办事项'; onStart()">帮我生成一份工作总结，并列出待办事项</view>
+        <view class="sug" @click="goal = '提取这份文档的重点内容'; onStart()">提取这份文档的重点内容</view>
+        <view class="sug" @click="goal = '把这段会议录音整理成会议纪要'; onStart()">把这段会议录音整理成会议纪要</view>
+      </view>
+    </view>
 
-        <!-- 附件 -->
-        <view class="attach-area">
-          <view class="attach-area__head">
-            <text class="attach-area__label">附件（可选）</text>
-            <view class="attach-area__add" @click="onPickFiles">+ 添加</view>
-          </view>
-          <view v-if="attachments.length === 0" class="attach-area__empty">
-            <!-- #ifdef APP-PLUS -->
-            App 端支持选择图片作为附件（文档 / 录音请在 H5 端上传）
-            <!-- #endif -->
-            <!-- #ifndef APP-PLUS -->
-            支持图片 / PDF / Word / TXT / 音频，智能体会自己决定用哪个工具处理
-            <!-- #endif -->
-          </view>
-          <view v-for="(a, i) in attachments" :key="a.url" class="attach-item">
-            <text class="attach-item__name">{{ a.name }}</text>
-            <text class="attach-item__remove" @click="removeAttachment(i)">移除</text>
-          </view>
-        </view>
-
-        <!-- 模型（BYOK） -->
-        <view class="model-row">
-          <text class="model-row__label">使用模型</text>
-          <picker
-            class="model-row__picker"
-            mode="selector"
-            :range="modelNames"
-            :value="modelIndex"
-            @change="onModelChange"
-          >
-            <view class="model-row__value">{{ modelNames[modelIndex] }}</view>
-          </picker>
-        </view>
-
-        <button class="btn-primary" :disabled="!goal.trim() || running" @click="onStart">
-          {{ running ? '运行中…' : '开始' }}
-        </button>
-        <text class="btn-hint">智能体会自己决定调用哪些工具，最多 8 步</text>
+    <!-- 对话态 -->
+    <scroll-view v-else scroll-y class="chat" :scroll-into-view="scrollAnchor" scroll-with-animation>
+      <view class="msg msg--me">
+        <view class="bubble bubble--me">{{ goal }}</view>
       </view>
 
-      <!-- ============ 过程 + 答案 ============ -->
-      <view v-else class="run-area">
-        <!-- 目标回显 -->
-        <view class="goal-card">
-          <text class="goal-card__label">目标</text>
-          <text class="goal-card__text">{{ goal }}</text>
-        </view>
-
-        <!-- 步骤 -->
-        <view v-for="(s, i) in steps" :key="i" class="step" :class="'step--' + s.type">
-          <!-- 思考 -->
-          <view v-if="s.type === 'thought'" class="step__thought">
-            <text class="step__thought-text">{{ s.text }}</text>
-          </view>
-
-          <!-- 工具 -->
-          <view v-else-if="s.type === 'tool'" class="step__tool">
-            <view class="step__tool-head">
-              <text class="step__tool-icon">⚙</text>
-              <text class="step__tool-title">{{ s.title }}</text>
-            </view>
-            <view v-if="s.result" class="step__tool-result">
-              <text class="step__tool-result-text">{{ s.result }}</text>
-            </view>
+      <view v-if="attachments.length" class="msg msg--me">
+        <view class="files">
+          <view v-for="(a,i) in attachments" :key="a.url" class="file">
+            <text class="file__n">{{ a.name }}</text>
+            <text class="file__x" @click="removeAttachment(i)">×</text>
           </view>
         </view>
-
-        <!-- 最终答案 -->
-        <view v-if="answer" class="answer-card">
-          <text class="answer-card__label">最终答案</text>
-          <!-- App 端不能用 v-html —— MarkdownView 已按端分流（H5 v-html / App mp-html） -->
-          <MarkdownView class="answer-card__md" :source="answer" :streaming="typing" />
-        </view>
-
-        <!-- 出错 -->
-        <view v-if="errorMsg" class="error-card">
-          <text class="error-card__text">{{ errorMsg }}</text>
-        </view>
-
-        <!-- 运行中指示 + 取消 -->
-        <view v-if="running" class="running">
-          <text class="running__text">智能体正在思考…</text>
-          <view v-if="runId" class="running__cancel" @click="onCancel">取消</view>
-        </view>
-
-        <!-- 完成后：再问一个 -->
-        <button v-if="!running" class="btn-secondary" @click="reset">再问一个</button>
       </view>
 
-      <!-- 自动滚动锚点：scroll-into-view 比 scroll-top 设大值可靠（App 端尤其） -->
+      <view class="msg msg--ai">
+        <view class="ai-body">
+          <view class="card">
+            <view class="card__title">任务规划</view>
+            <view v-if="!steps.length" class="tl__empty">
+              <svg class="tl__spin" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="#F5671D" stroke-width="3"
+                        stroke-linecap="round" stroke-dasharray="42 15"/>
+              </svg>
+              <text class="tl__empty-t">正在思考…</text>
+            </view>
+            <view v-for="(st,i) in steps" :key="i" class="tl" :class="{ 'tl--run': isRunningStep(i), 'tl--wait': !isRunningStep(i) && !isDoneStep(i) }">
+              <view class="tl__dot">
+                <svg v-if="isDoneStep(i)" class="tl__ico" viewBox="0 0 24 24">
+                  <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <svg v-else-if="isRunningStep(i)" class="tl__ring" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="#F5671D" stroke-width="3"
+                          stroke-linecap="round" stroke-dasharray="42 15"/>
+                </svg>
+              </view>
+              <view class="tl__body">
+                <text class="tl__t">{{ st.title || st.text || '处理中' }}</text>
+                <text class="tl__s">{{ isRunningStep(i) ? '进行中…' : '已完成' }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view v-if="answer" class="card card--answer">
+            <MarkdownView :content="answer" />
+          </view>
+
+          <view v-if="running" class="typing">
+            <text class="typing__t">正在思考</text>
+            <view class="typing__dots"><i></i><i></i><i></i></view>
+          </view>
+          <view v-if="errorMsg" class="err">{{ errorMsg }}</view>
+        </view>
+      </view>
+
       <view id="agent-bottom" class="bottom-anchor"></view>
     </scroll-view>
+
+    <!-- 模型浮层：贴着输入框上方展开（不用底部抽屉） -->
+    <view v-if="showModelMenu" class="model-mask" @click="showModelMenu = false"></view>
+    <view v-if="showModelMenu" class="model-menu">
+      <view
+        v-for="(n,i) in modelNames"
+        :key="i"
+        class="model-menu__item"
+        @click="pickModel(i)"
+      >
+        <text class="model-menu__t">{{ n }}</text>
+        <text v-if="i === modelIndex" class="model-menu__ok">✓</text>
+      </view>
+    </view>
+
+    <!-- 底部输入条（参考豆包：上方输入，下方工具 + 模型选择 + 发送） -->
+    <view class="composer">
+      <input v-model="goal" class="composer__input" placeholder="发消息或按住空格说话..." :disabled="running" />
+      <view class="composer__row">
+        <view class="composer__plus" @click="onPickFiles">＋</view>
+        <view class="composer__gap"></view>
+        <view class="composer__model" @click="showModelMenu = !showModelMenu">
+          <text class="composer__model-t">{{ modelNames[modelIndex] }}</text>
+          <text class="composer__chev">›</text>
+        </view>
+        <view v-if="running" class="composer__stop" @click="onCancel">
+          <view class="stop-square"></view>
+        </view>
+        <view v-else class="composer__send" @click="onStart">
+          <text class="send-arrow">↑</text>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { refreshTabBarStyle } from '@/utils/theme'
 import MarkdownView from '@/components/MarkdownView.vue'
 import { agentRun, uploadAgentFile, cancelAgentRun } from '@/api/agent'
 import { listUserAiModels } from '@/api/aiModel'
 import { pickFiles } from '@/utils/filePicker'
-import { safeBack } from '@/utils/pageTransition'
 import SseRenderjs from '@/components/sse-renderjs/sse-renderjs.vue'
+
+// 主题是在设置页（非 tabBar 页）切换的，回到本页时同步一次底栏配色
+onShow(() => {
+  refreshTabBarStyle()
+})
 
 const goal = ref('')
 const attachments = ref([])
 const started = ref(false)
 const running = ref(false)
+
+/*
+ * 机器人三态：同一张图 + 三种动效，不再切换三张不同渲染的图
+ * （不同图的颗粒/光照对不上，轮换会跳戏）。
+ */
+const ROBOT_HEAD = '/static/ref/robot-head.png'
+const ROBOT_BASE = '/static/ref/robot-base.png'
+const STATE_CLASSES = ['is-thinking', 'is-idea']
+const stateIdx = ref(0)
+let stateTimer = null
+const robotStateClass = computed(() => (running.value ? STATE_CLASSES[stateIdx.value] : ''))
+const STATE_BADGES = ['question', 'bulb']
+const stateBadge = computed(() => (running.value ? STATE_BADGES[stateIdx.value] : ''))
+watch(running, (v) => {
+  if (stateTimer) { clearInterval(stateTimer); stateTimer = null }
+  if (v) {
+    stateIdx.value = 0
+    stateTimer = setInterval(() => { stateIdx.value = (stateIdx.value + 1) % STATE_CLASSES.length }, 1100)
+  } else {
+    stateIdx.value = 0
+  }
+})
 const steps = ref([])
 const answer = ref('')
 /** 是否正在逐字输出（MarkdownView 在此期间走纯文本分支，避免每个字重解析 markdown） */
@@ -150,10 +184,6 @@ const runId = ref('')
 const modelIndex = ref(0)
 const modelNames = ref(['系统默认'])
 const modelCodes = ref([''])
-
-const goBack = () => {
-  safeBack('/pages/index')
-}
 
 const goHistory = () => {
   uni.navigateTo({ url: '/pages/agent-history' })
@@ -231,6 +261,12 @@ const onPickFiles = async () => {
 const removeAttachment = (idx) => {
   attachments.value.splice(idx, 1)
 }
+
+const showModelMenu = ref(false)
+const pickModel = (i) => { modelIndex.value = i; showModelMenu.value = false }
+
+const isRunningStep = (i) => running.value && i === steps.value.length - 1
+const isDoneStep = (i) => !isRunningStep(i)
 
 const onModelChange = (e) => {
   modelIndex.value = Number(e.detail.value) || 0
@@ -345,264 +381,257 @@ const reset = () => {
 </script>
 
 <style lang="scss" scoped>
+$ref-orange: #F5671D;
+$ref-ink: var(--text-primary);
+$ref-sub: var(--text-secondary);
+
 .page {
-  min-height: 100vh;
-  background: #F9FAFB;
+  position: relative;
+  height: 100vh;
+  /* #ifdef H5 */
+  height: calc(100vh - var(--window-bottom, 0px));
+  /* #endif */
+  background: var(--bg-page);
   display: flex;
   flex-direction: column;
+  padding-top: var(--status-bar-height, 0px);
 }
 
-/* ============ 顶栏 ============ */
 .topbar {
-  padding: var(--status-bar-height, 0px) 24rpx 0;
-  height: 88rpx;
-  background: #FFFFFF;
-  display: flex;
-  align-items: center;
-  border-bottom: 1rpx solid #E5E7EB;
-
-  &__back {
-    width: 56rpx;
-    height: 56rpx;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    &-icon { font-size: 44rpx; color: #374151; line-height: 1; }
-    &--hover { opacity: 0.6; }
-  }
-  &__title {
-    flex: 1;
-    text-align: center;
-    font-size: 32rpx;
-    font-weight: 600;
-    color: #111827;
-  }
-  &__history {
-    width: 96rpx;
-    height: 56rpx;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    &-text { font-size: 26rpx; color: #3B82F6; }
-    &--hover { opacity: 0.6; }
-  }
-}
-
-.page-content {
-  flex: 1;
-  padding: 24rpx 32rpx 64rpx;
-}
-
-/* ============ 输入区 ============ */
-.input-area {
-  &__label {
-    display: block;
-    font-size: 26rpx;
-    color: #6B7280;
-    margin-bottom: 12rpx;
-  }
-  &__textarea {
-    width: 100%;
-    min-height: 200rpx;
-    background: #FFFFFF;
-    border: 2rpx solid #E5E7EB;
-    border-radius: 16rpx;
-    padding: 24rpx;
-    font-size: 28rpx;
-    color: #374151;
-    box-sizing: border-box;
-  }
-  &__hint {
-    display: block;
-    text-align: right;
-    font-size: 22rpx;
-    color: #9CA3AF;
-    margin-top: 8rpx;
-  }
-}
-
-/* ============ 附件 ============ */
-.attach-area {
-  margin-top: 28rpx;
-
-  &__head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12rpx;
-  }
-  &__label { font-size: 26rpx; color: #6B7280; }
-  &__add {
-    font-size: 24rpx;
-    color: #3B82F6;
-    padding: 8rpx 20rpx;
-    border-radius: 999rpx;
-    background: #EFF6FF;
-  }
-  &__empty {
-    font-size: 22rpx;
-    color: #9CA3AF;
-    line-height: 1.6;
-    padding: 16rpx 20rpx;
-    background: #F3F4F6;
-    border-radius: 12rpx;
-  }
-}
-.attach-item {
+  position: relative;
+  height: 116rpx;
+  padding: 0 32rpx;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #FFFFFF;
-  border-radius: 12rpx;
-  padding: 18rpx 20rpx;
-  margin-bottom: 12rpx;
-
-  &__name {
-    flex: 1;
-    font-size: 25rpx;
-    color: #374151;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  &__remove { font-size: 24rpx; color: #EF4444; padding-left: 20rpx; }
+  gap: 14rpx;
+  flex-shrink: 0;
 }
+.topbar__text { display: flex; flex-direction: column; }
+.topbar__title { font-size: 34rpx; font-weight: 700; color: $ref-ink; }
+.topbar__sub { font-size: 22rpx; color: $ref-sub; margin-top: 4rpx; }
 
-/* ============ 模型选择 ============ */
-.model-row {
+/* 欢迎态 */
+.welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40rpx 56rpx 0;
+}
+.welcome__robot { width: 340rpx; height: 340rpx; }
+.welcome__t1 { margin-top: 16rpx; font-size: 38rpx; font-weight: 700; color: $ref-ink; }
+.welcome__t2 { margin-top: 10rpx; font-size: 28rpx; color: $ref-sub; }
+.sugs__label {
+  margin-top: 44rpx;
+  font-size: 24rpx;
+  color: $ref-sub;
+  align-self: flex-start;
+}
+.sugs { margin-top: 16rpx; width: 100%; display: flex; flex-direction: column; gap: 18rpx; }
+.sug {
+  background: var(--bg-card);
+  border-radius: 999rpx;
+  padding: 22rpx 28rpx;
+  font-size: 26rpx;
+  text-align: left;
+  color: $ref-ink;
+}
+.sug:active { opacity: .9; }
+
+/* 对话态 */
+.chat { flex: 1; min-height: 0; padding: 8rpx 32rpx 24rpx; }
+.msg { display: flex; margin-bottom: 22rpx; }
+.msg--me { justify-content: flex-end; }
+.msg--ai { display: block; }
+
+.bubble--me {
+  max-width: 76%;
+  background: #FBE3D5;
+  color: $ref-ink;
+  font-size: 27rpx;
+  line-height: 1.6;
+  padding: 20rpx 24rpx;
+  border-radius: 24rpx 24rpx 6rpx 24rpx;
+}
+.files { display: flex; flex-direction: column; gap: 10rpx; align-items: flex-end; }
+.file {
+  background: var(--bg-card); border-radius: 14rpx; padding: 12rpx 16rpx;
+  display: flex; align-items: center; gap: 12rpx; font-size: 24rpx;
+}
+.file__x { color: $ref-sub; }
+
+.ai-avatar-wrap {
+  position: relative;
+  width: 84rpx;
+  height: 84rpx;
+  flex-shrink: 0;
+}
+.topbar__avatar {
   display: flex;
   align-items: center;
-  margin-top: 28rpx;
-
-  &__label { font-size: 26rpx; color: #6B7280; width: 140rpx; }
-  &__picker { flex: 1; }
-  &__value {
-    background: #FFFFFF;
-    border: 2rpx solid #E5E7EB;
-    border-radius: 12rpx;
-    padding: 18rpx 20rpx;
-    font-size: 26rpx;
-    color: #374151;
-  }
 }
-
-/* ============ 按钮 ============ */
-.btn-primary {
-  width: 100%;
-  height: 88rpx;
-  line-height: 88rpx;
-  margin-top: 32rpx;
-  background: #3B82F6;
-  color: #FFFFFF;
-  border-radius: 16rpx;
-  font-size: 30rpx;
-  font-weight: 600;
-  border: none;
-
-  &[disabled] { background: #E5E7EB; color: #FFFFFF; }
-}
-.btn-secondary {
-  width: 100%;
+.ai-avatar {
+  width: 80rpx;
   height: 80rpx;
-  line-height: 80rpx;
-  margin-top: 32rpx;
-  background: #FFFFFF;
-  color: #3B82F6;
-  border: 2rpx solid #3B82F6;
-  border-radius: 16rpx;
-  font-size: 28rpx;
-}
-.btn-hint {
+  border-radius: 50%;
+  background: var(--bg-card);
   display: block;
-  text-align: center;
-  font-size: 22rpx;
-  color: #9CA3AF;
+  padding: 6rpx;
+  box-sizing: border-box;
+}
+.ai-badge {
+  position: absolute;
+  right: -6rpx;
+  top: -6rpx;
+  width: 36rpx;
+  height: 36rpx;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 2rpx solid $ref-orange;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2rpx 6rpx rgba(0,0,0,.08);
+}
+.ai-badge__q { font-size: 22rpx; font-weight: 700; color: $ref-orange; line-height: 1; }
+.ai-badge__ico { width: 22rpx; height: 22rpx; }
+/* 三态：同一张图，只改动效，保证颗粒一致 */
+.ai-avatar-wrap.is-thinking { animation: botThink 2.2s ease-in-out infinite; }
+.ai-avatar-wrap.is-idea     { animation: botIdea 1.1s ease-out infinite; }
+@keyframes botThink {
+  0%, 100% { transform: scale(1);    opacity: .85; }
+  50%      { transform: scale(1.08); opacity: 1; }
+}
+@keyframes botIdea {
+  0%   { transform: scale(1)    rotate(0deg); }
+  25%  { transform: scale(1.16) rotate(-6deg); }
+  50%  { transform: scale(1.04) rotate(4deg); }
+  100% { transform: scale(1)    rotate(0deg); }
+}
+.ai-body { width: 100%; display: flex; flex-direction: column; gap: 16rpx; }
+
+.card { background: var(--bg-card); border-radius: 24rpx; padding: 24rpx; }
+.card__title { font-size: 26rpx; font-weight: 700; color: $ref-ink; margin-bottom: 16rpx; }
+.card--answer { font-size: 27rpx; color: $ref-ink; line-height: 1.7; }
+
+.tl { display: flex; gap: 16rpx; padding: 12rpx 0; align-items: flex-start; }
+.tl__dot {
+  width: 44rpx; height: 44rpx; border-radius: 50%;
+  background: $ref-orange;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.tl__ico { width: 26rpx; height: 26rpx; }
+.tl--run .tl__dot { background: var(--bg-card); border: 3rpx solid $ref-orange; }
+.tl--wait .tl__dot { background: #EFEFF3; }
+.tl__ring,
+.tl__spin {
+  width: 30rpx; height: 30rpx;
+  flex-shrink: 0;
+  animation: spin .9s linear infinite;
+  transform-origin: 50% 50%;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.tl__body { flex: 1; min-width: 0; }
+.tl__t { display: block; font-size: 26rpx; font-weight: 600; color: $ref-ink; }
+.tl__s { display: block; margin-top: 4rpx; font-size: 22rpx; color: $ref-sub; }
+.tl--run .tl__s { color: $ref-orange; }
+.tl__empty { display: flex; align-items: center; gap: 12rpx; padding: 8rpx 0; }
+.tl__empty-t { font-size: 25rpx; color: $ref-sub; }
+
+.typing { display: flex; align-items: center; gap: 10rpx; padding-left: 6rpx; }
+.typing__t { font-size: 24rpx; color: $ref-sub; }
+.typing__dots { display: flex; gap: 6rpx; }
+.typing__dots i {
+  width: 8rpx; height: 8rpx; border-radius: 50%; background: #C9C9D2;
+  animation: blink 1.2s infinite;
+}
+.typing__dots i:nth-child(2) { animation-delay: .2s; }
+.typing__dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%,60%,100% { opacity: .3 } 30% { opacity: 1 } }
+
+.err { font-size: 24rpx; color: #C0392B; }
+
+/* 输入条（两行：输入 + 工具栏） */
+.composer {
+  flex-shrink: 0;
+  margin: 0 24rpx 16rpx;
+  background: var(--bg-card);
+  border-radius: 32rpx;
+  padding: 20rpx 24rpx 16rpx;
+}
+.composer__input {
+  width: 100%;
+  height: 56rpx;
+  font-size: 27rpx;
+  color: $ref-ink;
+}
+.composer__row {
+  display: flex;
+  align-items: center;
   margin-top: 12rpx;
 }
-
-/* ============ 运行区 ============ */
-.goal-card {
-  background: #EFF6FF;
-  border-radius: 16rpx;
-  padding: 20rpx 24rpx;
-  margin-bottom: 24rpx;
-
-  &__label { display: block; font-size: 22rpx; color: #3B82F6; margin-bottom: 8rpx; }
-  &__text { font-size: 26rpx; color: #1F2937; line-height: 1.6; }
+.composer__plus {
+  width: 56rpx; height: 56rpx; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 34rpx; color: #4A4A54;
+  background: var(--bg-gray);
 }
-
-.step {
-  margin-bottom: 16rpx;
-
-  &__thought {
-    background: #FFFFFF;
-    border-left: 6rpx solid #C7D2FE;
-    border-radius: 12rpx;
-    padding: 16rpx 20rpx;
-  }
-  &__thought-text { font-size: 24rpx; color: #6B7280; line-height: 1.6; }
-
-  &__tool {
-    background: #FFFFFF;
-    border-radius: 16rpx;
-    padding: 20rpx 24rpx;
-  }
-  &__tool-head {
-    display: flex;
-    align-items: center;
-  }
-  &__tool-icon { font-size: 26rpx; margin-right: 12rpx; }
-  &__tool-title { flex: 1; font-size: 26rpx; color: #374151; font-weight: 600; }
-  &__tool-result {
-    margin-top: 12rpx;
-    background: #F9FAFB;
-    border-radius: 10rpx;
-    padding: 14rpx 16rpx;
-    max-height: 400rpx;
-    overflow: hidden;
-  }
-  &__tool-result-text { font-size: 23rpx; color: #6B7280; line-height: 1.6; white-space: pre-wrap; }
+.composer__gap { flex: 1; }
+.composer__model {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+  padding: 0 10rpx;
+  max-width: 220rpx;
 }
-
-.answer-card {
-  background: #FFFFFF;
-  border-radius: 16rpx;
-  padding: 24rpx;
-  margin-top: 24rpx;
-
-  &__label { display: block; font-size: 24rpx; color: #3B82F6; margin-bottom: 12rpx; }
-  &__md { font-size: 28rpx; }
+.composer__model-t {
+  font-size: 24rpx;
+  color: $ref-ink;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-.error-card {
-  background: #FEF2F2;
-  border-radius: 12rpx;
-  padding: 20rpx 24rpx;
-  margin-top: 24rpx;
-
-  &__text { font-size: 25rpx; color: #B91C1C; line-height: 1.6; }
+.composer__chev { font-size: 24rpx; color: $ref-sub; }
+.composer__send {
+  width: 64rpx; height: 64rpx; border-radius: 50%;
+  background: $ref-orange; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  margin-left: 12rpx;
 }
-
-.running {
-  text-align: center;
-  padding: 24rpx 0;
-
-  &__text { font-size: 24rpx; color: #9CA3AF; }
-
-  &__cancel {
-    display: inline-block;
-    margin-top: 16rpx;
-    padding: 12rpx 40rpx;
-    border-radius: 999rpx;
-    border: 2rpx solid #E5E7EB;
-    background: #FFFFFF;
-    font-size: 25rpx;
-    color: #6B7280;
-  }
+.send-arrow { font-size: 30rpx; font-weight: 700; line-height: 1; }
+.composer__stop {
+  width: 64rpx; height: 64rpx; border-radius: 50%;
+  background: #E14B3B;
+  display: flex; align-items: center; justify-content: center;
+  margin-left: 12rpx;
 }
+.stop-square { width: 22rpx; height: 22rpx; border-radius: 4rpx; background: var(--bg-card); }
 
-/* 自动滚动锚点（不可见） */
-.bottom-anchor {
-  height: 1rpx;
+.model-mask {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 20;
 }
+.model-menu {
+  position: absolute;
+  right: 32rpx;
+  bottom: 200rpx;
+  z-index: 21;
+  min-width: 260rpx;
+  max-width: 420rpx;
+  background: var(--bg-card);
+  border-radius: 20rpx;
+  padding: 6rpx 0;
+  box-shadow: 0 8rpx 28rpx rgba(0, 0, 0, .12);
+}
+.model-menu__item {
+  display: flex; align-items: center;
+  padding: 16rpx 22rpx;
+  font-size: 25rpx; color: $ref-ink;
+}
+.model-menu__item:active { background: #F6F6F9; }
+.model-menu__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-menu__ok { color: $ref-ink; font-size: 24rpx; margin-left: 12rpx; }
+
+.bottom-anchor { height: 1rpx; }
 </style>

@@ -1,69 +1,73 @@
 <template>
-  <view class="page page--no-tabbar" :style="themeStyle">
-    <!-- 顶栏：返回 + 标题 + 搜索按钮 -->
-    <view class="topbar topbar--border">
-      <view class="topbar__back" hover-class="topbar__back--hover" aria-label="返回" @click="goBack">
-        <svg viewBox="0 0 24 24" fill="none">
-          <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+  <view class="page" :style="themeStyle">
+    <view class="head"><text class="head__title">工具</text></view>
+
+    <view class="search" @click="goSearch">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+      </svg>
+      <text class="search__ph">搜索工具</text>
+    </view>
+
+    <scroll-view scroll-x class="chips" :show-scrollbar="false">
+      <view
+        v-for="t in tabs"
+        :key="t.code"
+        class="chip"
+        :class="{ 'chip--on': activeTab === t.code }"
+        @click="activeTab = t.code"
+      >{{ t.name }}</view>
+    </scroll-view>
+
+    <view v-for="sec in sections" :key="sec.code" class="group">
+      <view class="group__head">
+        <text class="group__title">{{ sec.title }}</text>
+        <text class="group__count">共 {{ sec.tools.length }} 个工具</text>
       </view>
-      <text class="topbar__title">AI 工具</text>
-      <view class="topbar__action" @click="goSearch">
-        <svg viewBox="0 0 24 24" fill="none">
-          <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.5" />
-          <path d="M21 21L16.65 16.65" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-        </svg>
+
+      <!-- 图片类：缩略图卡 -->
+      <view v-if="sec.code === '图片创意工具'" class="img-grid">
+        <view v-for="tool in sec.tools" :key="tool.id" class="img-cell" @click="goToTool(tool.id)">
+          <image class="img-cell__thumb" src="/static/ref/thumb-bg.png" mode="aspectFill" />
+          <text class="img-cell__n">{{ tool.name }}</text>
+        </view>
+      </view>
+
+      <!-- 其余：2 列图标卡 -->
+      <view v-else class="cell-grid">
+        <view v-for="tool in sec.tools" :key="tool.id" class="cell" @click="goToTool(tool.id)">
+          <view class="cell__ico">
+            <svg v-if="tool.iconType === 'doc'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>
+            </svg>
+            <svg v-else-if="tool.iconType === 'text'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+              <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/>
+            </svg>
+            <svg v-else-if="tool.iconType === 'code'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+              <rect x="4" y="4" width="12" height="16" rx="2"/><path d="M16 8h2a2 2 0 012 2v8a2 2 0 01-2 2"/><path d="M8 9h4M8 13h4"/>
+            </svg>
+            <svg v-else-if="tool.iconType === 'video'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+              <rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4M16 3v4"/><path d="M9 13l2.5 1.8L9 16.5z"/>
+            </svg>
+            <svg v-else-if="tool.iconType === 'ocr'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+              <path d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2"/><path d="M8 12h8"/>
+            </svg>
+            <svg v-else-if="tool.iconType === 'audio'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+              <rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/>
+            </svg>
+          </view>
+          <text class="cell__n">{{ tool.name }}</text>
+          <text class="cell__d">{{ SHORT[tool.id] || '' }}</text>
+        </view>
       </view>
     </view>
 
-    <!-- 横向分类 Tab -->
-    <scroll-view scroll-x class="category-tabs" :show-scrollbar="false">
-      <view
-        v-for="tab in tabs"
-        :key="tab.code"
-        class="category-tab"
-        :class="{ 'category-tab--active': activeTab === tab.code }"
-        @click="activeTab = tab.code"
-      >
-        {{ tab.name }}
-      </view>
-    </scroll-view>
-
-    <!-- 工具列表 -->
-    <scroll-view scroll-y class="tool-list-scroll">
-      <view v-if="filteredTools.length === 0" class="empty">
-        <text>该分类暂无工具</text>
-      </view>
-      <view
-        v-for="tool in filteredTools"
-        :key="tool.id"
-        class="tool-list-item"
-        @click="goToTool(tool.id)"
-      >
-        <view class="tool-icon" :class="['tool-icon--' + tool.iconType, 'tool-icon--md']">
-          <text class="tool-icon__emoji">{{ tool.emoji }}</text>
-        </view>
-        <view class="tool-list-item__body">
-          <view class="tool-list-item__name">{{ tool.name }}</view>
-          <view class="tool-list-item__desc">{{ tool.desc }}</view>
-          <view class="tool-list-item__stats">
-            <view class="stats-item">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5C21.27 7.61 17 4.5 12 4.5zm0 12.5c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
-              </svg>
-              <text>{{ tool.viewCount }}</text>
-            </view>
-            <view class="stats-item stats-fav" :class="{ 'stats-fav--on': tool.favored }" @click.stop="toggleFav(tool.id)">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-              </svg>
-              <text>{{ tool.favored ? '已收藏' : '收藏' }}</text>
-            </view>
-          </view>
-        </view>
-      </view>
-      <view class="safe-area-bottom"></view>
-    </scroll-view>
+    <view v-if="!sections.length" class="empty">
+      <text class="empty__t">该分类暂无工具</text>
+    </view>
   </view>
 </template>
 
@@ -72,17 +76,15 @@ import { themeStyle, refreshTabBarStyle } from '@/utils/theme'
 import { ref, computed } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { safeBack } from '@/utils/pageTransition'
-import { TOOLS, REALIZED_TOOLS, toolDetailUrl, CATEGORIES, getToolGradient, getToolEmoji } from '@/config/tools'
+import { TOOLS, REALIZED_TOOLS, toolDetailUrl, CATEGORIES, getToolGradient, getToolEmoji, getToolCategoryTag, TOOL_SHORT_DESC } from '@/config/tools'
 import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 
 const tabs = [
   { code: 'all', name: '全部' },
-  { code: 'document', name: '文档' },
+  { code: 'office', name: '办公' },
   { code: 'image', name: '图片' },
-  { code: 'audio', name: '音频' },
-  { code: 'video', name: '视频' },
-  { code: 'dev', name: '开发' },
-  { code: 'office', name: '办公' }
+  { code: 'audio', name: '音视频' },
+  { code: 'eff', name: '效率' }
 ]
 const activeTab = ref('all')
 
@@ -97,7 +99,8 @@ const allTools = ref(Object.keys(TOOLS).map(id => {
     emoji: getToolEmoji(id),
     fileType: t.fileType || '',
     inputTypes: t.inputTypes || [],
-    category: t.category || ''
+    category: t.category || '',
+    tag: getToolCategoryTag(id)
   }
 }))
 
@@ -121,6 +124,7 @@ const filteredTools = computed(() => {
     case 'audio':
     case 'video':
     case 'dev':
+    case 'eff':
       return []
     case 'office':
       return allTools.value.filter(t => OFFICE_CATEGORIES.has(t.category))
@@ -129,6 +133,27 @@ const filteredTools = computed(() => {
       return allTools.value
   }
 })
+
+/** 按分类分组（参考图：分组标题 + 共 N 个工具） */
+const GROUP_TITLES = {
+  'AI办公助手': 'AI 办公助手',
+  '图片创意工具': '图片创意工具'
+}
+const sections = computed(() => {
+  const map = new Map()
+  filteredTools.value.forEach(t => {
+    const k = t.category || '其他'
+    if (!map.has(k)) map.set(k, [])
+    map.get(k).push(t)
+  })
+  return [...map.entries()].map(([code, tools]) => ({
+    code,
+    title: GROUP_TITLES[code] || code,
+    tools
+  }))
+})
+
+const SHORT = TOOL_SHORT_DESC
 
 const goToTool = (id) => {
   uni.navigateTo({ url: toolDetailUrl(id) })
@@ -166,182 +191,123 @@ const goSearch = () => {
 </script>
 
 <style lang="scss" scoped>
+/* 1:1 复刻参考图 2（工具） */
+$ref-orange: #F5671D;
+$ref-ink: var(--text-primary);
+$ref-sub: var(--text-secondary);
+
 .page {
   min-height: 100vh;
-  background: var(--bg-page, #F9FAFB);
+  /* #ifdef H5 */
+  min-height: calc(100vh - var(--window-bottom, 0px));
+  /* #endif */
+  background: var(--bg-page);
+  padding-top: calc(var(--status-bar-height, 0px) + 12rpx);
+  padding-bottom: 40rpx;
 }
 
-/* ===== Topbar ===== */
-.topbar {
-  /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
-     ⚠️ 必须用四值简写：若这里写 `padding: 0 32rpx`，
-        简写会重置 padding-top，把上面声明的状态栏避让覆盖成 0。 */
-  padding: var(--status-bar-height, 0px) 32rpx 0;
-  display: flex;
-  align-items: center;
-  position: relative;
-  height: 88rpx;
-  background: var(--bg-card, #FFFFFF);
-}
-.topbar--border {
-  border-bottom: 1rpx solid var(--border-light, #F3F4F6);
-}
-.topbar__back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  color: var(--text-primary, #1F2937);
-  cursor: pointer;
-}
-.topbar__back svg {
-  width: 40rpx;
-  height: 40rpx;
-}
-.topbar__back--hover {
-  opacity: 0.6;
-}
+.head { padding: 20rpx 40rpx 16rpx; }
+.head__title { font-size: 44rpx; font-weight: 700; letter-spacing: -1rpx; color: $ref-ink; }
 
-.topbar__title {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 36rpx;
-  font-weight: 600;
-  color: var(--text-primary, #111827);
-}
-.topbar__action {
-  position: absolute;
-  right: 32rpx;
-  width: 48rpx;
-  height: 48rpx;
+.search {
+  margin: 0 40rpx 22rpx;
+  height: 80rpx;
+  border-radius: 999rpx;
+  background: var(--bg-gray);
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: var(--text-secondary, #4B5563);
+  gap: 14rpx;
+  padding: 0 26rpx;
+  color: $ref-sub;
 }
-.topbar__action svg {
-  width: 36rpx; height: 36rpx;
-}
+.search svg { width: 34rpx; height: 34rpx; }
+.search__ph { font-size: 26rpx; }
 
-/* ===== Category Tabs ===== */
-.category-tabs {
+.chips {
   white-space: nowrap;
-  background: var(--bg-card, #FFFFFF);
-  padding: 16rpx 24rpx;
-  border-bottom: 1rpx solid var(--border-light, #F3F4F6);
+  padding: 0 40rpx 8rpx;
 }
-.category-tab {
-  display: inline-block;
-  padding: 12rpx 28rpx;
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 62rpx;
+  padding: 0 28rpx;
   margin-right: 16rpx;
-  font-size: 28rpx;
-  color: var(--text-secondary, #4B5563);
-  background: var(--bg-disabled, #F3F4F6);
-  border-radius: 32rpx;
-  cursor: pointer;
+  border-radius: 999rpx;
+  background: var(--bg-card);
+  border: 2rpx solid var(--border-color);
+  font-size: 25rpx;
+  color: $ref-ink;
 }
-.category-tab--active {
+.chip--on {
+  background: $ref-orange;
+  border-color: $ref-orange;
   color: #fff;
-  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
-}
-
-/* ===== Tool List ===== */
-.tool-list-scroll {
-  height: calc(100vh - 88rpx - 80rpx - 120rpx);
-  padding: 16rpx 24rpx;
-}
-.tool-list-item {
-  display: flex;
-  align-items: center;
-  gap: 24rpx;
-  padding: 28rpx 24rpx;
-  margin-bottom: 16rpx;
-  background: var(--bg-card, #FFFFFF);
-  border-radius: 24rpx;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  cursor: pointer;
-}
-.tool-list-item__body {
-  flex: 1;
-  min-width: 0;
-}
-.tool-list-item__name {
-  font-size: 32rpx;
   font-weight: 600;
-  color: var(--text-primary, #111827);
-  margin-bottom: 8rpx;
-}
-.tool-list-item__desc {
-  font-size: 24rpx;
-  color: var(--text-secondary, #4B5563);
-  line-height: 1.4;
-  margin-bottom: 12rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-.tool-list-item__stats {
-  display: flex;
-  gap: 24rpx;
-  color: var(--text-tertiary, #9CA3AF);
-  font-size: 22rpx;
-}
-.stats-item {
-  display: flex;
-  align-items: center;
-  gap: 6rpx;
-}
-/* 收藏按钮：默认灰，已收藏为主题色 */
-.stats-fav {
-  padding: 4rpx 16rpx;
-  border-radius: 9999rpx;
-  background: #F3F4F6;
-  color: #9CA3AF;
-  transition: all 0.15s;
-}
-.stats-fav--on {
-  background: #FEF3C7;
-  color: #F59E0B;
-  font-weight: 500;
 }
 
-/* ===== Tool Icon ===== */
-.tool-icon {
+.group {
+  margin: 18rpx 40rpx 0;
+  background: var(--bg-card);
+  border-radius: 32rpx;
+  padding: 26rpx 20rpx 12rpx;
+}
+.group__head {
+  display: flex;
+  align-items: baseline;
+  padding: 0 8rpx;
+}
+.group__title { font-size: 30rpx; font-weight: 700; color: $ref-ink; }
+.group__count { margin-left: auto; font-size: 22rpx; color: $ref-sub; }
+
+.cell-grid { display: flex; flex-wrap: wrap; margin-top: 12rpx; }
+.cell {
+  width: 50%;
+  box-sizing: border-box;
+  padding: 18rpx 8rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.cell:active { opacity: .9; }
+.cell__ico {
+  width: 76rpx;
+  height: 76rpx;
+  border-radius: 50%;
+  color: $ref-orange;
+  background: radial-gradient(circle, #FDEDE4 0%, rgba(253,237,228,0) 72%);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 24rpx;
-  color: #fff;
-  flex-shrink: 0;
 }
-.tool-icon--md {
-  width: 96rpx;
-  height: 96rpx;
+.cell__ico svg { width: 46rpx; height: 46rpx; }
+.cell__n { margin-top: 10rpx; font-size: 26rpx; font-weight: 600; color: $ref-ink; }
+.cell__d { margin-top: 4rpx; font-size: 21rpx; color: $ref-sub; }
+
+.img-grid { display: flex; flex-wrap: wrap; margin-top: 14rpx; }
+.img-cell {
+  width: 25%;
+  box-sizing: border-box;
+  padding: 10rpx 8rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.tool-icon--doc { background: var(--gradient-doc, linear-gradient(135deg, #FCA5A5 0%, #EF4444 100%)); }
-.tool-icon--image { background: var(--gradient-image, linear-gradient(135deg, #C7D2FE 0%, #6366F1 100%)); }
-.tool-icon--ocr { background: var(--gradient-ocr, linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%)); }
-.tool-icon--dev { background: var(--gradient-dev, linear-gradient(135deg, #6EE7B7 0%, #10B981 100%)); }
-.tool-icon--audio { background: var(--gradient-audio, linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%)); }
-.tool-icon--video { background: var(--gradient-video, linear-gradient(135deg, #F9A8D4 0%, #EC4899 100%)); }
-.tool-icon--text { background: var(--gradient-text, linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%)); }
-.tool-icon--code { background: var(--gradient-code, linear-gradient(135deg, #5EEAD4 0%, #14B8A6 100%)); }
-.tool-icon__emoji {
-  font-size: 44rpx;
+.img-cell:active { opacity: .9; }
+.img-cell__thumb {
+  width: 100%;
+  height: 118rpx;
+  border-radius: 20rpx;
+}
+.img-cell__n {
+  margin-top: 10rpx;
+  font-size: 21rpx;
+  font-weight: 600;
+  color: $ref-ink;
+  text-align: center;
+  line-height: 1.35;
 }
 
-/* ===== Empty ===== */
-.empty {
-  padding: 80rpx 0;
-  text-align: center;
-  color: var(--text-tertiary, #9CA3AF);
-  font-size: 26rpx;
-}
-.safe-area-bottom {
-  height: 60rpx;
-}
+.empty { padding: 80rpx 0; text-align: center; }
+.empty__t { font-size: 26rpx; color: $ref-sub; }
 </style>
