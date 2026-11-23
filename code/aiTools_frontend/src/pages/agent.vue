@@ -96,24 +96,25 @@
             </view>
           </view>
 
+          <!-- 答案 + 免责声明 + 操作，同属一张卡片 -->
           <view v-if="answer" class="card card--answer">
             <MarkdownView :source="answer" :streaming="running" />
-          </view>
-
-          <!-- 答案免责声明 + 操作：复制 / 重新生成 / 引用 -->
-          <view v-if="answer && !running" class="ans-disclaimer">本回答由AI生成，内容仅供参考，请仔细甄别</view>
-          <view v-if="answer && !running" class="ans-acts">
-            <view class="ans-act" @click="copyAnswer">
-              <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
-              <text>复制</text>
-            </view>
-            <view class="ans-act" @click="regenerate">
-              <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
-              <text>重新生成</text>
-            </view>
-            <view class="ans-act" @click="quoteAnswer">
-              <svg viewBox="0 0 24 24"><path d="M7 7h4v4a4 4 0 01-4 4"/><path d="M14 7h4v4a4 4 0 01-4 4"/></svg>
-              <text>引用</text>
+            <view v-if="!running" class="ans-foot">
+              <text class="ans-disclaimer">本回答由AI生成，内容仅供参考，请仔细甄别</text>
+              <view class="ans-acts">
+                <view class="ans-act" @click="copyAnswer">
+                  <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
+                  <text>复制</text>
+                </view>
+                <view class="ans-act" @click="regenerate">
+                  <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                  <text>重新生成</text>
+                </view>
+                <view class="ans-act" @click="quoteAnswer">
+                  <svg viewBox="0 0 24 24"><path d="M7 7h4v4a4 4 0 01-4 4"/><path d="M14 7h4v4a4 4 0 01-4 4"/></svg>
+                  <text>引用</text>
+                </view>
+              </view>
             </view>
           </view>
 
@@ -745,13 +746,18 @@ $ref-sub: var(--text-secondary);
 .card__chev { width: 28rpx; height: 28rpx; color: $ref-sub; transition: transform 0.2s ease; }
 .card__chev--collapsed { transform: rotate(180deg); }
 .card--answer { font-size: 27rpx; color: $ref-ink; line-height: 1.7; }
+.ans-foot {
+  margin-top: 20rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx solid var(--border-color);
+}
 .ans-disclaimer {
-  margin-top: 18rpx;
+  display: block;
   font-size: 22rpx;
   line-height: 1.5;
   color: var(--text-tertiary);
 }
-.ans-acts { display: flex; gap: 14rpx; margin-top: 12rpx; }
+.ans-acts { display: flex; gap: 14rpx; margin-top: 14rpx; }
 .ans-act {
   display: flex;
   align-items: center;
