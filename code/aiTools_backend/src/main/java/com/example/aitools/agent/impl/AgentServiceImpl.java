@@ -169,8 +169,9 @@ public class AgentServiceImpl implements AgentService {
                 cancelRunRecord(runId, steps, start);
                 throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_CANCELLED, "已取消");
             }
-            // 上下文占用估算：只做日志与告警，不参与截断决策
-            logContextUsage(runId, step, messages);
+            // 上下文占用估算：日志 + 下发给前端展示（不参与截断决策）
+            int ctxTokens = logContextUsage(runId, step, messages);
+            onFrame.accept(frame(FRAME_CONTEXT, ctxTokens + ":" + Constants.AGENT_CONTEXT_WINDOW_TOKENS));
 
             // 思考阶段计时：先通知前端，模型返回后给最终耗时
             onFrame.accept(frame(FRAME_THOUGHT_START, ""));
@@ -625,7 +626,7 @@ public class AgentServiceImpl implements AgentService {
      * 只读不改：不做任何裁剪，避免影响执行语义。
      * 占比超过 {@link Constants#AGENT_CONTEXT_WARN_PERCENT} 时打 WARN，提示需要考虑压缩策略。
      */
-    private void logContextUsage(String runId, int step, List<Map<String, String>> messages) {
+    private int logContextUsage(String runId, int step, List<Map<String, String>> messages) {
         int tokens = com.example.aitools.common.TokenEstimator.estimateMessages(messages);
         int window = Constants.AGENT_CONTEXT_WINDOW_TOKENS;
         int percent = window <= 0 ? 0 : (int) Math.round(tokens * 100.0 / window);
@@ -635,6 +636,7 @@ public class AgentServiceImpl implements AgentService {
             log.warn("[agent] 上下文占比 {}% 已达阈值 {}%，建议启用摘要压缩或滑动窗口 runId={}",
                     percent, Constants.AGENT_CONTEXT_WARN_PERCENT, runId);
         }
+        return tokens;
     }
 
     private String frame(String prefix, String content) {

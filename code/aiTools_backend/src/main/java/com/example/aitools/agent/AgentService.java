@@ -82,4 +82,6 @@ public interface AgentService {
     String FRAME_RUN = "运行";
     /** 帧前缀：本次运行所属的会话ID（紧随 runId 下发，前端据此记录/刷新侧边栏） */
     String FRAME_SESSION = "会话";
+    /** 帧前缀：上下文占用（格式 {tokens}:{window}，前端换算成百分比展示） */
+    String FRAME_CONTEXT = "上下文";
 }
