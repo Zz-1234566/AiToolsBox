@@ -12,7 +12,9 @@
 
     <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
     <view v-else-if="!item" class="redesign-empty">
-      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">📭</text></view>
+      <view class="redesign-empty__icon">
+        <svg viewBox="0 0 24 24" style="width:76rpx;height:76rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><path d="M4 5h16v14H4z M4 13h4l1.5 2h5L16 13h4"/></svg>
+      </view>
       <text class="redesign-empty__text">记录不存在或已删除</text>
     </view>
 
@@ -20,7 +22,7 @@
       <!-- 概览卡 -->
       <view class="hd-hero">
         <view class="tool-avatar" :class="'tool-avatar--' + iconType(item)">
-          <text class="ta-emoji">{{ emoji(item) }}</text>
+          <svg class="ta-svg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
         </view>
         <view class="hd-hero__info">
           <text class="hd-hero__name">{{ getToolName(item) }}</text>
@@ -378,7 +380,7 @@ const onOpenFile = (f) => {
 
 .hd-page {
   min-height: 100vh;
-  background: #F9FAFB;
+  background: var(--bg-page);
   padding-bottom: 40rpx;
 }
 
@@ -400,12 +402,12 @@ const onOpenFile = (f) => {
   margin-left: -12rpx;
   border-radius: 50%;
 }
-.hd-back__icon { width: 44rpx; height: 44rpx; color: #111827; }
+.hd-back__icon { width: 44rpx; height: 44rpx; color: var(--text-primary); }
 .hd-head__title {
   flex: 1;
   font-size: 48rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 /* 概览卡 */
@@ -413,7 +415,7 @@ const onOpenFile = (f) => {
   display: flex;
   align-items: center;
   gap: 24rpx;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 28rpx 24rpx;
   margin: 0 32rpx 24rpx;
@@ -424,7 +426,7 @@ const onOpenFile = (f) => {
   display: block;
   font-size: 32rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 .hd-hero__meta {
   display: flex;
@@ -432,20 +434,20 @@ const onOpenFile = (f) => {
   gap: 16rpx;
   margin-top: 12rpx;
 }
-.hd-hero__time { font-size: 24rpx; color: #9CA3AF; }
+.hd-hero__time { font-size: 24rpx; color: var(--text-tertiary); }
 
 /* 通用信息行 */
 .hd-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #fff;
+  background: var(--bg-card);
   margin: 0 32rpx 24rpx;
   padding: 24rpx;
   border-radius: 24rpx;
 }
-.hd-row__k { font-size: 26rpx; color: #6B7280; }
-.hd-row__v { font-size: 26rpx; color: #111827; }
+.hd-row__k { font-size: 26rpx; color: var(--text-secondary); }
+.hd-row__v { font-size: 26rpx; color: var(--text-primary); }
 
 /* 区块 */
 .hd-block { margin: 0 32rpx 24rpx; }
@@ -453,16 +455,16 @@ const onOpenFile = (f) => {
   display: block;
   font-size: 26rpx;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
   margin-bottom: 12rpx;
 }
 .hd-box {
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 24rpx;
   box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
 }
-.hd-box--error { background: #FEF2F2; }
+.hd-box--error { background: var(--color-danger-bg); }
 .hd-box__scroll {
   height: 480rpx;
   overflow-y: auto;
@@ -470,12 +472,12 @@ const onOpenFile = (f) => {
 .hd-box__text {
   font-size: 26rpx;
   line-height: 1.7;
-  color: #374151;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
 }
-.hd-box__text--error { color: #DC2626; }
-.hd-box__empty { font-size: 26rpx; color: #9CA3AF; }
+.hd-box__text--error { color: var(--color-danger); }
+.hd-box__empty { font-size: 26rpx; color: var(--text-tertiary); }
 
 /* 可视产物（图片 / 音频 / 视频 / 通用文件） */
 .hd-visual {
@@ -487,18 +489,18 @@ const onOpenFile = (f) => {
   width: 100%;
   border-radius: 16rpx;
   overflow: hidden;
-  background: #F9FAFB;
+  background: var(--bg-page);
 }
 /* 图片用棋盘格底衬出透明区域（抠图产物常见透明 PNG） */
 .hd-visual__img {
   display: block;
   width: 100%;
-  background-color: #F9FAFB;
+  background-color: var(--bg-page);
   background-image:
-    linear-gradient(45deg, #E5E7EB 25%, transparent 25%),
-    linear-gradient(-45deg, #E5E7EB 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #E5E7EB 75%),
-    linear-gradient(-45deg, transparent 75%, #E5E7EB 75%);
+    linear-gradient(45deg, var(--border-color) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--border-color) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--border-color) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--border-color) 75%);
   background-size: 24rpx 24rpx;
   background-position: 0 0, 0 12rpx, 12rpx -12rpx, -12rpx 0;
 }
@@ -518,12 +520,12 @@ const onOpenFile = (f) => {
   flex: 1;
   min-width: 0;
   font-size: 24rpx;
-  color: #6B7280;
+  color: var(--text-secondary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.hd-visual__actions { font-size: 24rpx; color: #2563EB; flex-shrink: 0; }
+.hd-visual__actions { font-size: 24rpx; color: var(--brand-primary-hover); flex-shrink: 0; }
 
 /* 输入文件（只展示文件名，不暴露签名 URL） */
 .hd-inputfile {
@@ -541,13 +543,13 @@ const onOpenFile = (f) => {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.hd-inputfile__base { font-size: 26rpx; color: #2563EB; }
-.hd-inputfile__ext { font-size: 26rpx; color: #93C5FD; }
-.hd-inputfile__action { font-size: 26rpx; color: #2563EB; }
+.hd-inputfile__base { font-size: 26rpx; color: var(--brand-primary-hover); }
+.hd-inputfile__ext { font-size: 26rpx; color: #E9BFA9; }
+.hd-inputfile__action { font-size: 26rpx; color: var(--brand-primary-hover); }
 
 /* 提示词 */
 .hd-prompt {
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 24rpx;
   margin-bottom: 16rpx;
@@ -556,7 +558,7 @@ const onOpenFile = (f) => {
 .hd-prompt__label {
   display: block;
   font-size: 24rpx;
-  color: #2563EB;
+  color: var(--brand-primary-hover);
   font-weight: 500;
   margin-bottom: 12rpx;
 }
@@ -567,7 +569,7 @@ const onOpenFile = (f) => {
 .hd-prompt__text {
   font-size: 26rpx;
   line-height: 1.7;
-  color: #4B5563;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -577,7 +579,7 @@ const onOpenFile = (f) => {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 20rpx;
   padding: 24rpx;
   margin-bottom: 16rpx;
@@ -586,12 +588,12 @@ const onOpenFile = (f) => {
 .hd-file__name {
   flex: 1;
   font-size: 26rpx;
-  color: #111827;
+  color: var(--text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.hd-file__action { font-size: 26rpx; color: #2563EB; }
+.hd-file__action { font-size: 26rpx; color: var(--brand-primary-hover); }
 
 /* 操作按钮 */
 .hd-actions {
@@ -605,17 +607,40 @@ const onOpenFile = (f) => {
   line-height: 88rpx;
   text-align: center;
   border-radius: 9999rpx;
-  background: #fff;
-  border: 2rpx solid #E5E7EB;
+  background: var(--bg-card);
+  border: 2rpx solid var(--border-color);
   font-size: 28rpx;
-  color: #374151;
+  color: var(--text-secondary);
 }
 .hd-btn--primary {
-  background: #3B82F6;
-  border-color: #3B82F6;
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
   color: #fff;
   font-weight: 600;
 }
 
 .safe-bottom { height: 40rpx; }
+
+/* ===== v6 统一：24px 左对齐标题 ===== */
+.hd-head {
+  background: var(--bg-page) !important;
+  border-bottom: none !important;
+  justify-content: flex-start !important;
+  padding-left: 32rpx !important;
+  padding-right: 32rpx !important;
+}
+.hd-head__title {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  text-align: left !important;
+  font-size: 48rpx !important;
+  font-weight: 700 !important;
+  letter-spacing: -1rpx !important;
+  color: var(--text-primary) !important;
+  margin: 0 !important;
+}
 </style>

@@ -50,7 +50,7 @@ const techItems = [
   { k: '前端', v: 'uni-app + Vue 3 + Vite' },
   { k: '后端', v: 'Spring Boot 3.2 + Java 17' },
   { k: '数据库', v: 'MySQL 8 + Redis' },
-  { k: 'AI 能力', v: 'MiniMax（文本 / 多模态）' },
+  { k: 'AI 能力', v: 'DeepSeek V4.1 Flash（文本 / 多模态）' },
   { k: '存储', v: '腾讯云 COS' }
 ]
 </script>
@@ -80,7 +80,7 @@ const techItems = [
   width: 160rpx;
   height: 160rpx;
   border-radius: 36rpx;
-  background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
+  background: linear-gradient(135deg, var(--brand-primary-light) 0%, #F4E9EC 100%);
   display: flex;
   align-items: center;
   justify-content: center;

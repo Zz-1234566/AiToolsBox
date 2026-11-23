@@ -22,13 +22,13 @@
       </view>
       <view v-if="loading" class="redesign-empty"><text>加载中…</text></view>
       <view v-else-if="models.length === 0" class="redesign-empty">
-        <view class="redesign-empty__icon"><text class="redesign-empty__emoji">🧠</text></view>
+        <view class="redesign-empty__icon"><svg viewBox="0 0 24 24" style="width:80rpx;height:80rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg></view>
         <text class="redesign-empty__text">还没有添加任何模型，填写下方表单加一个</text>
       </view>
       <view v-else class="me-list">
         <view v-for="m in models" :key="m.id" class="model-row">
           <view class="tool-avatar" :class="'tool-avatar--' + avatarType(m.capability)">
-            <text class="ta-emoji">{{ avatarEmoji(m.capability) }}</text>
+            <svg class="ta-svg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" fill="none" stroke="#F5671D" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
           </view>
           <view class="model-row__body">
             <view class="model-row__head">
@@ -224,7 +224,7 @@ onMounted(loadList)
   /* 必须是 height 而非 min-height —— 见 search.vue 同名处的说明：
      min-height 时 scroll-view 拿不到确定高度 → 不产生内部滚动。 */
   height: 100vh;
-  background: #F9FAFB;
+  background: var(--bg-page);
   padding-bottom: 0;
   display: flex;
   flex-direction: column;
@@ -235,10 +235,10 @@ onMounted(loadList)
      ⚠️ 必须用四值简写：`padding: 0 24rpx` 这类简写会重置 padding-top，
         把状态栏避让覆盖成 0（此行原本与 padding-top 同行，最隐蔽）。 */
   padding: var(--status-bar-height, 0px) 24rpx 0;
-  display: flex; align-items: center; height: 88rpx; background: #fff;
-  border-bottom: 1rpx solid #F3F4F6;
-  &__back { width: 60rpx; height: 60rpx; @include btn-base; color: #1F2937; }
-  &__title { flex: 1; text-align: center; font-size: 32rpx; font-weight: 600; color: #0f172a; }
+  display: flex; align-items: center; height: 88rpx; background: var(--bg-card);
+  border-bottom: 1rpx solid var(--border-color);
+  &__back { width: 60rpx; height: 60rpx; @include btn-base; color: var(--text-primary); }
+  &__title { flex: 1; text-align: center; font-size: 32rpx; font-weight: 600; color: var(--text-primary); }
 }
 .content {
   flex: 1;
@@ -255,7 +255,7 @@ onMounted(loadList)
 
 // 复用 redesign-card（背景白 + 圆角 24rpx + 轻阴影）—— 不 import，全局类在 scoped 不生效
 .redesign-card {
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 32rpx;
   box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
@@ -263,45 +263,53 @@ onMounted(loadList)
 .redesign-tag {
   display: inline-flex; align-items: center; height: 44rpx;
   padding: 0 16rpx; border-radius: 8rpx;
-  background: #F9FAFB; color: #4B5563; font-size: 24rpx;
+  background: var(--bg-page); color: var(--text-secondary); font-size: 24rpx;
 }
 .redesign-empty {
   display: flex; flex-direction: column; align-items: center; padding: 64rpx 32rpx;
   &__icon {
     width: 192rpx; height: 192rpx; border-radius: 24rpx;
-    background: #EFF6FF;
+    background: var(--brand-primary-light);
     display: flex; align-items: center; justify-content: center;
     margin-bottom: 32rpx;
   }
   &__emoji { font-size: 88rpx; }
-  &__text { font-size: 28rpx; color: #9CA3AF; }
+  &__text { font-size: 28rpx; color: var(--text-tertiary); }
 }
-// 复用 tool-avatar 渐变 + emoji（与首页工具卡同款）
+// 复用 tool-avatar 结构，但模型卡统一浅橙底 + 橙线稿（去掉绿色系）
 .tool-avatar {
+  background: #FFF1EA !important;
   width: 88rpx; height: 88rpx; border-radius: 24rpx;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  &--text  { background: linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%); }
-  &--doc   { background: linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%); }
-  &--audio { background: linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%); }
-  &--image { background: linear-gradient(135deg, #C7D2FE 0%, #6366F1 100%); }
+  &--text  { background: var(--gradient-text); }
+  &--doc   { background: linear-gradient(135deg, #E9BFA9 0%, var(--brand-primary) 100%); }
+  &--audio { background: var(--gradient-audio); }
+  &--image { background: linear-gradient(135deg, #E8D3D9 0%, var(--brand-secondary) 100%); }
 }
+/* 模型卡统一浅橙底 + 橙线稿，避免出现绿色/紫色块 */
+.tool-avatar--text,
+.tool-avatar--doc,
+.tool-avatar--audio,
+.tool-avatar--image,
+.tool-avatar--code { background: #FFF1EA !important; }
+.tool-avatar .ta-svg path { stroke: #F5671D; }
 .ta-emoji { font-size: 40rpx; line-height: 1; }
 
 .notice {
   margin: 24rpx 32rpx 0;
-  &__title { display: block; font-size: 28rpx; color: #1D4ED8; font-weight: 600; margin-bottom: 8rpx; }
-  &__desc { font-size: 24rpx; color: #1E40AF; line-height: 1.5; }
+  &__title { display: block; font-size: 28rpx; color: var(--brand-primary-pressed); font-weight: 600; margin-bottom: 8rpx; }
+  &__desc { font-size: 24rpx; color: var(--text-secondary); line-height: 1.5; }
 }
 
 .section-title {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 32rpx 32rpx 8rpx; font-size: 24rpx; color: #6B7280; font-weight: 600;
-  &__action { font-size: 24rpx; color: #3B82F6; }
+  padding: 32rpx 32rpx 8rpx; font-size: 24rpx; color: var(--text-secondary); font-weight: 600;
+  &__action { font-size: 24rpx; color: var(--brand-primary); }
 }
 
 .me-list {
   margin: 0 32rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 24rpx;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   overflow: hidden;
@@ -309,14 +317,14 @@ onMounted(loadList)
 .model-row {
   display: flex; align-items: center; gap: 24rpx;
   padding: 24rpx 32rpx;
-  border-bottom: 1rpx solid #F3F4F6;
+  border-bottom: 1rpx solid var(--border-color);
   &:last-child { border-bottom: 0; }
   &__body { flex: 1; min-width: 0; }
   &__head { display: flex; align-items: center; gap: 12rpx; }
-  &__name { font-size: 30rpx; font-weight: 600; color: #1F2937; }
+  &__name { font-size: 30rpx; font-weight: 600; color: var(--text-primary); }
   &__default { flex-shrink: 0; }
-  &__meta { display: block; margin-top: 6rpx; font-size: 22rpx; color: #6B7280; }
-  &__prefix { font-family: monospace; color: #9CA3AF; }
+  &__meta { display: block; margin-top: 6rpx; font-size: 22rpx; color: var(--text-secondary); }
+  &__prefix { font-family: monospace; color: var(--text-tertiary); }
   &__actions { display: flex; gap: 12rpx; flex-shrink: 0; }
 }
 
@@ -327,34 +335,57 @@ onMounted(loadList)
     @include btn-base;
     height: 52rpx; padding: 0 20rpx; font-size: 23rpx; font-weight: 600;
     border-radius: 8rpx; line-height: 1;
-    background: #FEF2F2; color: #DC2626; border: 1rpx solid #FECACA;
-    &:active { background: #FEE2E2; }
+    background: var(--color-danger-bg); color: var(--color-danger); border: 1rpx solid #FECACA;
+    &:active { background: var(--color-danger-bg); }
   }
 }
 // 复用 redesign 的主按钮（圆形主色）
 .btn-solid {
-  height: 96rpx; border-radius: 9999rpx; background: #3B82F6; color: #fff;
+  height: 96rpx; border-radius: 9999rpx; background: var(--brand-primary); color: #fff;
   font-size: 32rpx; font-weight: 600;
   display: flex; align-items: center; justify-content: center; width: 100%;
   border: 0;
-  &:active { background: #1D4ED8; }
+  &:active { background: var(--brand-primary-pressed); }
 }
 
 .form-card { margin: 0 32rpx 24rpx; }
 .form-row {
   margin-bottom: 24rpx;
-  &__label { display: block; font-size: 24rpx; color: #4B5563; margin-bottom: 8rpx; }
+  &__label { display: block; font-size: 24rpx; color: var(--text-secondary); margin-bottom: 8rpx; }
   &__input {
     width: 100%; box-sizing: border-box; height: 80rpx; padding: 0 24rpx;
-    background: #F9FAFB; border: 1rpx solid #E5E7EB; border-radius: 12rpx;
-    font-size: 28rpx; color: #1F2937;
+    background: var(--bg-page); border: 1rpx solid var(--border-color); border-radius: 12rpx;
+    font-size: 28rpx; color: var(--text-primary);
   }
   &__picker {
-    height: 80rpx; padding: 0 24rpx; background: #F9FAFB; border: 1rpx solid #E5E7EB; border-radius: 12rpx;
+    height: 80rpx; padding: 0 24rpx; background: var(--bg-page); border: 1rpx solid var(--border-color); border-radius: 12rpx;
     display: flex; justify-content: space-between; align-items: center;
-    font-size: 28rpx; color: #1F2937;
+    font-size: 28rpx; color: var(--text-primary);
   }
   &--inline { display: flex; align-items: center; justify-content: space-between; }
 }
 .safe-area-bottom { height: 60rpx; }
+
+/* ===== v6 统一：24px 左对齐标题 ===== */
+.topbar {
+  background: var(--bg-page) !important;
+  border-bottom: none !important;
+  justify-content: flex-start !important;
+  padding-left: 32rpx !important;
+  padding-right: 32rpx !important;
+}
+.topbar__title {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  text-align: left !important;
+  font-size: 48rpx !important;
+  font-weight: 700 !important;
+  letter-spacing: -1rpx !important;
+  color: var(--text-primary) !important;
+  margin: 0 !important;
+}
 </style>

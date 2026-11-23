@@ -37,14 +37,16 @@
     <!-- 列表 -->
     <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
     <view v-else-if="filteredList.length === 0" class="redesign-empty">
-      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">📝</text></view>
+      <view class="redesign-empty__icon">
+        <svg viewBox="0 0 24 24" style="width:76rpx;height:76rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h6 M14 3v5h5 M12.5 16.5l3.2-3.2 1.5 1.5-3.2 3.2-1.9.4.4-1.9z"/></svg>
+      </view>
       <text class="redesign-empty__text">{{ emptyText }}</text>
     </view>
 
     <block v-else>
       <view v-for="item in filteredList" :key="item.id" class="pl-card">
         <view class="tool-avatar" :class="'tool-avatar--' + iconType(item.toolCode)">
-          <text class="ta-emoji">{{ emoji(item.toolCode) }}</text>
+          <svg class="ta-svg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
         </view>
         <view class="pl-card__body">
           <text class="pl-card__title">{{ item.promptName || '未命名' }}</text>
@@ -346,7 +348,7 @@ const onDelete = (item) => {
     content: isSystem
       ? '确定要删除这条【系统预制】提示词吗？删除后所有用户将无法再选用。'
       : '确定要删除这条提示词吗？',
-    confirmColor: '#211E1E',
+    confirmColor: 'var(--text-primary)',
     success: async (res) => {
       if (!res.confirm) return
       try {
@@ -371,7 +373,7 @@ const onDelete = (item) => {
 
 .pl-page {
   min-height: 100vh;
-  background: #F9FAFB;
+  background: var(--bg-page);
   padding-bottom: 40rpx;
 }
 
@@ -395,19 +397,19 @@ const onDelete = (item) => {
 .pl-back__icon {
   width: 44rpx;
   height: 44rpx;
-  color: #111827;
+  color: var(--text-primary);
 }
 .pl-head__title {
   flex: 1;
   font-size: 48rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
 }
 .pl-add {
   height: 72rpx;
   padding: 0 28rpx;
   border-radius: 9999rpx;
-  background: #3B82F6;
+  background: var(--brand-primary);
   color: #fff;
   font-size: 26rpx;
   font-weight: 600;
@@ -419,21 +421,21 @@ const onDelete = (item) => {
   display: flex;
   gap: 40rpx;
   padding: 0 32rpx;
-  border-bottom: 2rpx solid #F3F4F6;
+  border-bottom: 2rpx solid var(--border-color);
 }
 .pl-tab {
   padding: 24rpx 0;
   font-size: 28rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   position: relative;
 }
-.pl-tab--active { color: #111827; font-weight: 600; }
+.pl-tab--active { color: var(--text-primary); font-weight: 600; }
 .pl-tab--active::after {
   content: '';
   position: absolute;
   left: 0; right: 0; bottom: -2rpx;
   height: 4rpx;
-  background: #3B82F6;
+  background: var(--brand-primary);
 }
 
 /* 二级 tab：生成内容 / 格式（胶囊样式，与一级下划线 tab 区分） */
@@ -448,13 +450,13 @@ const onDelete = (item) => {
   height: 56rpx;
   line-height: 56rpx;
   border-radius: 9999rpx;
-  background: #F3F4F6;
+  background: var(--bg-gray);
   font-size: 24rpx;
-  color: #6B7280;
+  color: var(--text-secondary);
 }
 .pl-subtab--active {
-  background: #EFF6FF;
-  color: #2563EB;
+  background: #F5671D;
+  color: #FFFFFF;
   font-weight: 600;
 }
 
@@ -469,24 +471,24 @@ const onDelete = (item) => {
   padding: 0 24rpx;
   margin-right: 16rpx;
   border-radius: 9999rpx;
-  background: #fff;
-  border: 2rpx solid #F3F4F6;
+  background: var(--bg-card);
+  border: 2rpx solid var(--border-color);
   font-size: 24rpx;
-  color: #4B5563;
+  color: var(--text-secondary);
 }
 .pl-toolchip--on {
-  background: #EFF6FF;
+  background: var(--brand-primary-light);
   border-color: #BFDBFE;
-  color: #2563EB;
+  color: var(--brand-primary-hover);
   font-weight: 500;
 }
 
-.pl-ph { color: #9CA3AF; }
+.pl-ph { color: var(--text-tertiary); }
 
 .pl-card {
   display: flex;
   gap: 24rpx;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 24rpx;
   margin: 0 32rpx 24rpx;
@@ -497,7 +499,7 @@ const onDelete = (item) => {
   display: block;
   font-size: 28rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 12rpx;
 }
 .pl-card__tags { display: flex; gap: 12rpx; margin-bottom: 12rpx; }
@@ -507,13 +509,13 @@ const onDelete = (item) => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-size: 24rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   line-height: 1.5;
 }
 .pl-card__time {
   display: block;
   font-size: 22rpx;
-  color: #D1D5DB;
+  color: var(--text-tertiary);
   margin-top: 12rpx;
 }
 .pl-card__acts {
@@ -523,24 +525,24 @@ const onDelete = (item) => {
   gap: 24rpx;
   margin-top: 16rpx;
   padding-top: 16rpx;
-  border-top: 2rpx solid #F3F4F6;
+  border-top: 2rpx solid var(--border-color);
 }
-.pl-act { font-size: 26rpx; color: #4B5563; }
-.pl-act--primary { color: #3B82F6; }
-.pl-act--danger { color: #EF4444; }
-.pl-act__sep { width: 2rpx; height: 28rpx; background: #F3F4F6; }
+.pl-act { font-size: 26rpx; color: var(--text-secondary); }
+.pl-act--primary { color: var(--brand-primary); }
+.pl-act--danger { color: var(--color-danger); }
+.pl-act__sep { width: 2rpx; height: 28rpx; background: var(--bg-gray); }
 
 /* 非管理员查看系统提示词时的只读标记 */
 .pl-card__readonly {
   margin-top: 16rpx;
   padding-top: 16rpx;
-  border-top: 2rpx solid #F3F4F6;
+  border-top: 2rpx solid var(--border-color);
   display: flex;
   justify-content: flex-end;
 }
 .pl-card__readonly-text {
   font-size: 22rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
 }
 
 /* 弹层 */
@@ -558,7 +560,7 @@ const onDelete = (item) => {
 }
 .modal-card {
   width: 100%;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 32rpx 32rpx 0 0;
   /* App 端 iOS 底部 Home 指示条安全区（对齐 tool-common.vue:3197 的项目范式） */
   padding: 40rpx 32rpx calc(48rpx + env(safe-area-inset-bottom, 0rpx));
@@ -571,7 +573,7 @@ const onDelete = (item) => {
   display: block;
   font-size: 34rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 24rpx;
   text-align: center;
 }
@@ -579,13 +581,13 @@ const onDelete = (item) => {
   display: block;
   font-size: 26rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 12rpx;
 }
 .modal-input {
   height: 88rpx;
   padding: 0 24rpx;
-  border: 2rpx solid #E5E7EB;
+  border: 2rpx solid var(--border-color);
   border-radius: 16rpx;
   font-size: 28rpx;
   margin-bottom: 24rpx;
@@ -599,20 +601,20 @@ const onDelete = (item) => {
   line-height: 72rpx;
   text-align: center;
   border-radius: 16rpx;
-  background: #F3F4F6;
-  color: #4B5563;
+  background: var(--bg-gray);
+  color: var(--text-secondary);
   font-size: 26rpx;
 }
 .modal-seg__item--on {
-  background: #EFF6FF;
-  color: #2563EB;
+  background: var(--brand-primary-light);
+  color: var(--brand-primary-hover);
   font-weight: 600;
 }
 .modal-textarea {
   width: 100%;
   min-height: 200rpx;
   padding: 20rpx 24rpx;
-  border: 2rpx solid #E5E7EB;
+  border: 2rpx solid var(--border-color);
   border-radius: 16rpx;
   font-size: 28rpx;
   box-sizing: border-box;
@@ -625,15 +627,38 @@ const onDelete = (item) => {
   line-height: 88rpx;
   text-align: center;
   border-radius: 9999rpx;
-  background: #F3F4F6;
-  color: #374151;
+  background: var(--bg-gray);
+  color: var(--text-secondary);
   font-size: 28rpx;
 }
 .modal-btn--primary {
-  background: #3B82F6;
+  background: var(--brand-primary);
   color: #fff;
   font-weight: 600;
 }
 
 .safe-bottom { height: 40rpx; }
+
+/* ===== v6 统一：24px 左对齐标题 ===== */
+.pl-head {
+  background: var(--bg-page) !important;
+  border-bottom: none !important;
+  justify-content: flex-start !important;
+  padding-left: 32rpx !important;
+  padding-right: 32rpx !important;
+}
+.pl-head__title {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  text-align: left !important;
+  font-size: 48rpx !important;
+  font-weight: 700 !important;
+  letter-spacing: -1rpx !important;
+  color: var(--text-primary) !important;
+  margin: 0 !important;
+}
 </style>

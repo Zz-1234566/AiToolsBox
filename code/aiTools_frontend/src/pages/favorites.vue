@@ -13,14 +13,19 @@
 
     <!-- 搜索 -->
     <view class="fav-search">
-      <text class="fav-search__icon">🔍</text>
+      <svg class="fav-search__icon" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" fill="none" stroke="#9A9AA4" stroke-width="1.8"/>
+        <path d="M20 20l-3.5-3.5" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
       <input class="fav-search__input" v-model="keyword" placeholder="搜索收藏的工具或提示词..." placeholder-class="fav-ph" />
     </view>
 
     <!-- 空态 -->
     <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
     <view v-else-if="filtered.length === 0" class="redesign-empty">
-      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">⭐</text></view>
+      <view class="redesign-empty__icon">
+        <svg viewBox="0 0 24 24" style="width:76rpx;height:76rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.8l6.5-.9L12 3z"/></svg>
+      </view>
       <text class="redesign-empty__text">还没有收藏{{ activeTab === 'tool' ? '工具' : '提示词' }}</text>
     </view>
 
@@ -31,7 +36,7 @@
         <view v-for="item in filtered" :key="item.id" class="fav-tool">
           <view class="fav-tool__top">
             <view class="tool-avatar" :class="'tool-avatar--' + iconType(item.toolCode)">
-              <text class="ta-emoji">{{ emoji(item.toolCode) }}</text>
+              <svg class="ta-svg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
             </view>
             <text class="fav-tool__name">{{ item.toolName }}</text>
           </view>
@@ -53,7 +58,7 @@
       <view class="fav-section">收藏的提示词 ({{ filtered.length }})</view>
       <view v-for="item in filtered" :key="item.id" class="fav-prompt">
         <view class="tool-avatar" :class="'tool-avatar--' + iconType(item.belongToolCode)">
-          <text class="ta-emoji">{{ emoji(item.belongToolCode) }}</text>
+          <svg class="ta-svg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
         </view>
         <view class="fav-prompt__body">
           <text class="fav-prompt__name">{{ item.promptName || '未命名' }}</text>
@@ -179,29 +184,29 @@ const onCancel = (item) => {
 
 .fav-page {
   min-height: 100vh;
-  background: #F9FAFB;
+  background: var(--bg-page);
   padding-bottom: 40rpx;
 }
 
 /* App 端自绘导航栏（navigationStyle: custom）：顶部避让状态栏/刘海。
    ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
 .fav-head { padding: calc(32rpx + var(--status-bar-height, 0px)) 32rpx 16rpx; }
-.fav-head__title { font-size: 48rpx; font-weight: 700; color: #111827; }
+.fav-head__title { font-size: 48rpx; font-weight: 700; color: var(--text-primary); }
 
 .fav-tabs {
   display: flex;
   gap: 40rpx;
   padding: 0 32rpx;
-  border-bottom: 2rpx solid #F3F4F6;
+  border-bottom: 2rpx solid var(--border-color);
 }
-.fav-tab { padding: 24rpx 0; font-size: 28rpx; color: #9CA3AF; position: relative; }
-.fav-tab--active { color: #111827; font-weight: 600; }
+.fav-tab { padding: 24rpx 0; font-size: 28rpx; color: var(--text-tertiary); position: relative; }
+.fav-tab--active { color: var(--text-primary); font-weight: 600; }
 .fav-tab--active::after {
   content: '';
   position: absolute;
   left: 0; right: 0; bottom: -2rpx;
   height: 4rpx;
-  background: #3B82F6;
+  background: var(--brand-primary);
 }
 
 .fav-search {
@@ -211,17 +216,17 @@ const onCancel = (item) => {
   margin: 24rpx 32rpx;
   height: 80rpx;
   padding: 0 24rpx;
-  background: #F3F4F6;
+  background: var(--bg-gray);
   border-radius: 9999rpx;
 }
-.fav-search__icon { font-size: 30rpx; }
+.fav-search__icon { width: 30rpx; height: 30rpx; flex-shrink: 0; }
 .fav-search__input { flex: 1; font-size: 26rpx; background: transparent; }
-.fav-ph { color: #9CA3AF; }
+.fav-ph { color: var(--text-tertiary); }
 
 .fav-section {
   font-size: 28rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   padding: 8rpx 32rpx 16rpx;
 }
 
@@ -233,11 +238,11 @@ const onCancel = (item) => {
 }
 .fav-tool {
   width: 100%;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 28rpx;
   box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
-  border: 2rpx solid #F3F4F6;
+  border: 2rpx solid var(--border-color);
   box-sizing: border-box;
 }
 .fav-tool__top { display: flex; gap: 20rpx; align-items: center; }
@@ -245,7 +250,7 @@ const onCancel = (item) => {
   flex: 1;
   font-size: 30rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 .fav-tool__desc {
   display: -webkit-box;
@@ -253,7 +258,7 @@ const onCancel = (item) => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-size: 24rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   margin-top: 14rpx;
   line-height: 1.5;
 }
@@ -275,19 +280,19 @@ const onCancel = (item) => {
   white-space: nowrap;
 }
 .fav-tool__btn {
-  background: #EFF6FF;
-  color: #3B82F6;
+  background: var(--brand-primary-light);
+  color: var(--brand-primary);
 }
 .fav-tool__cancel {
-  background: #FEF2F2;
-  color: #EF4444;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .fav-prompt {
   display: flex;
   align-items: center;
   gap: 24rpx;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 24rpx;
   margin: 0 32rpx 24rpx;
@@ -298,15 +303,15 @@ const onCancel = (item) => {
   display: block;
   font-size: 28rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 .fav-prompt__tags { display: flex; gap: 12rpx; margin-top: 12rpx; }
 .fav-prompt__cancel {
   height: 56rpx;
   padding: 0 24rpx;
   border-radius: 9999rpx;
-  background: #F3F4F6;
-  color: #4B5563;
+  background: var(--bg-gray);
+  color: var(--text-secondary);
   font-size: 22rpx;
   display: flex;
   align-items: center;

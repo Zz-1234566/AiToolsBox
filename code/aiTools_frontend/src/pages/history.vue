@@ -9,7 +9,10 @@
       </view>
       <text class="hist-head__title">历史记录</text>
       <view class="hist-head__icon" @click="onClearAll">
-        <text>🗑</text>
+        <svg class="hist-trash" viewBox="0 0 24 24">
+          <path d="M4 7h16M10 4h4M6 7l1 13h10l1-13" fill="none" stroke="#5C5C66" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M10 11v6M14 11v6" fill="none" stroke="#5C5C66" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
       </view>
     </view>
 
@@ -25,8 +28,12 @@
     <!-- 列表（按天分组） -->
     <view v-if="loading" class="redesign-empty"><text class="redesign-empty__text">加载中…</text></view>
     <view v-else-if="groupedList.length === 0" class="redesign-empty">
-      <view class="redesign-empty__icon"><text class="redesign-empty__emoji">📭</text></view>
+      <view class="redesign-empty__icon">
+        <svg viewBox="0 0 24 24" style="width:76rpx;height:76rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round"><path d="M4 5h16v14H4z M4 13h4l1.5 2h5L16 13h4"/></svg>
+      </view>
       <text class="redesign-empty__text">还没有历史记录</text>
+      <text class="redesign-empty__sub">做一次转换后，结果会自动存在这里，换设备也能找到。</text>
+      <view class="redesign-empty__cta" @click="goTools"><text>去用工具</text></view>
     </view>
 
     <block v-else>
@@ -34,7 +41,7 @@
         <text class="hist-group-label">{{ group.label }}</text>
         <view v-for="item in group.items" :key="item.id" class="hist-card" @click="onItemClick(item)">
           <view class="tool-avatar" :class="'tool-avatar--' + iconType(item)">
-            <text class="ta-emoji">{{ emoji(item) }}</text>
+            <svg class="ta-svg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
           </view>
           <view class="hist-card__body">
             <view class="hist-card__row">
@@ -238,6 +245,8 @@ onUnmounted(() => {
 })
 // #endif
 
+const goTools = () => uni.switchTab({ url: '/pages/category' })
+
 const onItemClick = (item) => {
   if (!item || !item.id) return
   uni.navigateTo({ url: `/pages/history-detail?id=${item.id}&aiCode=${encodeURIComponent(item.aiCode || '')}` })
@@ -250,7 +259,7 @@ const onDelete = (item) => {
   uni.showModal({
     title: '删除记录',
     content: '确定要删除这条历史记录吗？',
-    confirmColor: '#211E1E',
+    confirmColor: 'var(--text-primary)',
     success: async (res) => {
       if (!res.confirm) return
       try {
@@ -269,7 +278,7 @@ const onClearAll = () => {
     title: '清空历史记录',
     content: '确定要清空全部历史记录吗？清空后不可恢复。',
     confirmText: '清空',
-    confirmColor: '#C0392B',
+    confirmColor: 'var(--color-danger)',
     success: async (res) => {
       if (!res.confirm) return
       try {
@@ -289,7 +298,7 @@ const onClearAll = () => {
 
 .hist-page {
   min-height: 100vh;
-  background: #F9FAFB;
+  background: var(--bg-page);
   padding-bottom: 40rpx;
 }
 
@@ -311,13 +320,14 @@ const onClearAll = () => {
   margin-left: -12rpx;
   border-radius: 50%;
 }
-.hist-back__icon { width: 44rpx; height: 44rpx; color: #111827; }
+.hist-back__icon { width: 44rpx; height: 44rpx; color: var(--text-primary); }
 .hist-head__title {
   flex: 1;
   font-size: 48rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
 }
+.hist-trash { width: 40rpx; height: 40rpx; }
 .hist-head__icon { font-size: 40rpx; padding: 8rpx; }
 
 .hist-tabs {
@@ -331,14 +341,14 @@ const onClearAll = () => {
   padding: 0 32rpx;
   margin-right: 16rpx;
   border-radius: 9999rpx;
-  background: #fff;
-  border: 2rpx solid #F3F4F6;
+  background: var(--bg-card);
+  border: 2rpx solid var(--border-color);
   font-size: 26rpx;
-  color: #4B5563;
+  color: var(--text-secondary);
 }
 .hist-tab--active {
-  background: #3B82F6;
-  border-color: #3B82F6;
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
   color: #fff;
   font-weight: 500;
 }
@@ -346,14 +356,14 @@ const onClearAll = () => {
 .hist-group-label {
   display: block;
   font-size: 26rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   padding: 24rpx 32rpx 8rpx;
 }
 
 .hist-card {
   display: flex;
   gap: 24rpx;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 24rpx;
   padding: 24rpx;
   margin: 0 32rpx 24rpx;
@@ -365,7 +375,7 @@ const onClearAll = () => {
   flex: 1;
   font-size: 28rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 .hist-badge {
   display: flex;
@@ -375,8 +385,8 @@ const onClearAll = () => {
   border-radius: 8rpx;
   font-size: 22rpx;
 }
-.hist-badge--ok { background: #D1FAE5; color: #10B981; }
-.hist-badge--fail { background: #FEE2E2; color: #EF4444; }
+.hist-badge--ok { background: var(--color-success-bg); color: var(--color-success); }
+.hist-badge--fail { background: var(--color-danger-bg); color: var(--color-danger); }
 .hist-card__del {
   /* 触控热区 ≥ 44px（88rpx）：删除是破坏性操作，
      热区太小会误触到相邻内容。图标本身仍保持 34rpx 不变，只扩大可点范围。 */
@@ -392,7 +402,7 @@ const onClearAll = () => {
 .hist-del__icon {
   width: 34rpx;
   height: 34rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
 }
 
 /* 底部加载提示 */
@@ -402,13 +412,13 @@ const onClearAll = () => {
 }
 .hist-foot__text {
   font-size: 24rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
 }
 
 .hist-card__line {
   display: block;
   font-size: 24rpx;
-  color: #4B5563;
+  color: var(--text-secondary);
   margin-top: 8rpx;
   overflow: hidden;
   white-space: nowrap;
@@ -417,9 +427,32 @@ const onClearAll = () => {
 .hist-card__time {
   display: block;
   font-size: 22rpx;
-  color: #D1D5DB;
+  color: var(--text-tertiary);
   margin-top: 12rpx;
 }
 
 .safe-bottom { height: 40rpx; }
+
+/* ===== v6 统一：24px 左对齐标题 ===== */
+.hist-head {
+  background: var(--bg-page) !important;
+  border-bottom: none !important;
+  justify-content: flex-start !important;
+  padding-left: 32rpx !important;
+  padding-right: 32rpx !important;
+}
+.hist-head__title {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  flex: 1 !important;
+  min-width: 0 !important;
+  text-align: left !important;
+  font-size: 48rpx !important;
+  font-weight: 700 !important;
+  letter-spacing: -1rpx !important;
+  color: var(--text-primary) !important;
+  margin: 0 !important;
+}
 </style>

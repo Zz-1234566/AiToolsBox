@@ -2,7 +2,7 @@
   <view class="page page--no-tabbar" :style="[themeStyle, { paddingBottom: '0' }]">
     <!-- Hero：大居中头像 + 用户名 + @uid -->
     <section class="me-hero" @click="goToProfile">
-      <view class="avatar avatar--xl" style="background: linear-gradient(135deg, #93C5FD, #3B82F6);">
+      <view class="avatar avatar--xl" style="background: var(--brand-primary);">
         <image v-if="userInfo && userInfo.avatar" class="avatar-img" :src="userInfo.avatar" mode="aspectFill"></image>
         <text v-else class="avatar-letter">{{ initials }}</text>
       </view>
@@ -15,11 +15,11 @@
     <!-- 功能入口（提示词管理 / 使用记录） -->
     <section class="stats">
       <view class="stat-item" @click="goToPromptList">
-        <text class="stat-item__icon">✍️</text>
+        <view class="stat-item__icon"><view class="ICO"><svg viewBox="0 0 24 24" style="width:100%;height:100%;fill:var(--text-secondary)"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></view></view>
         <text class="stat-item__label">提示词管理</text>
       </view>
       <view class="stat-item" @click="goToHistory">
-        <text class="stat-item__icon">📜</text>
+        <view class="stat-item__icon"><view class="ICO"><svg viewBox="0 0 24 24" style="width:100%;height:100%;fill:var(--text-secondary)"><path d="M13 3a9 9 0 00-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 117 7 6.96 6.96 0 01-4.95-2.05l-1.42 1.42A9 9 0 1013 3zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/></svg></view></view>
         <text class="stat-item__label">使用记录</text>
       </view>
     </section>
@@ -31,12 +31,12 @@
         <text class="me-item__chev">›</text>
       </view>
       <view class="me-item" @click="goToSettings">
-        <text class="me-item__icon">⚙️</text>
+        <view class="me-item__icon"><view class="ICO"><svg viewBox="0 0 24 24" style="width:100%;height:100%;fill:var(--text-secondary)"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg></view></view>
         <text class="me-item__label">账号设置</text>
         <text class="me-item__chev">›</text>
       </view>
       <view class="me-item" style="border-bottom: none;" @click="goToAbout">
-        <text class="me-item__icon">ℹ️</text>
+        <view class="me-item__icon"><view class="ICO"><svg viewBox="0 0 24 24" style="width:100%;height:100%;fill:var(--text-secondary)"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></view></view>
         <text class="me-item__label">关于 AI Tools Box</text>
         <text class="me-item__chev">›</text>
       </view>
@@ -105,13 +105,19 @@ onShow(() => {
 }
 
 /* ===== Hero ===== */
+.stat-item__icon view,
+.stat-item__icon svg,
+.me-item__icon view,
+.me-item__icon svg { width: 40rpx; height: 40rpx; }
+
 .me-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 24rpx;
-  background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
-  padding: 80rpx 32rpx 64rpx;
+  /* 参考图：资料区不用暖色渐变，跟随页面底色 */
+  background: var(--bg-page);
+  padding: calc(var(--status-bar-height, 0px) + 40rpx) 32rpx 56rpx;
   cursor: pointer;
 }
 .me-hero__info {
@@ -207,7 +213,7 @@ onShow(() => {
   align-items: center;
   gap: 16rpx;
   padding: 32rpx;
-  border-bottom: 1rpx solid var(--border-light, #F3F4F6);
+  border-bottom: 1rpx solid var(--border-light, var(--border-color));
   cursor: pointer;
 }
 .me-item__icon {

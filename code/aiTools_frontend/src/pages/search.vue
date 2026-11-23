@@ -136,28 +136,23 @@ const goToTool = (tool) => {
 }
 
 .search-box {
-  background-color: $bg-white;
-  border-radius: $radius-pill;
-  height: 96rpx;
   display: flex;
   align-items: center;
-  padding: 0 $spacing-lg;
-  margin-bottom: $spacing-md;
-  box-shadow: $shadow-card;
-  
-  .search-icon {
-    width: 40rpx;
-    height: 40rpx;
-    color: $text-tertiary;
-    margin-right: $spacing-sm;
-  }
+  gap: 16rpx;
+  height: 80rpx;
+  margin: 8rpx 32rpx 20rpx;
+  padding: 0 26rpx;
+  border-radius: 999rpx;
+  background: var(--bg-gray);
+  border: none;
+}
   
   .search-input {
-    flex: 1;
-    height: 96rpx;
-    font-size: $font-size-md;
-    color: $text-primary;
-  }
+  flex: 1;
+  font-size: 27rpx;
+  color: var(--text-primary);
+  background: transparent;
+}
   
   .input-placeholder {
     color: $text-tertiary;
@@ -168,7 +163,6 @@ const goToTool = (tool) => {
     color: $text-secondary;
     padding: $spacing-xs;
   }
-}
 
 .result-list {
   flex: 1;
@@ -194,12 +188,12 @@ const goToTool = (tool) => {
 
 .hot-section {
   .hot-title {
-    font-size: $font-size-lg;
-    font-weight: 600;
-    color: $text-primary;
-    margin-bottom: $spacing-md;
-    display: block;
-  }
+  display: block;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 8rpx 32rpx 16rpx;
+}
   
   .hot-list {
     background-color: $bg-white;
@@ -209,15 +203,14 @@ const goToTool = (tool) => {
   }
   
   .hot-item {
-    display: flex;
-    align-items: center;
-    padding: $spacing-md 0;
-    border-bottom: 1rpx solid $divider-color;
-    
-    &:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
-    }
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx;
+  margin: 0 32rpx 16rpx;
+  background: var(--bg-card);
+  border-radius: 28rpx;
+}
     
     &:active {
       opacity: 0.7;
@@ -252,7 +245,6 @@ const goToTool = (tool) => {
       }
     }
   }
-}
 
 .search-results {
   .result-item {
@@ -303,5 +295,43 @@ const goToTool = (tool) => {
       color: $text-tertiary;
     }
   }
+}
+
+/* ===== 布局修复：搜索框图标尺寸 + 热门列表 ===== */
+.search-icon {
+  width: 32rpx;
+  height: 32rpx;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+.hot-list { padding: 0 0 24rpx; }
+.hot-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+}
+.hot-icon {
+  width: 64rpx;
+  height: 64rpx;
+  flex-shrink: 0;
+  border-radius: 18rpx;
+  background: var(--bg-gray);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hot-info { flex: 1; min-width: 0; }
+.hot-name {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.hot-desc {
+  display: block;
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: var(--text-tertiary);
 }
 </style>

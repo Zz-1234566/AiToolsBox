@@ -10,6 +10,12 @@
     <scroll-view scroll-y class="page-content">
       <!-- 空态 -->
       <view v-if="!loading && runs.length === 0" class="empty">
+        <view class="empty__icon">
+          <svg viewBox="0 0 24 24" style="width:72rpx;height:72rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 7v5l3.2 1.9"/>
+          </svg>
+        </view>
         <text class="empty__title">还没有运行记录</text>
         <text class="empty__desc">去智能体页跑一次，这里会留下完整过程</text>
       </view>
@@ -104,7 +110,7 @@ load()
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #F9FAFB;
+  background: var(--bg-page);
   display: flex;
   flex-direction: column;
 }
@@ -112,10 +118,10 @@ load()
 .topbar {
   padding: var(--status-bar-height, 0px) 24rpx 0;
   height: 88rpx;
-  background: #FFFFFF;
+  background: var(--bg-card);
   display: flex;
   align-items: center;
-  border-bottom: 1rpx solid #E5E7EB;
+  border-bottom: 1rpx solid var(--border-color);
 
   &__back {
     width: 56rpx;
@@ -123,7 +129,7 @@ load()
     display: flex;
     align-items: center;
     justify-content: center;
-    &-icon { font-size: 44rpx; color: #374151; line-height: 1; }
+    &-icon { font-size: 44rpx; color: var(--text-secondary); line-height: 1; }
     &--hover { opacity: 0.6; }
   }
   &__title {
@@ -131,7 +137,7 @@ load()
     text-align: center;
     font-size: 32rpx;
     font-weight: 600;
-    color: #111827;
+    color: var(--text-primary);
   }
   &::after { content: ''; width: 56rpx; }
 }
@@ -142,12 +148,12 @@ load()
   text-align: center;
   padding: 120rpx 0;
 
-  &__title { display: block; font-size: 30rpx; color: #6B7280; }
-  &__desc { display: block; font-size: 24rpx; color: #9CA3AF; margin-top: 12rpx; }
+  &__title { display: block; font-size: 30rpx; color: var(--text-secondary); }
+  &__desc { display: block; font-size: 24rpx; color: var(--text-tertiary); margin-top: 12rpx; }
 }
 
 .run-card {
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 16rpx;
   padding: 24rpx;
   margin-bottom: 20rpx;
@@ -160,20 +166,20 @@ load()
   }
   &__status {
     font-size: 22rpx;
-    color: #3B82F6;
-    background: #EFF6FF;
+    color: var(--brand-primary);
+    background: var(--brand-primary-light);
     padding: 4rpx 14rpx;
     border-radius: 999rpx;
 
     &--2 { color: #059669; background: #ECFDF5; }
-    &--3 { color: #DC2626; background: #FEF2F2; }
-    &--4 { color: #6B7280; background: #F3F4F6; }
+    &--3 { color: var(--color-danger); background: var(--color-danger-bg); }
+    &--4 { color: var(--text-secondary); background: var(--bg-gray); }
   }
-  &__time { font-size: 22rpx; color: #9CA3AF; }
+  &__time { font-size: 22rpx; color: var(--text-tertiary); }
   &__goal {
     display: block;
     font-size: 27rpx;
-    color: #374151;
+    color: var(--text-secondary);
     line-height: 1.6;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -182,7 +188,7 @@ load()
     -webkit-box-orient: vertical;
   }
   &__meta { display: flex; margin-top: 12rpx; }
-  &__meta-item { font-size: 22rpx; color: #9CA3AF; margin-right: 24rpx; }
+  &__meta-item { font-size: 22rpx; color: var(--text-tertiary); margin-right: 24rpx; }
 }
 
 /* ============ 详情弹层 ============ */
@@ -197,7 +203,7 @@ load()
 .detail {
   width: 100%;
   max-height: 82vh;
-  background: #FFFFFF;
+  background: var(--bg-card);
   border-radius: 24rpx 24rpx 0 0;
   display: flex;
   flex-direction: column;
@@ -206,24 +212,24 @@ load()
   &__label {
     display: block;
     font-size: 24rpx;
-    color: #3B82F6;
+    color: var(--brand-primary);
     margin: 24rpx 0 12rpx;
   }
-  &__goal { font-size: 27rpx; color: #374151; line-height: 1.6; }
+  &__goal { font-size: 27rpx; color: var(--text-secondary); line-height: 1.6; }
   &__md { font-size: 27rpx; }
-  &__error { font-size: 25rpx; color: #B91C1C; line-height: 1.6; }
+  &__error { font-size: 25rpx; color: var(--color-danger); line-height: 1.6; }
   &__close {
     height: 88rpx;
     line-height: 88rpx;
     text-align: center;
     font-size: 29rpx;
-    color: #3B82F6;
-    border-top: 1rpx solid #E5E7EB;
+    color: var(--brand-primary);
+    border-top: 1rpx solid var(--border-color);
   }
 }
 
 .step {
-  background: #F9FAFB;
+  background: var(--bg-page);
   border-radius: 12rpx;
   padding: 16rpx 20rpx;
   margin-bottom: 12rpx;
@@ -233,26 +239,36 @@ load()
     width: 36rpx;
     height: 36rpx;
     border-radius: 50%;
-    background: #3B82F6;
+    background: var(--brand-primary);
     color: #FFFFFF;
     font-size: 20rpx;
     text-align: center;
     line-height: 36rpx;
     margin-right: 12rpx;
   }
-  &__tool { flex: 1; font-size: 25rpx; color: #374151; font-weight: 600; }
-  &__cost { font-size: 22rpx; color: #9CA3AF; }
-  &__thought { display: block; font-size: 23rpx; color: #6B7280; line-height: 1.6; }
-  &__args { display: block; font-size: 22rpx; color: #9CA3AF; margin-top: 6rpx; }
+  &__tool { flex: 1; font-size: 25rpx; color: var(--text-secondary); font-weight: 600; }
+  &__cost { font-size: 22rpx; color: var(--text-tertiary); }
+  &__thought { display: block; font-size: 23rpx; color: var(--text-secondary); line-height: 1.6; }
+  &__args { display: block; font-size: 22rpx; color: var(--text-tertiary); margin-top: 6rpx; }
   &__output {
     display: block;
     font-size: 23rpx;
-    color: #4B5563;
+    color: var(--text-secondary);
     line-height: 1.6;
     margin-top: 8rpx;
     white-space: pre-wrap;
     max-height: 300rpx;
     overflow: hidden;
   }
+}
+.empty__icon {
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: 32rpx;
+  background: var(--bg-gray);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 28rpx;
 }
 </style>

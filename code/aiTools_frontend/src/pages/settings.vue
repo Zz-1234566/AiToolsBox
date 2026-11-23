@@ -208,7 +208,7 @@ const onEditServer = () => {
     editable: true,
     placeholderText: 'http://192.168.1.100:8080',
     content: serverUrl.value,
-    confirmColor: '#3B82F6',
+    confirmColor: 'var(--brand-primary)',
     success: (res) => {
       if (!res.confirm) return
       const v = (res.content || '').trim()
@@ -266,7 +266,7 @@ const clearCache = () => {
   uni.showModal({
     title: t('modal.clearCacheTitle'),
     content: t('modal.clearCacheContent'),
-    confirmColor: isDarkTheme.value ? '#F0F0F0' : '#211E1E',
+    confirmColor: isDarkTheme.value ? '#F0F0F0' : 'var(--text-primary)',
     success: (res) => {
       if (res.confirm) {
         uni.showToast({ title: t('toast.cacheCleared'), icon: 'none' })
@@ -284,7 +284,7 @@ const handleLogout = () => {
   uni.showModal({
     title: '退出登录',
     content: '确定要退出当前账号吗？',
-    confirmColor: '#C0392B',
+    confirmColor: 'var(--color-danger)',
     success: async (res) => {
       if (!res.confirm) return
       uni.showLoading({ title: '退出中…' })
@@ -355,10 +355,10 @@ const goToAbout = () => {
 }
 .item-icon.logout-icon {
   background-color: rgba(192, 57, 43, 0.08);
-  color: #C0392B;
+  color: var(--color-danger);
 }
 .item-text--logout {
-  color: #C0392B;
+  color: var(--color-danger);
   font-weight: 500;
 }
 
@@ -466,7 +466,7 @@ const goToAbout = () => {
     width: 48rpx;
     height: 48rpx;
     border-radius: $radius-pill;
-    background-color: #FFFFFF;
+    background-color: var(--bg-card);
     position: absolute;
     top: 4rpx;
     left: 4rpx;
