@@ -149,6 +149,12 @@
     </scroll-view>
 
     <!-- 模型浮层：贴着输入框上方展开（不用底部抽屉） -->
+    <view v-if="showCtxMenu" class="model-mask" @click="showCtxMenu = false"></view>
+    <view v-if="showCtxMenu" class="ctx-menu">
+      <text class="ctx-menu__t">上下文 {{ ctxTokens > 0 ? ctxPercent + '%' : '—' }} / {{ ctxWindowLabel }}</text>
+      <text v-if="ctxTokens > 0" class="ctx-menu__s">已用 {{ ctxTokens }} tokens</text>
+    </view>
+
     <view v-if="showModelMenu" class="model-mask" @click="showModelMenu = false"></view>
     <view v-if="showModelMenu" class="model-menu">
       <view
@@ -211,17 +217,14 @@
       <input v-model="goal" class="composer__input" placeholder="发消息或按住空格说话..." :disabled="running" />
       <view class="composer__row">
         <view class="composer__plus" @click="onPickFiles">＋</view>
-        <view class="composer__ctx">
+        <view class="composer__gap"></view>
+        <view class="composer__ring" @click="showCtxMenu = !showCtxMenu">
           <svg class="composer__ctx-ring" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" fill="none" stroke="var(--border-color)" stroke-width="3"/>
             <circle cx="12" cy="12" r="9" fill="none" stroke="var(--brand-primary)" stroke-width="3"
                     stroke-linecap="round" transform="rotate(-90 12 12)"
                     :stroke-dasharray="ctxDash" />
           </svg>
-          <text class="composer__ctx-t">
-            <text v-if="ctxTokens > 0">上下文 {{ ctxPercent }}% / {{ ctxWindowLabel }}</text>
-            <text v-else>上下文 — / {{ ctxWindowLabel }}</text>
-          </text>
         </view>
         <view class="composer__model" @click="showModelMenu = !showModelMenu">
           <text class="composer__model-t">{{ modelNames[modelIndex] }}</text>
@@ -272,6 +275,8 @@ const historyMessages = ref([])
 
 /** 上下文占用（后端每轮通过 [上下文:tokens:window] 下发） */
 const ctxTokens = ref(0)
+/** 上下文浮层开关（点击圆环展开，与模型选择一致） */
+const showCtxMenu = ref(false)
 const ctxWindow = ref(1000000)
 const ctxPercent = computed(() => {
   if (!ctxTokens.value || !ctxWindow.value) return 0
@@ -1027,25 +1032,17 @@ $ref-sub: var(--text-secondary);
   font-size: 34rpx; color: #4A4A54;
   background: var(--bg-gray);
 }
-.composer__ctx {
-  flex: 1;
-  min-width: 0;
+.composer__ring {
   display: flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 0 8rpx;
+  justify-content: center;
+  padding: 0 6rpx 0 4rpx;
+  flex-shrink: 0;
 }
 .composer__ctx-ring {
   width: 26rpx;
   height: 26rpx;
   flex-shrink: 0;
-}
-.composer__ctx-t {
-  font-size: 20rpx;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .composer__gap { flex: 1; }
 .composer__model {
@@ -1078,6 +1075,22 @@ $ref-sub: var(--text-secondary);
 }
 .stop-square { width: 22rpx; height: 22rpx; border-radius: 4rpx; background: var(--bg-card); }
 
+.ctx-menu {
+  position: absolute;
+  right: 250rpx;
+  bottom: 200rpx;
+  z-index: 21;
+  min-width: 260rpx;
+  background: var(--bg-card);
+  border-radius: 20rpx;
+  padding: 18rpx 24rpx;
+  box-shadow: 0 8rpx 28rpx rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+.ctx-menu__t { font-size: 24rpx; color: var(--text-primary); }
+.ctx-menu__s { font-size: 20rpx; color: var(--text-tertiary); }
 .model-mask {
   position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 20;
 }
