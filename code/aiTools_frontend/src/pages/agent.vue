@@ -61,15 +61,24 @@
       <view class="msg msg--ai">
         <view class="ai-body">
           <view class="card">
-            <view class="card__title">任务规划</view>
-            <view v-if="!steps.length" class="tl__empty">
+            <view class="card__title card__title--toggle" @click="planCollapsed = !planCollapsed">
+              <text>任务规划</text>
+              <view v-if="steps.length" class="card__meta">
+                <text class="card__count">{{ steps.length }} 步</text>
+                <svg class="card__chev" :class="{ 'card__chev--collapsed': planCollapsed }" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 15l6-6 6 6"/>
+                </svg>
+              </view>
+            </view>
+            <view v-show="!planCollapsed" v-if="!steps.length" class="tl__empty">
               <svg class="tl__spin" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="9" fill="none" stroke="#F5671D" stroke-width="3"
                         stroke-linecap="round" stroke-dasharray="42 15"/>
               </svg>
               <text class="tl__empty-t">正在思考…</text>
             </view>
-            <view v-for="(st,i) in steps" :key="i" class="tl" :class="{ 'tl--run': isRunningStep(i), 'tl--wait': !isRunningStep(i) && !isDoneStep(i) }">
+            <view v-show="!planCollapsed" v-for="(st,i) in steps" :key="i" class="tl" :class="{ 'tl--run': isRunningStep(i), 'tl--wait': !isRunningStep(i) && !isDoneStep(i) }">
               <view class="tl__dot">
                 <svg v-if="isDoneStep(i)" class="tl__ico" viewBox="0 0 24 24">
                   <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3"
@@ -88,7 +97,7 @@
           </view>
 
           <view v-if="answer" class="card card--answer">
-            <MarkdownView :content="answer" />
+            <MarkdownView :source="answer" :streaming="running" />
           </view>
 
           <view v-if="running" class="typing">
@@ -304,6 +313,9 @@ const onModelChange = (e) => {
 /** 当前普通 chunk 该落到哪里：工具卡片的结果区 / 答案区 */
 let chunkTarget = 'answer'
 
+/** 任务规划是否折叠：运行中展开，完成后自动收起，避免长思考链把答案顶到很下面 */
+const planCollapsed = ref(false)
+
 const pushStep = (step) => {
   steps.value.push(step)
   scrollToBottom()
@@ -324,6 +336,7 @@ const onStart = async () => {
   errorMsg.value = ''
   answer.value = ''
   steps.value = []
+  planCollapsed.value = false
   chunkTarget = 'answer'
 
   try {
@@ -353,6 +366,7 @@ const onStart = async () => {
             chunkTarget = 'answer'
           } else if (kind === '完成') {
             running.value = false
+            if (steps.value.length) planCollapsed.value = true
           }
         },
         onChunk: (text) => {
@@ -370,6 +384,7 @@ const onStart = async () => {
         onDone: () => {
           flushAnswer()
           running.value = false
+          if (steps.value.length) planCollapsed.value = true
         },
         onError: (err) => {
           flushAnswer()
@@ -476,8 +491,9 @@ $ref-sub: var(--text-secondary);
 
 .bubble--me {
   max-width: 76%;
+  /* 底色固定浅暖色，文字必须固定深色 —— 用 token 会在深色主题下变成浅字压浅底 */
   background: #FBE3D5;
-  color: $ref-ink;
+  color: #3D2B20;
   font-size: 27rpx;
   line-height: 1.6;
   padding: 20rpx 24rpx;
@@ -584,6 +600,11 @@ $ref-sub: var(--text-secondary);
 
 .card { background: var(--bg-card); border-radius: 24rpx; padding: 24rpx; }
 .card__title { font-size: 26rpx; font-weight: 700; color: $ref-ink; margin-bottom: 16rpx; }
+.card__title--toggle { display: flex; align-items: center; justify-content: space-between; }
+.card__meta { display: flex; align-items: center; gap: 8rpx; }
+.card__count { font-size: 22rpx; font-weight: 400; color: $ref-sub; }
+.card__chev { width: 28rpx; height: 28rpx; color: $ref-sub; transition: transform 0.2s ease; }
+.card__chev--collapsed { transform: rotate(180deg); }
 .card--answer { font-size: 27rpx; color: $ref-ink; line-height: 1.7; }
 
 .tl { display: flex; gap: 16rpx; padding: 12rpx 0; align-items: flex-start; }
