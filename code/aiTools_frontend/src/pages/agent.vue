@@ -46,6 +46,12 @@
       <view v-if="attachments.length" class="msg msg--me">
         <view class="files">
           <view v-for="(a,i) in attachments" :key="a.url" class="file">
+            <view class="file__ico">
+            <template v-if="fileKind(a.name) === 'doc'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></template>
+            <template v-else-if="fileKind(a.name) === 'image'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.4"/><path d="M21 16l-5-5-9 9"/></svg></template>
+            <template v-else-if="fileKind(a.name) === 'audio'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg></template>
+            <template v-else><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/></svg></template>
+            </view>
             <text class="file__n">{{ a.name }}</text>
             <text class="file__x" @click="removeAttachment(i)">×</text>
           </view>
@@ -113,6 +119,12 @@
     <!-- 已上传附件（欢迎态：展示在输入条上方；发送后由对话气泡展示） -->
     <view v-if="!started && attachments.length" class="attach-bar">
       <view v-for="(a,i) in attachments" :key="a.url" class="attach-chip">
+        <view class="attach-chip__ico">
+          <template v-if="fileKind(a.name) === 'doc'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></template>
+          <template v-else-if="fileKind(a.name) === 'image'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.4"/><path d="M21 16l-5-5-9 9"/></svg></template>
+          <template v-else-if="fileKind(a.name) === 'audio'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg></template>
+          <template v-else><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/></svg></template>
+        </view>
         <text class="attach-chip__n">{{ a.name }}</text>
         <text class="attach-chip__x" @click="removeAttachment(i)">×</text>
       </view>
@@ -156,6 +168,15 @@ onShow(() => {
 
 const goal = ref('')
 const attachments = ref([])
+
+/** 附件类型（决定图标）：doc / image / audio / file */
+const fileKind = (name) => {
+  const ext = String(name || '').split('.').pop().toLowerCase()
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) return 'image'
+  if (['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'amr', 'opus'].includes(ext)) return 'audio'
+  if (['pdf', 'doc', 'docx', 'txt', 'md'].includes(ext)) return 'doc'
+  return 'file'
+}
 const started = ref(false)
 const running = ref(false)
 
@@ -491,6 +512,17 @@ $ref-sub: var(--text-secondary);
   line-height: 1;
   color: var(--text-tertiary);
 }
+.attach-chip__ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--brand-primary);
+}
+.attach-ico {
+  width: 26rpx;
+  height: 26rpx;
+}
 
 .files { display: flex; flex-direction: column; gap: 10rpx; align-items: flex-end; }
 .file {
@@ -498,6 +530,7 @@ $ref-sub: var(--text-secondary);
   display: flex; align-items: center; gap: 12rpx; font-size: 24rpx;
 }
 .file__x { color: $ref-sub; }
+.file__ico { display: flex; align-items: center; flex-shrink: 0; color: var(--brand-primary); }
 
 .ai-avatar-wrap {
   position: relative;
