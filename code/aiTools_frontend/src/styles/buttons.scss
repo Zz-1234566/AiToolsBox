@@ -28,8 +28,8 @@ $btn-sizes: (
 );
 
 /* ---------- 主色（对齐 redesign.scss / workflow-run 的既有用色） ---------- */
-$btn-primary:        #3B82F6;
-$btn-primary-active: #2563EB;
+$btn-primary:        var(--brand-primary);
+$btn-primary-active: var(--brand-primary-hover);
 $btn-danger:         #EF4444;
 $btn-danger-active:  #DC2626;
 
@@ -77,9 +77,9 @@ $btn-danger-active:  #DC2626;
     &:active { background: $btn-primary-active; }
   } @else if $variant == secondary {
     background: #fff;
-    color: #4B5563;
-    border: 1rpx solid #E5E7EB;
-    &:active { background: #F3F4F6; }
+    color: var(--text-secondary);
+    border: 1rpx solid var(--border-color);
+    &:active { background: var(--bg-gray); }
   } @else if $variant == ghost {
     background: transparent;
     color: $btn-primary;

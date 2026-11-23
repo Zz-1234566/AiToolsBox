@@ -31,6 +31,47 @@ export default {
   box-sizing: border-box;
 }
 
+/*
+ * 页面级底色：uni-app 里 page 是根节点（H5 会映射成 uni-page-body）。
+ * 统一在这里兜底，避免「页面没写背景 → 深色模式下白底 + 浅色文字不可读」。
+ * 各页自己写的背景优先级更高，不受影响。
+ */
+/*
+ * H5 端底栏：补底部安全区，避免 iPhone 全面屏/浏览器底栏把标签压住。
+ * App 端是原生 tabBar，由系统处理，不需要这段。
+ */
+/* #ifdef H5 */
+uni-tabbar .uni-tabbar {
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+  height: auto;
+  min-height: 50px;
+}
+/* #endif */
+
+/* #ifdef H5 */
+html,
+body {
+  overflow-x: hidden;
+}
+uni-page-body {
+  overflow-x: hidden;
+}
+/* 移动端页面不显示滚动条 */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+/* #endif */
+
+page,
+uni-page-body {
+  background-color: var(--bg-page, #F5F4EF);
+  color: var(--text-primary, #26241F);
+}
+
+
 .safe-area-bottom {
   padding-bottom: constant(safe-area-inset-bottom);
   padding-bottom: env(safe-area-inset-bottom);

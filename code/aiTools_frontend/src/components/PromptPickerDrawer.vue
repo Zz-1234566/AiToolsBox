@@ -211,8 +211,8 @@ watch(() => props.show, (val) => {
 /* 顶部 header */
 .prompt-drawer__header {
   padding: 32rpx;
-  background: linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%);
-  border-bottom: 1rpx solid var(--border-color, #E5E7EB);
+  background: linear-gradient(135deg, #EEF2FF 0%, #F4E9EC 100%);
+  border-bottom: 1rpx solid var(--border-color, var(--border-color));
   position: relative;
 }
 .prompt-drawer__title-row {
@@ -224,7 +224,7 @@ watch(() => props.show, (val) => {
   width: 80rpx;
   height: 80rpx;
   border-radius: 24rpx;
-  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+  background: var(--gradient-brand, linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%));
   color: #FFFFFF;
   display: flex;
   align-items: center;
@@ -282,7 +282,7 @@ watch(() => props.show, (val) => {
   width: 50%;
   display: flex;
   flex-direction: column;
-  border-right: 1rpx solid var(--divider-color, #F0F0F0);
+  border-right: 1rpx solid var(--divider-color, var(--border-color));
   background: var(--bg-card, #FFFFFF);
 }
 .prompt-drawer__title-bar {
@@ -305,12 +305,12 @@ watch(() => props.show, (val) => {
   font-weight: 500;
   border-radius: 999rpx;
   background: var(--bg-card, #FFFFFF);
-  border: 1rpx solid var(--border-color, #E5E7EB);
+  border: 1rpx solid var(--border-color, var(--border-color));
   cursor: pointer;
 }
 .prompt-drawer__tab-item.is-active {
   color: #FFFFFF;
-  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+  background: var(--gradient-brand, linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%));
   border-color: transparent;
 }
 .prompt-drawer__search {
@@ -352,14 +352,14 @@ watch(() => props.show, (val) => {
   transition: background 0.2s;
 }
 .prompt-list-item.is-active {
-  background: var(--brand-primary-light, #EFF6FF);
+  background: var(--brand-primary-light, var(--brand-primary-light));
 }
 .prompt-list-item__icon {
   width: 56rpx;
   height: 56rpx;
   border-radius: 16rpx;
-  background: var(--brand-primary-light, #EFF6FF);
-  color: var(--brand-primary, #3B82F6);
+  background: var(--brand-primary-light, var(--brand-primary-light));
+  color: var(--brand-primary, var(--brand-primary));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -410,15 +410,15 @@ watch(() => props.show, (val) => {
   align-items: flex-start;
   gap: 20rpx;
   padding-bottom: 24rpx;
-  border-bottom: 1rpx solid var(--divider-color, #F0F0F0);
+  border-bottom: 1rpx solid var(--divider-color, var(--border-color));
   margin-bottom: 24rpx;
 }
 .prompt-preview__icon {
   width: 64rpx;
   height: 64rpx;
   border-radius: 16rpx;
-  background: var(--brand-primary-light, #EFF6FF);
-  color: var(--brand-primary, #3B82F6);
+  background: var(--brand-primary-light, var(--brand-primary-light));
+  color: var(--brand-primary, var(--brand-primary));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -448,8 +448,8 @@ watch(() => props.show, (val) => {
 .prompt-preview__tag {
   display: inline-block;
   padding: 4rpx 12rpx;
-  background: var(--brand-primary-light, #EFF6FF);
-  color: var(--brand-primary, #3B82F6);
+  background: var(--brand-primary-light, var(--brand-primary-light));
+  color: var(--brand-primary, var(--brand-primary));
   font-size: 22rpx;
   border-radius: 8rpx;
 }
@@ -484,12 +484,12 @@ watch(() => props.show, (val) => {
 .prompt-drawer__bottom {
   padding: 24rpx 32rpx calc(24rpx + env(safe-area-inset-bottom, 0rpx));
   background: var(--bg-card, #FFFFFF);
-  border-top: 1rpx solid var(--divider-color, #F0F0F0);
+  border-top: 1rpx solid var(--divider-color, var(--border-color));
 }
 .prompt-drawer__confirm-btn {
   width: 100%;
   height: 88rpx;
-  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+  background: var(--gradient-brand, linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%));
   color: #FFFFFF;
   border-radius: 999rpx;
   font-size: 30rpx;

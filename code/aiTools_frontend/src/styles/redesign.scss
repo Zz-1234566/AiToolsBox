@@ -17,6 +17,7 @@
 
 /* ---------- 工具渐变头像 ---------- */
 .tool-avatar {
+  background: #FFF1EA !important;
   width: 88rpx;
   height: 88rpx;
   border-radius: $radius-md;
@@ -32,12 +33,14 @@
 .tool-avatar--ocr   { background: $gradient-ocr; }
 .tool-avatar--code  { background: $gradient-code; }
 
+.ta-svg { width: 52%; height: 52%; }
+.tool-avatar .ta-svg path { stroke: #F5671D; }
 .ta-emoji { font-size: $spacing-5; line-height: 1; }
 
 /* ---------- 主色按钮 ---------- */
 .btn-solid {
   height: 96rpx;
-  border-radius: $radius-pill;
+  border-radius: $radius-md;
   background: $brand-primary;
   color: #fff;
   font-size: 32rpx;
@@ -60,18 +63,34 @@
 .redesign-empty__icon {
   width: 192rpx; height: 192rpx;
   border-radius: $radius-md;
-  background: $brand-primary-light;
+  background: var(--bg-gray);
   display: flex; align-items: center; justify-content: center;
   margin-bottom: $spacing-4;
 }
 .redesign-empty__emoji { font-size: 88rpx; }
 .redesign-empty__text {
-  font-size: 28rpx; color: #9CA3AF; margin-bottom: $spacing-4;
+  font-size: 28rpx; color: var(--text-secondary); margin-bottom: $spacing-2;
+}
+.redesign-empty__sub {
+  font-size: 24rpx;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  text-align: center;
+  max-width: 520rpx;
+  margin-bottom: $spacing-6;
+}
+.redesign-empty__cta {
+  padding: 20rpx 56rpx;
+  border-radius: 999rpx;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 27rpx;
+  font-weight: 600;
 }
 
 /* ---------- 通用卡片 ---------- */
 .redesign-card {
-  background: #fff;
+  background: var(--bg-card);
   border-radius: $radius-md;
   padding: $spacing-4;
   box-shadow: 0 2rpx 4rpx rgba(0, 0, 0, 0.04);
@@ -84,7 +103,7 @@
   height: 44rpx;
   padding: 0 $spacing-2;
   border-radius: 8rpx;   // 8rpx 无对应 radius token（$radius-sm=16rpx），保持字面量
-  background: #F9FAFB;
-  color: #4B5563;
+  background: var(--bg-gray);
+  color: var(--text-secondary);
   font-size: 24rpx;
 }

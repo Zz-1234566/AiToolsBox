@@ -2,56 +2,56 @@
 // 设计 Token (来自 docs/ui-spec/01-设计系统.md)
 // ============================================================
 
-// 主题色 - 蓝紫
-$bg-color: var(--bg-color, #F9FAFB);
+// 主题色 —— 暖调（暖米底 / 陶土橙）
+$bg-color: var(--bg-color, #F6F6FB);
 $bg-white: var(--bg-white, #FFFFFF);
-$bg-gray: var(--bg-gray, #F3F4F6);
+$bg-gray: var(--bg-gray, #F2F2F7);
 
-// 品牌色（主蓝紫渐变）
-$brand-primary: var(--brand-primary, #3B82F6);
-$brand-primary-hover: var(--brand-primary-hover, #2563EB);
-$brand-primary-pressed: var(--brand-primary-pressed, #1D4ED8);
-$brand-primary-light: var(--brand-primary-light, #EFF6FF);
-$brand-secondary: var(--brand-secondary, #6366F1);
+// 品牌色（陶土橙）
+$brand-primary: var(--brand-primary, #F5671D);
+$brand-primary-hover: var(--brand-primary-hover, #E85A12);
+$brand-primary-pressed: var(--brand-primary-pressed, #D24F0F);
+$brand-primary-light: var(--brand-primary-light, #F2F2F7);
+$brand-secondary: var(--brand-secondary, #8E5A6E);
 
-// 工具图标渐变方块（7 种工具类型配色）
-$gradient-brand: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
-$gradient-doc: var(--gradient-doc, linear-gradient(135deg, #FCA5A5 0%, #EF4444 100%));
-$gradient-image: var(--gradient-image, linear-gradient(135deg, #C7D2FE 0%, #6366F1 100%));
-$gradient-dev: var(--gradient-dev, linear-gradient(135deg, #6EE7B7 0%, #10B981 100%));
-$gradient-audio: var(--gradient-audio, linear-gradient(135deg, #FCD34D 0%, #F59E0B 100%));
-$gradient-video: var(--gradient-video, linear-gradient(135deg, #F9A8D4 0%, #EC4899 100%));
-$gradient-ocr: var(--gradient-ocr, linear-gradient(135deg, #93C5FD 0%, #3B82F6 100%));
-$gradient-text: var(--gradient-text, linear-gradient(135deg, #A78BFA 0%, #8B5CF6 100%));
-$gradient-code: var(--gradient-code, linear-gradient(135deg, #5EEAD4 0%, #14B8A6 100%));
+// 工具图标块：由渐变改为实色（token 名保持不变，调用方零改动）
+$gradient-brand: #F5671D;
+$gradient-doc: #B08A3E;
+$gradient-image: #F5671D;
+$gradient-dev: #4F7A6D;
+$gradient-audio: #8E5A6E;
+$gradient-video: #9A6A4A;
+$gradient-ocr: #5B7391;
+$gradient-text: #6B7A4F;
+$gradient-code: #46596B;
 
-// 分类底色（首页快捷分类用）
-$cat-all: #EFF6FF;
-$cat-doc: #FEE2E2;
-$cat-image: #E0E7FF;
-$cat-audio: #FEF3C7;
-$cat-video: #FCE7F3;
-$cat-dev: #D1FAE5;
-$cat-office: #F3E8FF;
+// 分类底色（暖调浅底）
+$cat-all: #F6E7E0;
+$cat-doc: #F5EBD8;
+$cat-image: #F7E3DB;
+$cat-audio: #F3E4E9;
+$cat-video: #F2E4DA;
+$cat-dev: #E1EDE8;
+$cat-office: #EAEEE1;
 
-$text-primary: var(--text-primary, #111827);
-$text-secondary: var(--text-secondary, #4B5563);
-$text-tertiary: var(--text-tertiary, #9CA3AF);
+$text-primary: var(--text-primary, #17171A);
+$text-secondary: var(--text-secondary, #5C5C66);
+$text-tertiary: var(--text-tertiary, #9A9AA4);
 $text-on-brand: #FFFFFF;
 
-$border-color: var(--border-color, #E5E7EB);
-$divider-color: var(--divider-color, #F3F4F6);
-$border-strong: #D1D5DB;
+$border-color: var(--border-color, #ECECF2);
+$divider-color: var(--divider-color, #F2F2F7);
+$border-strong: #D8D8E0;
 
-// 语义色：成功 / 危险 / 警告（深浅色各一套，由 theme.js 切换）
-$color_success: var(--color-success, #10B981);
-$color_success_bg: var(--color-success-bg, #D1FAE5);
-$color_danger: var(--color-danger, #EF4444);
-$color_danger_bg: var(--color-danger-bg, #FEE2E2);
-$color_danger_soft: var(--color-danger-soft, #FEF2F2);
-$color_warning: var(--color-warning, #F59E0B);
-$color_warning_bg: var(--color-warning-bg, #FEF3C7);
-$color_warning_text: var(--color-warning-text, #92400E);
+// 语义色：成功 / 危险 / 警告（tone 与主色同族）
+$color_success: var(--color-success, #4AC580);
+$color_success_bg: var(--color-success-bg, #E8F7EF);
+$color_danger: var(--color-danger, #E14B3B);
+$color_danger_bg: var(--color-danger-bg, #FDECEA);
+$color_danger_soft: var(--color-danger-soft, #FEF6F5);
+$color_warning: var(--color-warning, #F0A93C);
+$color_warning_bg: var(--color-warning-bg, #FEF4E4);
+$color_warning_text: var(--color-warning-text, #8A5A12);
 
 // 圆角（按设计稿：8/12/16/9999 px = 16/24/32/9999 rpx）
 $radius-sm: 16rpx;     // 8px

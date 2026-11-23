@@ -107,15 +107,15 @@ const tagStyle = {
   strong: 'font-weight:700;',
   em: 'font-style:italic;',
   del: 'text-decoration:line-through;',
-  code: 'background:#F3F4F6;padding:1px 4px;border-radius:3px;font-family:monospace;font-size:12px;color:#BE185D;',
-  pre: 'background:#F6F8FA;border:1px solid #E5E7EB;border-radius:8px;padding:12px;overflow-x:auto;font-size:12.5px;',
-  blockquote: 'border-left:3px solid #3B82F6;padding:6px 12px;margin:12px 0;background:rgba(59,130,246,0.04);',
-  a: 'color:#3B82F6;text-decoration:none;',
-  hr: 'border:none;border-top:1px solid #E5E7EB;margin:16px 0;',
+  code: 'background:var(--bg-gray);padding:1px 4px;border-radius:3px;font-family:monospace;font-size:12px;color:#BE185D;',
+  pre: 'background:#F6F8FA;border:1px solid var(--border-color);border-radius:8px;padding:12px;overflow-x:auto;font-size:12.5px;',
+  blockquote: 'border-left:3px solid var(--brand-primary);padding:6px 12px;margin:12px 0;background:rgba(59,130,246,0.04);',
+  a: 'color:var(--brand-primary);text-decoration:none;',
+  hr: 'border:none;border-top:1px solid var(--border-color);margin:16px 0;',
   img: 'max-width:100%;height:auto;border-radius:6px;',
   table: 'border-collapse:collapse;width:100%;font-size:13px;',
-  th: 'border:1px solid #E5E7EB;padding:8px 12px;background:#F3F4F6;font-weight:700;text-align:left;',
-  td: 'border:1px solid #E5E7EB;padding:8px 12px;text-align:left;vertical-align:top;'
+  th: 'border:1px solid var(--border-color);padding:8px 12px;background:var(--bg-gray);font-weight:700;text-align:left;',
+  td: 'border:1px solid var(--border-color);padding:8px 12px;text-align:left;vertical-align:top;'
 }
 
 // markdown 源文本 → HTML（走 utils/markdown 单例渲染器，含 highlight / 任务列表 / 表格包裹）
