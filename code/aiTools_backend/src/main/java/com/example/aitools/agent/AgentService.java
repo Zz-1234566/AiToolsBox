@@ -23,13 +23,14 @@ public interface AgentService {
      * 结束时更新为成功 / 失败 / 已取消（含每一步的明细）。
      *
      * @param userId      发起用户
+     * @param sessionId   会话ID（可为空：为空时自动新建会话，并通过 {@code FRAME_SESSION} 下发）
      * @param goal        用户目标
      * @param attachments 附件（可为空）
      * @param modelCode   用户选定的模型编码（BYOK）；为空走默认凭据
      * @param onFrame     过程帧回调
      * @return 本次运行的 runId
      */
-    String run(Long userId, String goal, List<AgentAttachment> attachments,
+    String run(Long userId, String sessionId, String goal, List<AgentAttachment> attachments,
                String modelCode, Consumer<String> onFrame);
 
     /**
@@ -79,4 +80,6 @@ public interface AgentService {
     String FRAME_DONE = "完成";
     /** 帧前缀：本次运行的 runId（**第一帧**，前端据此才能调取消） */
     String FRAME_RUN = "运行";
+    /** 帧前缀：本次运行所属的会话ID（紧随 runId 下发，前端据此记录/刷新侧边栏） */
+    String FRAME_SESSION = "会话";
 }

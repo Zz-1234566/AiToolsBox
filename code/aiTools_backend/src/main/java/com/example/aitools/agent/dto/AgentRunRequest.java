@@ -16,6 +16,9 @@ import java.util.List;
 @Data
 public class AgentRunRequest {
 
+    /** 会话ID（为空则新建一个会话） */
+    private String sessionId;
+
     /** 用户目标 */
     private String goal;
 

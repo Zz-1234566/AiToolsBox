@@ -81,13 +81,25 @@ public class AgentServiceImpl implements AgentService {
      */
     private final Map<String, AtomicBoolean> runningAgents = new ConcurrentHashMap<>();
 
+    /** 会话服务：把每次运行挂到会话上，并注入历史上下文 */
+    private final com.example.aitools.service.AgentSessionService agentSessionService;
+
     @Override
-    public String run(Long userId, String goal, List<AgentAttachment> attachments,
+    public String run(Long userId, String sessionId, String goal, List<AgentAttachment> attachments,
                       String modelCode, Consumer<String> onFrame) {
         if (goal == null || goal.isBlank()) {
             throw ErrorFactory.of(com.example.aitools.common.ResultCode.PARAM_MISSING, "请输入你的目标");
         }
         long start = System.currentTimeMillis();
+
+        // 0) 会话：为空则新建；同时把本次目标落成一条 user 消息
+        com.example.aitools.entity.AgentSession session = sessionId == null || sessionId.isBlank()
+                ? createAndGetSession(userId)
+                : agentSessionService.requireSession(userId, sessionId);
+        agentSessionService.autoTitle(session, goal);
+        agentSessionService.appendMessage(session, "user", goal, null);
+        // 本次目标刚写入的序号：注入历史时要排除它（下面会单独作为本轮 user 消息加入）
+        int currentGoalSeq = session.getMessageCount() == null ? 0 : session.getMessageCount();
 
         // 0) 先建「运行中」记录：这样即使进程被 kill / 用户关页面，
         //    也留下一条「运行中」的记录（可被识别为异常中断），而不是什么都查不到
@@ -96,27 +108,39 @@ public class AgentServiceImpl implements AgentService {
         runningAgents.put(runId, cancelFlag);
         // 首帧就把 runId 下发：前端要靠它才能调取消（取消接口的入参就是 runId）
         onFrame.accept(frame(FRAME_RUN, runId));
+        // 会话ID：前端据此记录当前会话、刷新侧边栏
+        onFrame.accept(frame(FRAME_SESSION, session.getSessionId()));
 
         // 1) 工具清单（DB 生成）+ system 提示词
         List<AgentToolCatalog.AgentTool> tools = catalog.listTools();
         String systemPrompt = promptBuilder.buildSystemPrompt(tools, attachments);
 
-        // 2) 多轮上下文：system + 目标，之后每轮追加 assistant(动作) + user(工具结果)
+        // 2) 多轮上下文：system +（历史摘要）+ 历史原文 + 本次目标
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(message("system", systemPrompt));
+        appendHistoryContext(messages, userId, session, currentGoalSeq);
         messages.add(message("user", goal));
 
         // 3) 凭据（BYOK：用户自己的模型 Key 优先）
         ResolvedCredential cred = resolveCred(userId, modelCode);
 
+        java.util.concurrent.atomic.AtomicReference<String> finalAnswer = new java.util.concurrent.atomic.AtomicReference<>("");
         try {
-            return doRun(userId, runId, messages, attachments, cred, cancelFlag, onFrame);
+            doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, onFrame);
+            String answer = finalAnswer.get();
+            // 成功：把最终答案落成一条 assistant 消息（meta 里带运行信息，供回放）
+            agentSessionService.appendMessage(session, "assistant", answer,
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start));
+            return answer;
         } catch (Exception e) {
             // 兜底：SSE 断开（用户关页面）会抛 IOException，
             // 这时运行记录不能停在「运行中」—— 标成失败，列表里能看出这次没跑完
             runningAgents.remove(runId);
-            failRunRecord(runId, "运行中断：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()),
-                    new ArrayList<>(), start);
+            String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            failRunRecord(runId, "运行中断：" + reason, new ArrayList<>(), start);
+            // 失败也落一条 assistant 消息，保证回放时上下文完整
+            agentSessionService.appendMessage(session, "assistant", "[运行中断] " + reason,
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start));
             throw e;
         }
     }
@@ -128,6 +152,7 @@ public class AgentServiceImpl implements AgentService {
                          List<AgentAttachment> attachments,
                          ResolvedCredential cred,
                          AtomicBoolean cancelFlag,
+                         java.util.concurrent.atomic.AtomicReference<String> finalAnswer,
                          Consumer<String> onFrame) {
         long start = System.currentTimeMillis();
         List<AgentStep> steps = new ArrayList<>();
@@ -189,6 +214,9 @@ public class AgentServiceImpl implements AgentService {
                 onFrame.accept(frame(FRAME_ANSWER, ""));
                 onFrame.accept(action.getOutput());
                 onFrame.accept(frame(FRAME_DONE, ""));
+                if (finalAnswer != null) {
+                    finalAnswer.set(action.getOutput() == null ? "" : action.getOutput());
+                }
                 completeRunRecord(runId, action.getOutput(), steps, start);
                 runningAgents.remove(runId);
                 log.info("[agent] 完成 runId={} step={} cost={}ms", runId, step, System.currentTimeMillis() - start);
@@ -556,6 +584,41 @@ public class AgentServiceImpl implements AgentService {
     }
 
     /** 过程帧：{@code --- [内容] ---}（与项目现有 SSE 标记格式一致） */
+    /** 新建会话并返回 */
+    private com.example.aitools.entity.AgentSession createAndGetSession(Long userId) {
+        com.example.aitools.vo.AgentSessionVO vo = agentSessionService.create(userId);
+        return agentSessionService.requireSession(userId, vo.getSessionId());
+    }
+
+    /** 把历史消息注入上下文：摘要（若有） + summarizedSeq 之后的历史原文 */
+    private void appendHistoryContext(List<Map<String, String>> messages, Long userId,
+                                      com.example.aitools.entity.AgentSession session, int currentGoalSeq) {
+        if (session.getSummary() != null && !session.getSummary().isBlank()) {
+            messages.add(message("system", "【本会话此前对话摘要】\n" + session.getSummary()));
+        }
+        List<com.example.aitools.vo.AgentMessageVO> history =
+                agentSessionService.messages(userId, session.getSessionId(), 50);
+        int summarized = session.getSummarizedSeq() == null ? 0 : session.getSummarizedSeq();
+        for (com.example.aitools.vo.AgentMessageVO h : history) {
+            if (h.getSeq() == null || h.getSeq() <= summarized) continue;
+            // 本次目标单独作为最后一条 user 消息加入，这里排除
+            if (h.getSeq() >= currentGoalSeq) continue;
+            messages.add(message(h.getRole(), h.getContent()));
+        }
+    }
+
+    /** assistant 消息的 meta（运行信息，供回放展示） */
+    private String buildAssistantMeta(String runId, long durationMs) {
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("runId", runId);
+        meta.put("duration", durationMs);
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(meta);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
      * 打印当前上下文的估算占用。
      * <p>

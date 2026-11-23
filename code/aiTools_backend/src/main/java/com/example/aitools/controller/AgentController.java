@@ -80,7 +80,7 @@ public class AgentController {
         log.info("[agent] 用户 {} 发起运行，附件 {} 个", userId, attachments.size());
 
         return StreamHelper.stream(agentExecutor, emitter ->
-                agentService.run(userId, req.getGoal(), attachments, req.getModelCode(),
+                agentService.run(userId, req.getSessionId(), req.getGoal(), attachments, req.getModelCode(),
                         StreamHelper.asChunkConsumer(emitter)));
     }
 
