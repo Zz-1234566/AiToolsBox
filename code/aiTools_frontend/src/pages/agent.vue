@@ -110,6 +110,14 @@
       </view>
     </view>
 
+    <!-- 已上传附件（欢迎态：展示在输入条上方；发送后由对话气泡展示） -->
+    <view v-if="!started && attachments.length" class="attach-bar">
+      <view v-for="(a,i) in attachments" :key="a.url" class="attach-chip">
+        <text class="attach-chip__n">{{ a.name }}</text>
+        <text class="attach-chip__x" @click="removeAttachment(i)">×</text>
+      </view>
+    </view>
+
     <!-- 底部输入条（参考豆包：上方输入，下方工具 + 模型选择 + 发送） -->
     <view class="composer">
       <input v-model="goal" class="composer__input" placeholder="发消息或按住空格说话..." :disabled="running" />
@@ -454,6 +462,36 @@ $ref-sub: var(--text-secondary);
   padding: 20rpx 24rpx;
   border-radius: 24rpx 24rpx 6rpx 24rpx;
 }
+.attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  padding: 0 32rpx 14rpx;
+  flex-shrink: 0;
+}
+.attach-chip {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  max-width: 100%;
+  padding: 10rpx 18rpx;
+  border-radius: 999rpx;
+  background: var(--bg-gray);
+}
+.attach-chip__n {
+  font-size: 22rpx;
+  color: var(--text-secondary);
+  max-width: 380rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.attach-chip__x {
+  font-size: 26rpx;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+
 .files { display: flex; flex-direction: column; gap: 10rpx; align-items: flex-end; }
 .file {
   background: var(--bg-card); border-radius: 14rpx; padding: 12rpx 16rpx;
