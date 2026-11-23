@@ -1,6 +1,5 @@
 package com.example.aitools.service.impl;
 
-import com.example.aitools.ai.MinimaxClient;
 import com.example.aitools.ai.TencentAsrClient;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.AsrConfig;
@@ -21,19 +20,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * 录音转文本服务实现（双引擎）。
+ * 录音转文本服务实现。
  * <p>
- * 实现见 {@link TranscribeService}。
+ * 实现见 {@link TranscribeService}：统一走腾讯云录音文件识别。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class TranscribeServiceImpl implements TranscribeService {
 
-    private static final String TRANSCRIBE_PROMPT =
-            "请将这段录音准确转写为中文文字输出。不要修改用词、句序或标点；遇到说话人切换可用换行分隔。";
-
-    private final MinimaxClient minimaxClient;
     private final TencentAsrClient tencentAsrClient;
     private final AsrConfig asrConfig;
 
@@ -47,32 +42,22 @@ public class TranscribeServiceImpl implements TranscribeService {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频文件为空");
         }
-        String engineKey = resolveEngine(engine);
-        return ENGINE_TENCENT.equals(engineKey)
-                ? transcribeByTencent(file)
-                : transcribeByMinimax(file);
-    }
-
-    /**
-     * 解析引擎标识：入参优先，其次配置默认值，最后兜底 minimax。
-     * <p>
-     * 腾讯云通道未启用（enabled=false 或 appId 缺失）时也回落到 minimax，
-     * 避免前端传了 engine=tencent 但服务端未配置导致 500。
-     */
-    private String resolveEngine(String engine) {
-        String candidate = (engine == null || engine.isBlank())
-                ? asrConfig.getEngine() : engine.trim();
-        if (ENGINE_TENCENT.equalsIgnoreCase(candidate)) {
-            return tencentAsrClient.isEnabled() ? ENGINE_TENCENT : ENGINE_MINIMAX;
+        // 当前只有腾讯云一条通道：engine 参数仅为接口兼容保留
+        if (engine != null && !engine.isBlank() && !ENGINE_TENCENT.equalsIgnoreCase(engine.trim())) {
+            log.warn("[ASR] 忽略未知引擎标识 engine={}（当前仅支持 tencent）", engine);
         }
-        return ENGINE_MINIMAX;
+        if (!tencentAsrClient.isEnabled()) {
+            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(),
+                    "语音识别服务未启用，请检查腾讯云 ASR 配置");
+        }
+        return transcribeByTencent(file);
     }
 
     /**
      * 腾讯云通道：ffmpeg 转码为 16k mono mp3 -> CreateRecTask -> 轮询结果。
      * <p>
-     * 与 MiniMax 通道共用同一套 ffmpeg 转码（16kHz 单声道 mp3），
-     * 腾讯云对该格式识别稳定，且体积远小于 wav（wav 更容易撞 5MB base64 上限）。
+     * 统一转成 16kHz 单声道 mp3：腾讯云对该格式识别稳定，
+     * 且体积远小于 wav（wav 更容易撞 5MB base64 上限）。
      */
     private TranscribeResponse transcribeByTencent(MultipartFile file) {
         Path inputTemp = null;
@@ -100,58 +85,6 @@ public class TranscribeServiceImpl implements TranscribeService {
             throw e;
         } catch (Exception e) {
             log.error("[ASR-tencent] 转写失败", e);
-            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
-        } finally {
-            // 临时文件清理是 best-effort：删不掉（Windows 上文件被占用）不该影响转写结果。
-            // 但不能静默 —— 至少要能在日志里看到（静默失败规范豁免：清理失败不影响主流程）
-            if (inputTemp != null) try { Files.deleteIfExists(inputTemp); }
-            catch (IOException ignored) { log.debug("[ASR] 临时输入文件删除失败 path={}", inputTemp, ignored); }
-            if (outputTemp != null) try { Files.deleteIfExists(outputTemp); }
-            catch (IOException ignored) { log.debug("[ASR] 临时输出文件删除失败 path={}", outputTemp, ignored); }
-        }
-    }
-
-    /**
-     * MiniMax 通道（原有逻辑）：ffmpeg 转码为 16k mono mp3 -> MinimaxClient.chatAudio。
-     */
-    private TranscribeResponse transcribeByMinimax(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频文件为空");
-        }
-
-        Path inputTemp = null;
-        Path outputTemp = null;
-        try {
-            String safeName = file.getOriginalFilename() == null ? "audio.bin" : file.getOriginalFilename();
-            inputTemp = Files.createTempFile("asr_in_", "_" + sanitizeName(safeName));
-            // 用 getInputStream 落盘，而非 file.transferTo：
-            // 工作流场景传入的是 BatchFilePayload 的内存版 MultipartFile，
-            // 其 transferTo 抛 UnsupportedOperationException（仅真实 multipart 支持），
-            // 会导致工作流中「录音转写」节点必然失败。
-            try (java.io.InputStream in = file.getInputStream()) {
-                Files.copy(in, inputTemp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
-
-            // 1. ffmpeg 转码为 16k mono mp3（MiniMax chatAudio 支持）
-            outputTemp = Files.createTempFile("asr_out_", ".mp3");
-            boolean transcodeOk = transcodeToMp3(inputTemp.toFile(), outputTemp.toFile());
-            Path audioPath = transcodeOk ? outputTemp : inputTemp;
-            String mime = transcodeOk ? "audio/mpeg" : detectMime(safeName);
-
-            // 2. 读字节 + 调 MiniMax M3
-            byte[] audioBytes = Files.readAllBytes(audioPath);
-            String text = minimaxClient.chatAudio(TRANSCRIBE_PROMPT, audioBytes, mime);
-            if (text == null || text.isBlank()) {
-                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "未识别到语音内容，请检查录音后重试");
-            }
-            String formatted = text.trim();
-            log.info("[ASR-minimax] 转写成功 text-len={} transcode={}", formatted.length(), transcodeOk);
-            return new TranscribeResponse(formatted, null);
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("[ASR-minimax] 转写失败", e);
-            // 脱敏：ffmpeg 输出 / MiniMax HTTP 错误 / IO 路径只进日志
             throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
         } finally {
             // 临时文件清理是 best-effort：删不掉（Windows 上文件被占用）不该影响转写结果。
@@ -208,16 +141,6 @@ public class TranscribeServiceImpl implements TranscribeService {
             log.warn("[ASR-ffmpeg] 转码被中断");
             return false;
         }
-    }
-
-    private String detectMime(String filename) {
-        String lower = filename.toLowerCase();
-        if (lower.endsWith(".wav")) return "audio/wav";
-        if (lower.endsWith(".mp3")) return "audio/mpeg";
-        if (lower.endsWith(".m4a")) return "audio/mp4";
-        if (lower.endsWith(".aac")) return "audio/aac";
-        if (lower.endsWith(".amr")) return "audio/amr";
-        return "audio/mpeg";
     }
 
     private String sanitizeName(String name) {

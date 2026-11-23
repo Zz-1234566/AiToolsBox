@@ -320,4 +320,7 @@ public class Constants {
     public static final int AGENT_MAX_CONSECUTIVE_FAILURES = 2;
     /** 工具结果回灌上下文时的最大字符数（超长截断，防 token 爆炸） */
     public static final int AGENT_TOOL_RESULT_MAX_CHARS = 2000;
+
+    /** OpenCode Go 通道要求的客户端标识（Go 会拒绝通用 SDK / HTTP 库的 User-Agent） */
+    public static final String AI_CLIENT_USER_AGENT = "zhihui-toolbox/1.0";
 }

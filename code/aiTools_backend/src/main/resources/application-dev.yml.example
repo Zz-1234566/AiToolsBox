@@ -86,36 +86,39 @@ aitools:
   crypto:
     sys-ai-model-key: ${SYS_AI_MODEL_KEY:}
 
-# MiniMax 文本模型配置（办公类工具使用，OpenAI 兼容协议）
+# AI 模型配置（OpenAI 兼容协议，统一走 OpenCode Go 套餐）
 ai:
-  minimax-text:
-    # 官方 V2 文本接口（V2 明确标注为文本入口）
-    api-url: https://api.minimaxi.com/v1/text/chatcompletion_v2
-    api-key: ${AI_MINIMAX_TEXT_API_KEY:your-minimax-api-key}
-    model: MiniMax-M2.7
+
+  # 智能体（ReAct 循环）专用模型
+  # key 来自 .env 的 AI_OPENCODEGO_API_KEY；未配置时回退到数据库里的默认模型
+  agent:
+    api-url: ${AI_OPENCODEGO_API_URL:https://opencode.ai/inference/go/v1/chat/completions}
+    api-key: ${AI_OPENCODEGO_API_KEY:}
+    model: ${AI_OPENCODEGO_MODEL:deepseek-v4.1-flash}
+    timeout-seconds: 120
+
+  # 办公类工具 / 工作流节点（文本）
+  text:
+    api-url: ${AI_LLM_API_URL:https://opencode.ai/inference/go/v1/chat/completions}
+    api-key: ${AI_LLM_API_KEY:}
+    model: ${AI_LLM_MODEL:deepseek-v4.1-flash}
     timeout-seconds: 60
-  # MiniMax M3 多模态配置（AI 文件解读工具用）
-  minimax:
-    api-url: https://api.minimaxi.com/v1/chat/completions
-    api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
-    model: MiniMax-M3
+
+  # 多模态（AI 文件解读工具用）
+  vision:
+    api-url: ${AI_LLM_API_URL:https://opencode.ai/inference/go/v1/chat/completions}
+    api-key: ${AI_LLM_API_KEY:}
+    model: ${AI_LLM_MODEL:deepseek-v4.1-flash}
 
 
-# 录音转文本服务（MiniMax chatAudio + ffmpeg 转码）
+# 录音转文本服务（ffmpeg 转码 + 腾讯云语音识别）
 # ffmpeg 可执行文件路径：空时走 PATH 自动查找
 # Windows 推荐：D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
 # Linux/Mac 一般可直接用系统 PATH 的 ffmpeg
 asr:
-  # 默认转写引擎：minimax | tencent。前端可选覆盖，不传则用此值。
-  engine: ${ASR_ENGINE:minimax}
   ffmpeg-binary-path: ${ASR_FFMPEG_PATH:D:/ffmpeg_extract/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe}
   sample-rate: 16000
   channels: 1
-  # MiniMax 官方语音识别接口（/v1/chat/completions 不支持音频输入）
-  api-url: ${ASR_API_URL:https://api.minimaxi.com/v1/speech_to_text}
-  api-key: ${AI_MINIMAX_API_KEY:your-minimax-api-key}
-  model: asr-1.0
-  language: zh
   # ── 腾讯云语音识别通道（CreateRecTask 录音文件识别）──
   # secret-id / secret-key / region 留空时自动复用 cos.* 同一套凭证
   tencent:

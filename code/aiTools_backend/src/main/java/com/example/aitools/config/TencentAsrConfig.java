@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  * 密钥默认复用 COS 同一套（与 {@link com.example.aitools.config.OcrConfig} 同样的复用策略），
  * 仅 {@code appId} 为 ASR 专用，需从腾讯云语音识别控制台「账户信息」获取。
  * <p>
- * 注意：{@code enabled=false} 时不参与引擎选择，录音转写仍走 MiniMax 通道。
+ * 注意：{@code enabled=false} 时不参与引擎选择，录音转写将直接报错（无可用通道）。
  */
 @Data
 @Component

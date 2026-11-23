@@ -23,7 +23,7 @@ public class AiModel implements Serializable {
 
     private String apiModel;
 
-    /** 服务商标识（minimax/tencent/openai）—— v1.2026-10-12 新增 */
+    /** 服务商标识（模型服务商标识）—— v1.2026-10-12 新增 */
     private String provider;
 
     /** 能力标签（text/vision/asr/ocr）—— v1.2026-10-12 新增 */

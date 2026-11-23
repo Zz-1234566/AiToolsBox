@@ -16,7 +16,7 @@ import org.springframework.web.client.RestTemplate;
 @Slf4j
 @Data
 @Component
-@ConfigurationProperties(prefix = "ai.minimax-text")
+@ConfigurationProperties(prefix = "ai.text")
 public class AiConfig {
     private String apiUrl;
     private String apiKey;

@@ -370,7 +370,7 @@ String route = handlerFactory.get("sse-text-single").decideRoute(
     }
 
     /**
-     * 批量 AI 文件解读（1-10 个文件，MiniMax M3 多模态）：立即建任务 + 异步处理 + 立即返回 batchId
+     * 批量 AI 文件解读（1-10 个文件，多模态）：立即建任务 + 异步处理 + 立即返回 batchId
      * <p>原 AiFileReaderController 已合并至此；前端 /tool-custom.vue 继续调此 URL。
      */
     @PostMapping(value = "/ai-file-reader/batch-upload", produces = "application/json;charset=UTF-8")

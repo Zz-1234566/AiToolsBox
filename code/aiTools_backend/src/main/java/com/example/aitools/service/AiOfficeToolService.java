@@ -84,7 +84,7 @@ public interface AiOfficeToolService {
     com.example.aitools.dto.BatchProcessResult aiOcrBatchStream(Long userId, List<BatchFilePayload> files, String promptFormat, String promptGenerate, Long promptId, String batchId);
 
     /**
-     * 批量 AI 文件解读（B2）：MiniMax M3 多模态
+     * 批量 AI 文件解读（B2）：多模态模型
      */
     com.example.aitools.dto.BatchProcessResult aiFileReaderBatchStream(Long userId, List<BatchFilePayload> files, String prompt, String batchId);
 

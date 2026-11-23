@@ -9,7 +9,7 @@ package com.example.aitools.ai;
  * @param keyResolverKey   明文 API Key（已解密或显式 k）
  * @param apiUrl          API 入口
  * @param apiModel        实际模型名（可能与 modelCode 不同）
- * @param provider        服务商标识（minimax / tencent / openai）—— 仅日志用
+ * @param provider        服务商标识（模型服务商标识）—— 仅日志用
  * @param source          凭据来源（override / user_default / system_default）—— 仅日志用
  */
 public record ResolvedCredential(

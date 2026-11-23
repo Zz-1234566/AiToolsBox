@@ -610,7 +610,7 @@ public class AiOfficeToolServiceImpl implements AiOfficeToolService {
     }
 
     /**
-     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + MiniMax ASR。
+     * 批量录音转写（B2）：逐文件 ffmpeg 转码 + 腾讯云 ASR。
      * <p>串行执行（避免触发上游限流）；单文件失败不影响整体；每完成一个立即 appendItem。
      */
     @Override

@@ -2,7 +2,6 @@ package com.example.aitools.ai;
 
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.config.AiVisionConfig;
-import com.example.aitools.config.AsrConfig;
 import com.example.aitools.exception.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,16 +16,16 @@ import java.util.*;
 import com.example.aitools.common.MimeTypes;
 
 /**
- * MiniMax 客户端：多模态（图片/视频/文本）走 OpenAI 兼容 chat/completions；
- * 音频转写走官方语音识别接口 /v1/speech_to_text。
+ * AI 视觉客户端：多模态（图片/视频）与纯文本走 OpenAI 兼容 chat/completions。
+ * <p>
+ * 端点与凭据来自 {@code ai.vision.*}（默认指向 OpenCode Go）。
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class MinimaxClient {
+public class AiVisionClient {
 
     private final AiVisionConfig visionConfig;
-    private final AsrConfig asrConfig;
     private final ObjectMapper objectMapper;
 
     /**
@@ -99,6 +98,9 @@ public class MinimaxClient {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setRequestProperty("Content-Type", "application/json");
+            // OpenCode Go 通道要求：客户端标识 + 会话 id
+            conn.setRequestProperty("User-Agent", com.example.aitools.common.Constants.AI_CLIENT_USER_AGENT);
+            conn.setRequestProperty("x-opencode-session", java.util.UUID.randomUUID().toString());
             conn.setDoOutput(true);
             applyTimeout(conn);
             conn.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
@@ -110,108 +112,23 @@ public class MinimaxClient {
             }
 
             if (code != 200) {
-                log.error("MiniMax M3 调用失败 status={} body={}", code, resp);
-                throw new RuntimeException("MiniMax M3 调用失败：" + code);
+                log.error("AI 模型 调用失败 status={} body={}", code, resp);
+                throw new RuntimeException("AI 模型 调用失败：" + code);
             }
 
             JsonNode root = objectMapper.readTree(resp);
             JsonNode choices = root.get("choices");
             if (choices == null || choices.isEmpty()) {
-                throw new RuntimeException("MiniMax M3 返回为空");
+                throw new RuntimeException("AI 模型 返回为空");
             }
             JsonNode message = choices.get(0).get("message");
             String content = message.get("content").asText();
-            log.debug("MiniMax M3 响应 length={}", content == null ? 0 : content.length());
+            log.debug("AI 模型 响应 length={}", content == null ? 0 : content.length());
             return content;
 
         } catch (IOException e) {
-            log.error("MiniMax M3 调用异常", e);
+            log.error("AI 模型 调用异常", e);
             throw new RuntimeException("AI 服务调用失败，请稍后重试", e);
-        }
-    }
-
-    /**
-     * 音频转文本：调用 MiniMax 官方语音识别接口 {@code POST /v1/speech_to_text}。
-     * <p>
-     * <b>重要</b>：{@code /v1/chat/completions}（chatAudio 旧实现走的端点）**不支持音频输入**，
-     * 传入 {@code input_audio} 会被服务端静默忽略，表现为模型回复"没有收到录音文件"。
-     * 官方 ASR 接口要求 multipart/form-data，参数 {@code model=asr-1.0} + {@code file=音频文件}。
-     *
-     * @param systemPrompt 忽略（官方 ASR 不接受自定义提示词，仅做识别）
-     * @param audioBytes   音频字节
-     * @param mimeType     音频 MIME，如 audio/mpeg（用于推断扩展名）
-     * @return 识别出的文本
-     */
-    public String chatAudio(String systemPrompt, byte[] audioBytes, String mimeType) {
-        return chatAudio(systemPrompt, audioBytes, mimeType, null);
-    }
-
-    public String chatAudio(String systemPrompt, byte[] audioBytes, String mimeType, ResolvedCredential cred) {
-        if (audioBytes == null || audioBytes.length == 0) {
-            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), "音频内容为空");
-        }
-        try {
-            String boundary = "----AiToolsBox" + UUID.randomUUID().toString().replace("-", "");
-            String fileName = "audio" + extensionOf(mimeType, audioBytes);
-
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            writeFormField(buf, boundary, "model", asrConfig.getModel());
-            writeFormField(buf, boundary, "response_format", "json");
-            // 文件字段
-            buf.write(("--" + boundary + "\r\n"
-                    + "Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n"
-                    + "Content-Type: " + (mimeType == null ? MimeTypes.OCTET_STREAM : mimeType) + "\r\n\r\n")
-                    .getBytes(StandardCharsets.UTF_8));
-            buf.write(audioBytes);
-            buf.write("\r\n".getBytes(StandardCharsets.UTF_8));
-            buf.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-            byte[] body = buf.toByteArray();
-
-            String apiKey;
-            String url;
-            if (cred != null && cred.keyResolverKey() != null) {
-                apiKey = cred.keyResolverKey();
-                url = cred.apiUrl() != null ? cred.apiUrl() : asrConfig.getApiUrl();
-            } else {
-                apiKey = (asrConfig.getApiKey() == null || asrConfig.getApiKey().isBlank())
-                        ? visionConfig.getApiKey() : asrConfig.getApiKey();
-                url = asrConfig.getApiUrl();
-            }
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                    new java.net.URL(url).openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-            if (asrConfig.getLanguage() != null && !asrConfig.getLanguage().isBlank()) {
-                conn.setRequestProperty("language", asrConfig.getLanguage());
-            }
-            conn.setConnectTimeout(15_000);
-            conn.setReadTimeout(300_000);
-            conn.setDoOutput(true);
-            conn.getOutputStream().write(body);
-
-            int code = conn.getResponseCode();
-            String resp = readAll(code == 200 ? conn.getInputStream() : conn.getErrorStream());
-            if (code != 200) {
-                // 只进日志：响应体可能含 trace_id 等内部信息
-                log.error("MiniMax ASR 调用失败 status={} body={}", code, resp);
-                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
-            }
-            JsonNode root = objectMapper.readTree(resp);
-            JsonNode textNode = root.get("text");
-            if (textNode == null || textNode.isNull()) {
-                log.error("MiniMax ASR 返回缺少 text 字段: {}", resp);
-                throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
-            }
-            String text = textNode.asText();
-            log.info("MiniMax ASR 成功 text-len={} duration={}", text.length(),
-                    root.has("duration") ? root.get("duration").asText() : "-");
-            return text;
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("MiniMax ASR 调用异常", e);
-            throw new BusinessException(ResultCode.AUDIO_FAILED.getCode(), ResultCode.AUDIO_FAILED.getMessage());
         }
     }
 
@@ -222,58 +139,11 @@ public class MinimaxClient {
      * （TCP 未断开但不再发数据）时会永久阻塞，逐个占满 batchExecutor 线程，
      * 最终 AI 功能整体不可用，且不抛异常、不打日志。
      * <p>
-     * 超时值取自 {@link AiVisionConfig}（{@code ai.minimax.*-timeout-seconds}），
-     * 与 {@code chatAudio} 同为配置驱动，不硬编码。
+     * 超时值取自 {@link AiVisionConfig}（{@code ai.vision.*-timeout-seconds}），配置驱动，不硬编码。
      */
     private void applyTimeout(java.net.HttpURLConnection conn) {
         conn.setConnectTimeout(Math.max(visionConfig.getConnectTimeoutSeconds(), 1) * 1000);
         conn.setReadTimeout(Math.max(visionConfig.getReadTimeoutSeconds(), 1) * 1000);
-    }
-
-    /** 写 multipart 文本字段 */
-    private void writeFormField(ByteArrayOutputStream buf, String boundary, String name, String value) throws IOException {
-        buf.write(("--" + boundary + "\r\n"
-                + "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n"
-                + value + "\r\n").getBytes(StandardCharsets.UTF_8));
-    }
-
-    /** 读取输入流全部内容 */
-    private String readAll(java.io.InputStream in) throws IOException {
-        if (in == null) return "";
-        try (in; ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            byte[] b = new byte[8192];
-            int n;
-            while ((n = in.read(b)) != -1) out.write(b, 0, n);
-            return out.toString(StandardCharsets.UTF_8);
-        }
-    }
-
-    /** 按 MIME/文件头推断音频扩展名 */
-    private String extensionOf(String mimeType, byte[] bytes) {
-        String fmt = normalizeAudioFormat(mimeType, bytes);
-        return "." + fmt;
-    }
-
-    /**
-     * 归一化为 MiniMax audio format（仅 mp3 / wav 两值）
-     */
-    private String normalizeAudioFormat(String mimeType, byte[] bytes) {
-        if (mimeType != null) {
-            String lower = mimeType.toLowerCase();
-            if (lower.contains("wav")) return "wav";
-            if (lower.contains("mp3") || lower.contains("mpeg")) return "mp3";
-        }
-        // 备选：按文件头检测
-        if (bytes.length >= 4) {
-            // RIFF...WAV
-            if (bytes[0] == (byte) 0x52 && bytes[1] == (byte) 0x49 && bytes[2] == (byte) 0x46 && bytes[3] == (byte) 0x46) {
-                return "wav";
-            }
-            // ID3 或 MP3 sync 0xFFE
-            if (bytes[0] == (byte) 0x49 && bytes[1] == (byte) 0x44 && bytes[2] == (byte) 0x33) return "mp3";
-            if ((bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xE0) == 0xE0) return "mp3";
-        }
-        return "mp3";
     }
 
     /**
@@ -313,6 +183,9 @@ public class MinimaxClient {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setRequestProperty("Content-Type", "application/json");
+            // OpenCode Go 通道要求：客户端标识 + 会话 id
+            conn.setRequestProperty("User-Agent", com.example.aitools.common.Constants.AI_CLIENT_USER_AGENT);
+            conn.setRequestProperty("x-opencode-session", java.util.UUID.randomUUID().toString());
             conn.setDoOutput(true);
             applyTimeout(conn);
             conn.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
@@ -324,14 +197,14 @@ public class MinimaxClient {
             }
 
             if (code != 200) {
-                log.error("MiniMax M3 文本调用失败 status={} body={}", code, resp);
-                throw new RuntimeException("MiniMax M3 调用失败：" + code);
+                log.error("AI 模型 文本调用失败 status={} body={}", code, resp);
+                throw new RuntimeException("AI 模型 调用失败：" + code);
             }
 
             JsonNode root = objectMapper.readTree(resp);
             JsonNode choices = root.get("choices");
             if (choices == null || choices.isEmpty()) {
-                throw new RuntimeException("MiniMax M3 返回为空");
+                throw new RuntimeException("AI 模型 返回为空");
             }
             JsonNode message = choices.get(0).get("message");
             return message.get("content").asText();
@@ -339,11 +212,11 @@ public class MinimaxClient {
         } catch (java.net.SocketTimeoutException e) {
             // 超时单独分支：明确告知是超时而非通用失败，便于区分「AI 慢」和「AI 挂了」。
             // 仍包成 RuntimeException，与既有失败路径保持一致，由调用方按文件粒度兜底。
-            log.error("MiniMax M3 调用超时（connect={}s, read={}s）",
+            log.error("AI 模型 调用超时（connect={}s, read={}s）",
                     visionConfig.getConnectTimeoutSeconds(), visionConfig.getReadTimeoutSeconds(), e);
             throw new RuntimeException("AI 服务响应超时，请稍后重试", e);
         } catch (IOException e) {
-            log.error("MiniMax M3 调用异常", e);
+            log.error("AI 模型 调用异常", e);
             throw new RuntimeException("AI 服务调用失败，请稍后重试", e);
         }
     }

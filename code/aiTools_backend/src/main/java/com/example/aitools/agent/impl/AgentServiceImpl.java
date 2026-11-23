@@ -8,6 +8,7 @@ import com.example.aitools.agent.AgentService;
 import com.example.aitools.agent.AgentToolCatalog;
 import com.example.aitools.agent.dto.AgentStep;
 import com.example.aitools.common.AgentRunStatusEnum;
+import com.example.aitools.config.AgentAiConfig;
 import com.example.aitools.entity.AgentRun;
 import com.example.aitools.mapper.AgentRunMapper;
 import com.example.aitools.vo.AgentRunVO;
@@ -57,6 +58,9 @@ public class AgentServiceImpl implements AgentService {
 
     /** 时间格式化（与工作流运行记录同口径） */
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /** 智能体专用模型配置（环境变量优先，见 AgentAiConfig） */
+    private final AgentAiConfig agentAiConfig;
 
     /** JSON 序列化（步骤落库 / 解析） */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
@@ -507,6 +511,15 @@ public class AgentServiceImpl implements AgentService {
             if (modelCode != null && !modelCode.isBlank()) {
                 credentialResolver.requireCapability(modelCode, "text");
                 return credentialResolver.resolveByModelCode(userId, modelCode, null);
+            }
+            // 未选模型：环境变量里配了智能体专用 key 就直接用（OpenCode Go 套餐）
+            if (agentAiConfig != null && agentAiConfig.isEnabled()) {
+                return new ResolvedCredential(
+                        agentAiConfig.getApiKey(),
+                        agentAiConfig.getApiUrl(),
+                        agentAiConfig.getModel(),
+                        "opencode",
+                        "env_default");
             }
             return credentialResolver.resolve(userId, "text", null);
         } catch (BusinessException e) {

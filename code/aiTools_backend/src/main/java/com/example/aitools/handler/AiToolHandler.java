@@ -38,7 +38,7 @@ public interface AiToolHandler {
      * <p>
      * 决策顺序：
      * <ol>
-     *     <li>AI 决策（复用 ai.minimax-text.* 模型）：用严格 JSON 指令约束输出；解析失败则进入 2</li>
+     *     <li>AI 决策（复用 ai.text.* 模型）：用严格 JSON 指令约束输出；解析失败则进入 2</li>
      *     <li>关键词匹配兜底：含 json/结构化/表格 → json，含 markdown/长文本 → sse</li>
      *     <li>默认返回 sse（会议纪要99% 是叙述，反业务直觉默认 json 已被历史踩过坑）</li>
      * </ol>

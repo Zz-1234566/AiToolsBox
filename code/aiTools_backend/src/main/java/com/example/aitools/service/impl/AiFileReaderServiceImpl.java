@@ -1,6 +1,6 @@
 package com.example.aitools.service.impl;
 
-import com.example.aitools.ai.MinimaxClient;
+import com.example.aitools.ai.AiVisionClient;
 import com.example.aitools.common.Constants;
 import com.example.aitools.common.ResultCode;
 import com.example.aitools.dto.BatchFilePayload;
@@ -20,7 +20,7 @@ import java.io.IOException;
 import java.util.*;
 
 /**
- * AI 文件解读服务实现（MiniMax M3 多模态）
+ * AI 文件解读服务实现（多模态）
  * <p>图片 → base64 发 M3；PDF → 转图片逐页发 M3；Word/TXT → 抽文本发 M3
  */
 @Slf4j
@@ -40,7 +40,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
      */
     private static final int MAX_PDF_PAGES = 20;
 
-    private final MinimaxClient minimaxClient;
+    private final AiVisionClient aiVisionClient;
     private final DocumentParser documentParser;
 
     @Override
@@ -63,7 +63,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
     }
 
     private String readImage(BatchFilePayload payload, String prompt) {
-        return minimaxClient.chatImage(prompt, payload.getContent());
+        return aiVisionClient.chatImage(prompt, payload.getContent());
     }
 
     private String readPdfAsImages(BatchFilePayload payload, String prompt) {
@@ -71,7 +71,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
         if (pageImages.isEmpty()) {
             throw new BusinessException(ResultCode.DOC_PARSE_FAILED.getCode(), "PDF 解析失败，未能提取到有效页面");
         }
-        return minimaxClient.chatImages(prompt, pageImages);
+        return aiVisionClient.chatImages(prompt, pageImages);
     }
 
     private String readDocument(BatchFilePayload payload, String prompt) {
@@ -80,7 +80,7 @@ public class AiFileReaderServiceImpl implements AiFileReaderService {
             throw new BusinessException(ResultCode.DOC_EMPTY.getCode(), "文档内容为空或解析失败");
         }
         String systemPrompt = "你是一个专业的文档解读助手。请根据提供的文档内容，用结构化的方式解读和总结。";
-        return minimaxClient.chatText(systemPrompt, prompt + "\n\n文档内容：\n" + text);
+        return aiVisionClient.chatText(systemPrompt, prompt + "\n\n文档内容：\n" + text);
     }
 
     /**

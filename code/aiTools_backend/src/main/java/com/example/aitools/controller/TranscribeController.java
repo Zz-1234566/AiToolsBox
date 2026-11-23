@@ -60,7 +60,7 @@ public class TranscribeController {
     /**
      * 单文件录音转写。
      *
-     * @param engine 转写引擎：minimax | tencent。不传则用 {@code asr.engine} 配置值（默认 minimax）
+     * @param engine 引擎标识（仅为接口兼容保留；当前固定走腾讯云通道）
      */
     @PostMapping(value = "/transcribe", consumes = "multipart/form-data")
     public Result<TranscribeResponse> transcribe(@RequestParam("file") MultipartFile file,

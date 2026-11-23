@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 
 /**
  * 文本模型 API 客户端（OpenAI 兼容接口），用于办公类 AI 工具。
- * 默认走 MiniMax 文本模型，可由 application*.yml 中 ai.minimax-text.* 切换。
+ * 端点/模型由 application*.yml 中 ai.text.* 配置（默认指向 OpenCode Go）。
  * <p>
  * 支持 BYOK：调用方传入 {@link ResolvedCredential}（如 user-default）可覆盖 .env 默认 key/url/model。
  */
@@ -35,7 +35,7 @@ public class AiClient {
     private final ObjectMapper objectMapper;
 
     /**
-     * 带超时的 RestTemplate：连接 10s、读 {ai.minimax-text.timeout-seconds}（默认 60s）。
+     * 带超时的 RestTemplate：连接 10s、读 {ai.text.timeout-seconds}（默认 60s）。
      */
     private final RestTemplate aiRestTemplate;
 
@@ -87,7 +87,7 @@ public class AiClient {
 
             // 构建请求体（OpenAI 兼容格式）。
             // thinking.type=disabled：官方推荐做法，禁用思考以减少 token 消耗与流式首字延迟；
-            // 视觉客户端 MinimaxClient 同样处理，保持一致。
+            // 视觉客户端 AiVisionClient 同样处理，保持一致。
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", cred != null && cred.apiModel() != null ? cred.apiModel() : aiConfig.getModel());
             requestBody.put("stream", false);
@@ -99,6 +99,9 @@ public class AiClient {
             headers.setContentType(MediaType.APPLICATION_JSON);
             String apiKey = cred != null && cred.keyResolverKey() != null ? cred.keyResolverKey() : aiConfig.getApiKey();
             headers.setBearerAuth(apiKey);
+            // OpenCode Go 通道要求：客户端标识 + 会话 id（缺失会被 400 MissingSessionID 拒绝）
+            headers.set("User-Agent", com.example.aitools.common.Constants.AI_CLIENT_USER_AGENT);
+            headers.set("x-opencode-session", java.util.UUID.randomUUID().toString());
 
             HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(requestBody), headers);
 
@@ -186,6 +189,9 @@ public class AiClient {
             headers.setContentType(MediaType.APPLICATION_JSON);
             String apiKey = cred != null && cred.keyResolverKey() != null ? cred.keyResolverKey() : aiConfig.getApiKey();
             headers.setBearerAuth(apiKey);
+            // OpenCode Go 通道要求：客户端标识 + 会话 id
+            headers.set("User-Agent", com.example.aitools.common.Constants.AI_CLIENT_USER_AGENT);
+            headers.set("x-opencode-session", java.util.UUID.randomUUID().toString());
 
             String url = cred != null && cred.apiUrl() != null ? cred.apiUrl() : aiConfig.getApiUrl();
 
