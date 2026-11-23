@@ -140,7 +140,7 @@ const cancelProcess = () => {
   align-items: center;
   height: 88rpx;
   background: var(--bg-card, #FFFFFF);
-  border-bottom: 1rpx solid var(--border-light, #F3F4F6);
+  border-bottom: 1rpx solid var(--border-light, var(--border-color));
   position: relative;
 }
 .topbar__back {
@@ -196,7 +196,7 @@ const cancelProcess = () => {
 .proc-preview__inner {
   width: 100%;
   height: 360rpx;
-  background: linear-gradient(135deg, #F3F4F6, #E5E7EB);
+  background: linear-gradient(135deg, #F3F4F6, var(--border-color));
   border-radius: 16rpx;
   display: flex;
   align-items: center;
@@ -231,8 +231,8 @@ const cancelProcess = () => {
 .spinner {
   width: 48rpx;
   height: 48rpx;
-  border: 4rpx solid #E5E7EB;
-  border-top-color: var(--brand-primary, #3B82F6);
+  border: 4rpx solid var(--border-color);
+  border-top-color: var(--brand-primary, var(--brand-primary));
   border-radius: 50%;
   animation: spin 0.9s linear infinite;
 }
@@ -261,7 +261,7 @@ const cancelProcess = () => {
 }
 .proc-progress__fill {
   height: 100%;
-  background: var(--gradient-brand, linear-gradient(135deg, #3B82F6 0%, #6366F1 100%));
+  background: var(--gradient-brand, linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%));
   transition: width 0.3s ease;
 }
 .proc-progress__num {
@@ -294,7 +294,7 @@ const cancelProcess = () => {
   flex-shrink: 0;
 }
 .proc-step--done .proc-step__icon {
-  background: var(--color-success, #10B981);
+  background: var(--color-success, var(--color-success));
   color: #fff;
 }
 .proc-step--active .proc-step__icon {
@@ -325,17 +325,17 @@ const cancelProcess = () => {
   color: var(--text-tertiary, #9CA3AF);
 }
 .proc-step--done .proc-step__status {
-  color: var(--color-success, #10B981);
+  color: var(--color-success, var(--color-success));
 }
 .proc-step--active .proc-step__status {
-  color: var(--brand-primary, #3B82F6);
+  color: var(--brand-primary, var(--brand-primary));
 }
 
 /* ===== Bottom Action ===== */
 .bottom-action {
   padding: 24rpx 32rpx;
   background: var(--bg-card, #FFFFFF);
-  border-top: 1rpx solid var(--border-light, #F3F4F6);
+  border-top: 1rpx solid var(--border-light, var(--border-color));
 }
 .btn {
   display: flex;

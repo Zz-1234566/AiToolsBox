@@ -223,7 +223,7 @@ export const audioBatchUpload = (options) => {
  * @param {String|Blob|File} filePath
  * @param {Object} [opts]
  * @param {String} [opts.fileName] - H5 端传 Blob 时需要的文件名（从 dataURL 解析或外部传入）
- * @param {String} [opts.engine]   - 转写引擎 minimax | tencent，不传则用后端默认值
+ * @param {String} [opts.engine]   - 引擎标识（仅接口兼容保留；后端固定走腾讯云）
  */
 export const transcribeMeeting = (filePath, opts = {}) => {
   // #ifdef H5
@@ -263,7 +263,7 @@ async function transcribeMeetingH5(filePath, opts = {}) {
 
   const fd = new FormData()
   fd.append('file', blob, fileName)
-  // 转写引擎：minimax | tencent。不传则后端用 asr.engine 配置值（默认 minimax）
+  // 引擎标识：仅为接口兼容保留，后端固定走腾讯云通道
   if (opts.engine) {
     fd.append('engine', opts.engine)
   }

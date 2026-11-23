@@ -54,7 +54,9 @@ export const TOOL_CAPABILITY_MAP = {
   'meeting-minutes': 'text',
   'doc-keypoint-extract': 'text',
   'document-summary': 'text',
-  'audio-transcribe': 'asr',
+  // audio-transcribe 不走用户模型：录音转写固定走服务端腾讯云 ASR（ASR_ENGINE=tencent），
+  // OpenCode Go 套餐不含语音识别模型。移除映射 = 页面不再渲染「AI 模型」选择器。
+
   'ocr-recognize': 'ocr',
   'ocr-recognition': 'ocr',
 }

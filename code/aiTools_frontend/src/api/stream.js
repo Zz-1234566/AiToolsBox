@@ -134,7 +134,16 @@ export const streamRaw = (options) => {
 const streamRawH5 = (options) => {
   const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
   const xhr = new XMLHttpRequest()
-  xhr.open('POST', BASE_URL() + options.url, true)
+  const fullUrl = BASE_URL() + (options.url || '')
+  // 兜底：非法地址会抛 DOMException 'Invalid URL'，这里转成可读信息方便定位
+  try {
+    xhr.open('POST', fullUrl, true)
+  } catch (e) {
+    const msg = `请求地址非法：${fullUrl}`
+    console.error('[stream] open failed', e, fullUrl)
+    if (options.onError) options.onError({ status: 0, message: msg })
+    return () => {}
+  }
   xhr.setRequestHeader('Content-Type', 'application/json')
   if (token) {
     xhr.setRequestHeader('Authorization', 'Bearer ' + token)

@@ -122,12 +122,12 @@ watch(() => props.toolId, load)
   &__placeholder {
     font-size: 26rpx;
     color: var(--text-tertiary, #9CA3AF);
-    &--warn { color: #F59E0B; }
+    &--warn { color: var(--color-warning); }
   }
   &__default {
     font-size: 20rpx;
     color: #fff;
-    background: var(--accent, #2563EB);
+    background: var(--accent, var(--brand-primary-hover));
     padding: 2rpx 8rpx;
     border-radius: 8rpx;
     line-height: 1.4;

@@ -54,9 +54,26 @@ const CATEGORY_TO_TAG = {
  * @returns {string} gradient name
  */
 export function getToolGradient(toolId) {
+  // 优先按「工具 ID」取色：icon 字段只是形状提示，多个工具会共用同一个 icon
+  //（work-summary / doc-keypoint-extract / doc-to-text 都是 'summary'），
+  // 只按 icon 取会导致多个卡片同色。这里给每个工具钉死一个色，保证互不相同。
+  const byId = TOOL_GRADIENT_BY_ID[toolId]
+  if (byId) return byId
   const tool = TOOLS[toolId]
   if (!tool) return 'brand'
   return TOOL_ICON_TYPES[tool.icon] || 'brand'
+}
+
+// 工具 ID → 图标色（对应 tool-icon--{type}，取值见 uni.scss 的 $gradient-*）
+// 相邻卡片左右/上下刻意错开色系，避免糊成一片
+const TOOL_GRADIENT_BY_ID = {
+  'work-summary': 'doc',
+  'doc-keypoint-extract': 'code',
+  'weekly-report': 'text',
+  'meeting-minutes': 'video',
+  'doc-to-text': 'ocr',
+  'audio-transcribe': 'audio',
+  'image-bg-remover': 'image'
 }
 
 /**
@@ -68,6 +85,18 @@ export function getToolEmoji(toolId) {
   const tool = TOOLS[toolId]
   if (!tool) return '📄'
   return TOOL_ICON_EMOJIS[tool.icon] || '📄'
+}
+
+
+// 卡片用短文案（参考图是单行短语，长描述会被截断）
+export const TOOL_SHORT_DESC = {
+  'work-summary': 'AI 助手',
+  'doc-keypoint-extract': '快速提取要点',
+  'weekly-report': '一键生成周报',
+  'meeting-minutes': '智能整理要点',
+  'doc-to-text': '多格式解析',
+  'audio-transcribe': '音频转文字',
+  'image-bg-remover': '一键抠图换背景'
 }
 
 /**
@@ -217,12 +246,10 @@ export const TOOLS = {
     },
     actionText: '开始转写', resultTitle: '转写结果', resultPlaceholder: '转写文字将在这里显示...',
     uploadTitle: '上传录音', uploadDesc: '支持 MP3、WAV、M4A 等格式 · 可多选',
-    // 转写引擎选择（可选；后端 asr.tencent.enabled=false 时只有 minimax 可用）
-    engineOptions: [
-      { value: 'minimax', label: 'MiniMax', desc: '通用转写，稳定' },
-      { value: 'tencent', label: '腾讯云', desc: '支持热词，术语更准' }
-    ],
-    defaultEngine: 'minimax',
+    // 转写通道固定腾讯云（录音文件识别）：Go 套餐不含语音识别模型。
+    // 传空数组 = 页面不渲染「转写引擎」选择器。
+    engineOptions: [],
+    defaultEngine: 'tencent',
     validateRules: {
       file:   { token: true, file: { type: 'batch', min: 1, error: '请先上传录音' } },
       text:   { unsupported: true, error: '该工具请上传录音' },

@@ -187,8 +187,8 @@
             max="300"
             :step="1"
             :block-size="20"
-            activeColor="#3B82F6"
-            backgroundColor="#E5E7EB"
+            activeColor="var(--brand-primary)"
+            backgroundColor="var(--border-color)"
             @changing="onScaleSliderChange"
             @change="onScaleSliderChange"
             @input="onScaleSliderChange"
@@ -402,12 +402,12 @@ export default {
         { value: '#FFFFFF' },
         { value: '#000000' },
         { value: '#7C3AED' },
-        { value: '#3B82F6' },
-        { value: '#10B981' },
+        { value: 'var(--brand-primary)' },
+        { value: 'var(--color-success)' },
         { value: '#F59E0B' },
         { value: '#EC4899' },
         { value: '#6B7280' },
-        { value: '#EF4444' },
+        { value: 'var(--color-danger)' },
         { value: '#14B8A6' },
         { value: '#A855F7' }
       ]
@@ -1589,7 +1589,7 @@ export default {
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
-  background: #F9FAFB;
+  background: var(--bg-page);
   display: flex;
   flex-direction: column;
 }
@@ -1602,14 +1602,14 @@ export default {
   display: flex;
   align-items: center;
   height: 88rpx;
-  background: #fff;
-  border-bottom: 1rpx solid #F3F4F6;
+  background: var(--bg-card);
+  border-bottom: 1rpx solid var(--border-color);
   &__back {
     width: 60rpx; height: 60rpx;
     display: flex; align-items: center; justify-content: center;
   }
-  &__back-icon { font-size: 48rpx; color: #1F2937; }
-  &__title { flex: 1; text-align: center; font-size: 32rpx; font-weight: 600; color: #0f172a; }
+  &__back-icon { font-size: 48rpx; color: var(--text-primary); }
+  &__title { flex: 1; text-align: center; font-size: 32rpx; font-weight: 600; color: var(--text-primary); }
 }
 
 .page-content {
@@ -1630,27 +1630,27 @@ export default {
 .state-a {
   .upload-card {
     height: 360rpx;
-    border: 2rpx dashed #CBD5E1;
+    border: 2rpx dashed var(--border-color);
     border-radius: 24rpx;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #FFFFFF;
+    background: var(--bg-card);
     margin-bottom: 24rpx;
 
     &__icon {
       width: 80rpx; height: 80rpx;
-      color: #94A3B8;
+      color: var(--text-tertiary);
       margin-bottom: 16rpx;
       svg { width: 100%; height: 100%; fill: currentColor; }
     }
-    &__title { font-size: 30rpx; color: #1F2937; font-weight: 500; margin-bottom: 8rpx; }
-    &__desc { font-size: 24rpx; color: #94A3B8; }
+    &__title { font-size: 30rpx; color: var(--text-primary); font-weight: 500; margin-bottom: 8rpx; }
+    &__desc { font-size: 24rpx; color: var(--text-tertiary); }
   }
 
   .uploaded-preview {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border-radius: 24rpx;
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
@@ -1659,7 +1659,7 @@ export default {
     &__img {
       width: 100%;
       height: 480rpx;
-      background: #F1F5F9;
+      background: var(--bg-gray);
       display: block;
     }
     &__bar {
@@ -1671,7 +1671,7 @@ export default {
     }
     &__name {
       font-size: 24rpx;
-      color: #6B7280;
+      color: var(--text-secondary);
       flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1680,10 +1680,10 @@ export default {
     }
     &__reupload {
       font-size: 24rpx;
-      color: #3B82F6;
+      color: var(--brand-primary);
       padding: 8rpx 20rpx;
       border-radius: 999rpx;
-      background: #EFF6FF;
+      background: var(--brand-primary-light);
     }
   }
 
@@ -1694,49 +1694,49 @@ export default {
     &__label {
       display: block;
       font-size: 26rpx;
-      color: #6B7280;
+      color: var(--text-secondary);
       margin-bottom: 16rpx;
     }
   }
   .model-opt {
     display: flex;
     align-items: flex-start;
-    background: #FFFFFF;
-    border: 2rpx solid #E5E7EB;
+    background: var(--bg-card);
+    border: 2rpx solid var(--border-color);
     border-radius: 16rpx;
     padding: 20rpx;
     margin-bottom: 16rpx;
 
     &--on {
-      border-color: #3B82F6;
-      background: #EFF6FF;
+      border-color: var(--brand-primary);
+      background: var(--brand-primary-light);
     }
     &__radio {
       width: 32rpx;
       height: 32rpx;
       border-radius: 50%;
-      border: 2rpx solid #CBD5E1;
+      border: 2rpx solid var(--border-color);
       margin-right: 16rpx;
       margin-top: 4rpx;
       flex-shrink: 0;
 
       &--on {
-        border-color: #3B82F6;
-        background: #3B82F6;
-        box-shadow: inset 0 0 0 6rpx #EFF6FF;
+        border-color: var(--brand-primary);
+        background: var(--brand-primary);
+        box-shadow: inset 0 0 0 6rpx var(--brand-primary-light);
       }
     }
     &__text { flex: 1; }
     &__name {
       display: block;
       font-size: 28rpx;
-      color: #374151;
+      color: var(--text-secondary);
       font-weight: 600;
     }
     &__desc {
       display: block;
       font-size: 22rpx;
-      color: #9CA3AF;
+      color: var(--text-tertiary);
       margin-top: 6rpx;
     }
   }
@@ -1744,7 +1744,7 @@ export default {
   .btn-primary {
     width: 100%;
     height: 88rpx;
-    background: #3B82F6;
+    background: var(--brand-primary);
     color: #FFFFFF;
     border-radius: 16rpx;
     font-size: 30rpx;
@@ -1754,15 +1754,15 @@ export default {
     text-align: center;
     border: none;
     &[disabled] {
-      background: #E5E7EB;
-      color: #9CA3AF;
+      background: var(--bg-gray);
+      color: var(--text-tertiary);
     }
   }
   .btn-hint {
     display: block;
     text-align: center;
     font-size: 24rpx;
-    color: #94A3B8;
+    color: var(--text-tertiary);
     margin-top: 16rpx;
   }
 }
@@ -1772,7 +1772,7 @@ export default {
   padding: 64rpx 0;
 
   .processing-card {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border-radius: 24rpx;
     padding: 48rpx 32rpx;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
@@ -1783,7 +1783,7 @@ export default {
       margin: 0 auto 32rpx;
       border-radius: 16rpx;
       overflow: hidden;
-      background: #F1F5F9;
+      background: var(--bg-gray);
     }
     &__img { width: 100%; height: 100%; }
 
@@ -1793,14 +1793,14 @@ export default {
       text-align: center;
       font-size: 32rpx;
       font-weight: 600;
-      color: #1F2937;
+      color: var(--text-primary);
       margin-bottom: 12rpx;
     }
     &__desc {
       display: block;
       text-align: center;
       font-size: 24rpx;
-      color: #94A3B8;
+      color: var(--text-tertiary);
       line-height: 1.5;
     }
   }
@@ -1808,14 +1808,14 @@ export default {
   .progress-track {
     width: 100%;
     height: 16rpx;
-    background: #F1F5F9;
+    background: var(--bg-gray);
     border-radius: 8rpx;
     overflow: hidden;
     margin-bottom: 12rpx;
   }
   .progress-fill {
     height: 100%;
-    background: linear-gradient(to right, #3B82F6, #60A5FA);
+    background: linear-gradient(to right, var(--brand-primary), #60A5FA);
     border-radius: 8rpx;
     transition: width 0.3s ease;
   }
@@ -1824,7 +1824,7 @@ export default {
     text-align: center;
     font-size: 28rpx;
     font-weight: 600;
-    color: #3B82F6;
+    color: var(--brand-primary);
   }
 }
 
@@ -1832,7 +1832,7 @@ export default {
 .state-c {
   /* 单列成果图：不再并排展示原图，画布占满宽度并适当加高 */
   .preview-box {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border-radius: 24rpx;
     padding: 16rpx;
     margin-bottom: 24rpx;
@@ -1841,7 +1841,7 @@ export default {
     &__label {
       display: block;
       font-size: 24rpx;
-      color: #6B7280;
+      color: var(--text-secondary);
       margin-bottom: 12rpx;
     }
     &__canvas {
@@ -1849,7 +1849,7 @@ export default {
       height: 720rpx;
       border-radius: 16rpx;
       overflow: hidden;
-      background: #F1F5F9;
+      background: var(--bg-gray);
       position: relative;
       display: flex;
       align-items: center;
@@ -1861,10 +1861,10 @@ export default {
     /* 棋盘格背景：透明 PNG 的默认展示（看得出透明区域） */
     &__canvas--checker {
       background-image:
-        linear-gradient(45deg, #E5E7EB 25%, transparent 25%),
-        linear-gradient(-45deg, #E5E7EB 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #E5E7EB 75%),
-        linear-gradient(-45deg, transparent 75%, #E5E7EB 75%);
+        linear-gradient(45deg, var(--border-color) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--border-color) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--border-color) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--border-color) 75%);
       background-size: 20rpx 20rpx;
       background-position: 0 0, 0 10rpx, 10rpx -10rpx, -10rpx 0;
     }
@@ -1874,16 +1874,16 @@ export default {
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      color: #9CA3AF;
+      color: var(--text-tertiary);
       font-size: 24rpx;
-      &-sub { font-size: 22rpx; margin-top: 8rpx; color: #CBD5E1; }
+      &-sub { font-size: 22rpx; margin-top: 8rpx; color: var(--border-color); }
     }
   }
 
   .status-bar {
     display: flex;
     align-items: center;
-    background: #FFFFFF;
+    background: var(--bg-card);
     border-radius: 16rpx;
     padding: 20rpx 24rpx;
     margin-bottom: 16rpx;
@@ -1891,24 +1891,24 @@ export default {
   .status-dot {
     width: 12rpx; height: 12rpx;
     border-radius: 50%;
-    background: #10B981;
+    background: var(--color-success);
     margin-right: 12rpx;
   }
   .status-text {
     flex: 1;
     font-size: 26rpx;
-    color: #1F2937;
+    color: var(--text-primary);
   }
   .status-clear {
     font-size: 24rpx;
-    color: #3B82F6;
+    color: var(--brand-primary);
     padding: 4rpx 16rpx;
     border-radius: 999rpx;
-    background: #EFF6FF;
+    background: var(--brand-primary-light);
   }
 
   .section {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border-radius: 16rpx;
     padding: 24rpx;
     margin-bottom: 16rpx;
@@ -1917,7 +1917,7 @@ export default {
       display: block;
       font-size: 28rpx;
       font-weight: 600;
-      color: #1F2937;
+      color: var(--text-primary);
       margin-bottom: 20rpx;
     }
   }
@@ -1937,7 +1937,7 @@ export default {
     position: relative;
 
     &--active {
-      border-color: #3B82F6;
+      border-color: var(--brand-primary);
       transform: scale(1.05);
     }
     &__label {
@@ -1946,7 +1946,7 @@ export default {
       left: 50%;
       transform: translate(-50%, -50%);
       font-size: 22rpx;
-      color: #6B7280;
+      color: var(--text-secondary);
     }
   }
 
@@ -1958,21 +1958,21 @@ export default {
   .bg-upload-btn {
     flex: 1;
     height: 120rpx;
-    border: 2rpx dashed #CBD5E1;
+    border: 2rpx dashed var(--border-color);
     border-radius: 16rpx;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #F9FAFB;
+    background: var(--bg-page);
     &__plus {
       font-size: 40rpx;
-      color: #94A3B8;
+      color: var(--text-tertiary);
       line-height: 1;
     }
     &__text {
       font-size: 24rpx;
-      color: #6B7280;
+      color: var(--text-secondary);
       margin-top: 8rpx;
     }
   }
@@ -1981,7 +1981,7 @@ export default {
     height: 120rpx;
     border-radius: 16rpx;
     overflow: hidden;
-    background: #F1F5F9;
+    background: var(--bg-gray);
     &__img { width: 100%; height: 100%; }
   }
 
@@ -2046,7 +2046,7 @@ export default {
     position: absolute;
     top: 0; bottom: 0;
     width: 2rpx;
-    background: #FFFFFF;
+    background: var(--bg-card);
     box-shadow: 0 0 0 1rpx rgba(0, 0, 0, 0.18);
     z-index: 3;
     display: flex;
@@ -2078,7 +2078,7 @@ export default {
       width: 64rpx;
       height: 64rpx;
       border-radius: 50%;
-      background: #FFFFFF;
+      background: var(--bg-card);
       box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.25);
       display: flex;
       align-items: center;
@@ -2101,7 +2101,7 @@ export default {
 
   /* ============ 物体控制面板（D2） ============ */
   .object-controls {
-    background: #FFFFFF;
+    background: var(--bg-card);
     border-radius: 16rpx;
     padding: 24rpx;
     margin-bottom: 16rpx;
@@ -2123,27 +2123,27 @@ export default {
   }
   .control-label {
     font-size: 26rpx;
-    color: #1F2937;
+    color: var(--text-primary);
     font-weight: 500;
   }
   .control-value {
     font-size: 24rpx;
-    color: #3B82F6;
+    color: var(--brand-primary);
     font-weight: 600;
   }
   .btn-mini {
     flex: 1;
     height: 64rpx;
     line-height: 64rpx;
-    background: #F3F4F6;
-    color: #374151;
+    background: var(--bg-gray);
+    color: var(--text-secondary);
     border-radius: 12rpx;
     font-size: 26rpx;
     border: none;
     text-align: center;
     &--active {
-      background: #EFF6FF;
-      color: #3B82F6;
+      background: var(--brand-primary-light);
+      color: var(--brand-primary);
     }
   }
 
@@ -2164,13 +2164,13 @@ export default {
       border: none;
     }
     .btn-primary {
-      background: #3B82F6;
+      background: var(--brand-primary);
       color: #FFFFFF;
     }
     .btn-secondary {
-      background: #FFFFFF;
-      color: #3B82F6;
-      border: 2rpx solid #3B82F6;
+      background: var(--bg-card);
+      color: var(--brand-primary);
+      border: 2rpx solid var(--brand-primary);
     }
   }
 }

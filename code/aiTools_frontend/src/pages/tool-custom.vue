@@ -305,10 +305,10 @@ onLoad(() => {
       }
       
       &.active {
-        background-color: $text-primary;
+        background-color: var(--brand-primary);
         
         text {
-          color: $bg-white;
+          color: #FFFFFF;
         }
       }
     }
@@ -347,7 +347,7 @@ onLoad(() => {
     width: 100%;
     height: 96rpx;
     border-radius: $radius-pill;
-    background-color: $text-primary;
+    background-color: var(--brand-primary);
     color: $bg-white;
     font-size: $font-size-lg;
     font-weight: 600;
