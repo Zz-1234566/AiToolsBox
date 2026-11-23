@@ -43,8 +43,16 @@ export const agentRun = (payload, handlers = {}) => {
  * @param {String|Blob|File} filePath 本地路径 / File
  * @returns {Promise<{ code, data: { fileUrl, fileName } }>}
  */
-export const uploadAgentFile = (filePath) => {
-  return uploadFile('/api/file/upload', filePath, 'file', { prefix: 'file' })
+export const uploadAgentFile = (picked) => {
+  // pickFiles 返回的是归一化对象 { fileName, file, path, size }：
+  //   - H5 端：原生 File 在 file 字段，path 可能为空串
+  //   - App / 小程序端：本地路径在 path 字段，file 为 null
+  // 直接把对象传给 uni.uploadFile 会命中其内部的 filePath.indexOf() → TypeError，
+  // 表现为「附件上传失败」且后端收不到请求。
+  const target = (picked && typeof picked === 'object' && ('file' in picked || 'path' in picked))
+    ? (picked.file || picked.path)
+    : picked
+  return uploadFile('/api/file/upload', target, 'file', { prefix: 'file' })
 }
 
 /**

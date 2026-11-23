@@ -247,7 +247,7 @@ const onPickFiles = async () => {
         break
       }
       attachments.value.push({
-        name: up.data.fileName || item.name || '附件',
+        name: up.data.fileName || item.fileName || item.name || '附件',
         url: up.data.fileUrl
       })
     }
