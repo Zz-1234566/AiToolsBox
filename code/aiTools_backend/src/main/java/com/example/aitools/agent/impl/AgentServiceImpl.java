@@ -84,6 +84,9 @@ public class AgentServiceImpl implements AgentService {
     /** 会话服务：把每次运行挂到会话上，并注入历史上下文 */
     private final com.example.aitools.service.AgentSessionService agentSessionService;
 
+    /** 用户画像服务：注入画像 + 运行后异步抽取 */
+    private final com.example.aitools.service.AgentProfileService agentProfileService;
+
     @Override
     public String run(Long userId, String sessionId, String goal, List<AgentAttachment> attachments,
                       String modelCode, Consumer<String> onFrame) {
@@ -113,16 +116,18 @@ public class AgentServiceImpl implements AgentService {
 
         // 1) 工具清单（DB 生成）+ system 提示词
         List<AgentToolCatalog.AgentTool> tools = catalog.listTools();
-        String systemPrompt = promptBuilder.buildSystemPrompt(tools, attachments);
+        String profileText = agentProfileService.getProfileText(userId);
+        String systemPrompt = promptBuilder.buildSystemPrompt(tools, attachments, profileText);
 
-        // 2) 多轮上下文：system +（历史摘要）+ 历史原文 + 本次目标
+        // 2) 凭据（BYOK：用户自己的模型 Key 优先）—— 压缩也要用它调模型
+        ResolvedCredential cred = resolveCred(userId, modelCode);
+
+        // 3) 多轮上下文：system +（历史摘要）+ 历史原文 + 本次目标
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(message("system", systemPrompt));
+        maybeCompressContext(userId, session, cred);
         appendHistoryContext(messages, userId, session, currentGoalSeq);
         messages.add(message("user", goal));
-
-        // 3) 凭据（BYOK：用户自己的模型 Key 优先）
-        ResolvedCredential cred = resolveCred(userId, modelCode);
 
         java.util.concurrent.atomic.AtomicReference<String> finalAnswer = new java.util.concurrent.atomic.AtomicReference<>("");
         try {
@@ -131,6 +136,9 @@ public class AgentServiceImpl implements AgentService {
             // 成功：把最终答案落成一条 assistant 消息（meta 里带运行信息，供回放）
             agentSessionService.appendMessage(session, "assistant", answer,
                     buildAssistantMeta(runId, System.currentTimeMillis() - start));
+            // 画像抽取：异步，不阻塞本次回答
+            agentProfileService.updateAsync(userId, session.getSessionId(),
+                    agentSessionService.messages(userId, session.getSessionId(), 12), cred);
             return answer;
         } catch (Exception e) {
             // 兜底：SSE 断开（用户关页面）会抛 IOException，
@@ -585,6 +593,73 @@ public class AgentServiceImpl implements AgentService {
     }
 
     /** 过程帧：{@code --- [内容] ---}（与项目现有 SSE 标记格式一致） */
+    /** 压缩后保留的最近原文条数 */
+    private static final int CTX_KEEP_RECENT = 6;
+    /** 未压缩消息数达到该值时强制压缩 */
+    private static final int CTX_MAX_UNCOMPRESSED = 20;
+
+    /**
+     * 上下文压缩：占比 ≥60% 或 未压缩消息 ≥20 条时，把较早的消息压成摘要。
+     * <p>
+     * 保留最近 {@value #CTX_KEEP_RECENT} 条原文保证连贯；摘要写回会话，后续注入时替代原文。
+     */
+    private void maybeCompressContext(Long userId, com.example.aitools.entity.AgentSession session,
+                                      ResolvedCredential cred) {
+        int total = session.getMessageCount() == null ? 0 : session.getMessageCount();
+        int summarized = session.getSummarizedSeq() == null ? 0 : session.getSummarizedSeq();
+        int uncompressed = total - summarized;
+        if (uncompressed <= CTX_KEEP_RECENT) {
+            return;
+        }
+        List<com.example.aitools.vo.AgentMessageVO> all =
+                agentSessionService.messages(userId, session.getSessionId(), 500);
+
+        // 估算整个会话（摘要 + 全部消息）的占用
+        int tokens = com.example.aitools.common.TokenEstimator.estimate(session.getSummary());
+        for (com.example.aitools.vo.AgentMessageVO m : all) {
+            tokens += com.example.aitools.common.TokenEstimator.estimate(m.getContent());
+        }
+        int percent = (int) Math.round(tokens * 100.0 / Constants.AGENT_CONTEXT_WINDOW_TOKENS);
+        boolean need = percent >= Constants.AGENT_CONTEXT_WARN_PERCENT || uncompressed >= CTX_MAX_UNCOMPRESSED;
+        if (!need) {
+            return;
+        }
+
+        int cutoff = total - CTX_KEEP_RECENT;
+        if (cutoff <= summarized) {
+            return;
+        }
+
+        StringBuilder transcript = new StringBuilder();
+        if (session.getSummary() != null && !session.getSummary().isBlank()) {
+            transcript.append("[此前摘要]\n").append(session.getSummary()).append("\n\n");
+        }
+        for (com.example.aitools.vo.AgentMessageVO m : all) {
+            if (m.getSeq() == null || m.getSeq() <= summarized || m.getSeq() > cutoff) {
+                continue;
+            }
+            transcript.append("user".equals(m.getRole()) ? "用户：" : "助手：")
+                    .append(m.getContent() == null ? "" : m.getContent()).append('\n');
+        }
+        if (transcript.length() == 0) {
+            return;
+        }
+        try {
+            String summary = aiClient.chat(
+                    "你负责压缩对话上下文。把给定对话压缩成不超过 300 字的中文摘要，"
+                            + "保留用户目标、已确认的事实、关键结论与待办；不要编造，不要输出多余说明。",
+                    transcript.toString(), cred);
+            agentSessionService.updateSummary(session, summary == null ? "" : summary.trim(), cutoff);
+            log.info("[agent] 上下文已压缩 sessionId={} 压缩到 seq={} 摘要长度={}（占比 {}%）",
+                    session.getSessionId(), cutoff,
+                    summary == null ? 0 : summary.length(), percent);
+        } catch (Exception e) {
+            // 压缩失败不影响本次运行：退化为携带全量历史
+            log.warn("[agent] 上下文压缩失败，本次按全量历史执行 sessionId={}: {}",
+                    session.getSessionId(), e.getMessage());
+        }
+    }
+
     /** 新建会话并返回 */
     private com.example.aitools.entity.AgentSession createAndGetSession(Long userId) {
         com.example.aitools.vo.AgentSessionVO vo = agentSessionService.create(userId);

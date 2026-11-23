@@ -47,4 +47,7 @@ public interface AgentSessionService {
 
     /** 标题仍是默认值时，用首条用户消息截取生成标题 */
     void autoTitle(AgentSession session, String text);
+
+    /** 写入压缩摘要与已压缩位置 */
+    void updateSummary(AgentSession session, String summary, int summarizedSeq);
 }

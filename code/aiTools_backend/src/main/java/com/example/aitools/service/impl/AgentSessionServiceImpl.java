@@ -174,6 +174,16 @@ public class AgentSessionServiceImpl implements AgentSessionService {
         session.setTitle(t);
     }
 
+    @Override
+    public void updateSummary(AgentSession session, String summary, int summarizedSeq) {
+        sessionMapper.update(null, new LambdaUpdateWrapper<AgentSession>()
+                .eq(AgentSession::getId, session.getId())
+                .set(AgentSession::getSummary, summary)
+                .set(AgentSession::getSummarizedSeq, summarizedSeq));
+        session.setSummary(summary);
+        session.setSummarizedSeq(summarizedSeq);
+    }
+
     private AgentSessionVO toVO(AgentSession s) {
         AgentSessionVO vo = new AgentSessionVO();
         vo.setSessionId(s.getSessionId());
