@@ -5,9 +5,14 @@
     <!-- #endif -->
 
     <view class="topbar">
-      <view class="topbar__text">
+      <view class="topbar__left">
+        <view class="topbar__menu" @click="openDrawer">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </view>
+        <view class="topbar__text">
         <text class="topbar__title">智能体</text>
-        <text class="topbar__sub">把复杂任务交给 AI，自动调用工具完成</text>
+          <text class="topbar__sub">把复杂任务交给 AI，自动调用工具完成</text>
+        </view>
       </view>
       <view class="topbar__avatar">
         <view class="ai-avatar-wrap" :class="robotStateClass">
@@ -39,7 +44,21 @@
 
     <!-- 对话态 -->
     <scroll-view v-else scroll-y class="chat" :scroll-into-view="scrollAnchor" scroll-with-animation>
-      <view class="msg msg--me">
+      <!-- 历史消息回放（切换会话时加载） -->
+      <block v-for="(hm, hi) in historyMessages" :key="'h' + hi">
+        <view v-if="hm.role === 'user'" class="msg msg--me">
+          <view class="bubble bubble--me">{{ hm.content }}</view>
+        </view>
+        <view v-else class="msg msg--ai">
+          <view class="ai-body">
+            <view class="card card--answer">
+              <MarkdownView :source="hm.content" />
+            </view>
+          </view>
+        </view>
+      </block>
+
+      <view v-if="sentGoal" class="msg msg--me">
         <view class="bubble bubble--me">{{ sentGoal }}</view>
       </view>
 
@@ -59,7 +78,7 @@
 
       <view class="msg msg--ai">
         <view class="ai-body">
-          <view class="card">
+          <view v-if="steps.length || running" class="card">
             <view class="card__title card__title--toggle" @click="planCollapsed = !planCollapsed">
               <text>任务规划</text>
               <view v-if="steps.length" class="card__meta">
@@ -157,6 +176,32 @@
       </view>
     </view>
 
+    <!-- 会话抽屉 -->
+    <view v-if="drawerOpen" class="drawer-mask" @click="drawerOpen = false"></view>
+    <view class="drawer" :class="{ 'drawer--open': drawerOpen }">
+      <view class="drawer__head">
+        <text class="drawer__title">对话</text>
+        <view class="drawer__close" @click="drawerOpen = false">×</view>
+      </view>
+      <view class="drawer__new" @click="newSession">
+        <text class="drawer__new-ic">＋</text>
+        <text>新建对话</text>
+      </view>
+      <scroll-view scroll-y class="drawer__list">
+        <view
+          v-for="s in sessions"
+          :key="s.sessionId"
+          class="drawer__item"
+          :class="{ 'drawer__item--on': s.sessionId === sessionId }"
+          @click="openSession(s)"
+        >
+          <text class="drawer__item-t">{{ s.title }}</text>
+          <text class="drawer__item-time">{{ s.lastActiveTime }}</text>
+        </view>
+        <view v-if="!sessions.length" class="drawer__empty">还没有对话记录</view>
+      </scroll-view>
+    </view>
+
     <!-- 底部输入条（参考豆包：上方引用块 + 输入，下方工具 + 模型选择 + 发送） -->
     <view class="composer">
       <view v-if="quotedText" class="quote-bar">
@@ -166,7 +211,15 @@
       <input v-model="goal" class="composer__input" placeholder="发消息或按住空格说话..." :disabled="running" />
       <view class="composer__row">
         <view class="composer__plus" @click="onPickFiles">＋</view>
-        <view class="composer__gap"></view>
+        <view class="composer__ctx">
+          <text v-if="ctxTokens > 0" class="composer__ctx-t">
+            上下文 {{ ctxPercent }}% / {{ ctxWindowLabel }}
+          </text>
+          <text v-else class="composer__ctx-t">上下文 — / {{ ctxWindowLabel }}</text>
+          <view class="composer__ctx-bar">
+            <view class="composer__ctx-fill" :style="{ width: Math.min(100, ctxPercent) + '%' }"></view>
+          </view>
+        </view>
         <view class="composer__model" @click="showModelMenu = !showModelMenu">
           <text class="composer__model-t">{{ modelNames[modelIndex] }}</text>
           <text class="composer__chev">›</text>
@@ -187,7 +240,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { refreshTabBarStyle } from '@/utils/theme'
 import MarkdownView from '@/components/MarkdownView.vue'
-import { agentRun, uploadAgentFile, cancelAgentRun } from '@/api/agent'
+import { agentRun, uploadAgentFile, cancelAgentRun, listAgentSessions, createAgentSession, listAgentMessages } from '@/api/agent'
 import { listUserAiModels } from '@/api/aiModel'
 import { pickFiles } from '@/utils/filePicker'
 import { copyRaw } from '@/utils/clipboard'
@@ -203,6 +256,31 @@ const goal = ref('')
 const sentGoal = ref('')
 /** 引用块：显示在输入框上方，随消息一起发出，可点 × 移除 */
 const quotedText = ref('')
+
+/* ==================== 会话 ==================== */
+/** 当前会话ID（空 = 尚未开始，首次发送时由后端创建） */
+const sessionId = ref('')
+/** 最近会话列表 */
+const sessions = ref([])
+/** 抽屉开关 */
+const drawerOpen = ref(false)
+/** 历史消息（切换会话时回放） */
+const historyMessages = ref([])
+
+/** 上下文占用（后端每轮通过 [上下文:tokens:window] 下发） */
+const ctxTokens = ref(0)
+const ctxWindow = ref(1000000)
+const ctxPercent = computed(() => {
+  if (!ctxTokens.value || !ctxWindow.value) return 0
+  const p = (ctxTokens.value * 100) / ctxWindow.value
+  return p >= 1 ? Math.round(p * 10) / 10 : Math.round(p * 100) / 100
+})
+const ctxWindowLabel = computed(() => {
+  const w = ctxWindow.value || 0
+  if (w >= 1000000) return (w / 1000000) + 'M'
+  if (w >= 1000) return Math.round(w / 1000) + 'k'
+  return String(w)
+})
 const attachments = ref([])
 
 /** 附件类型（决定图标）：doc / image / audio / file */
@@ -414,6 +492,53 @@ const finishRun = () => {
   if (steps.value.length) planCollapsed.value = true
 }
 
+/* ==================== 会话操作 ==================== */
+
+const loadSessions = async () => {
+  try {
+    const res = await listAgentSessions(30)
+    sessions.value = (res && res.data) || []
+  } catch (e) { /* 未登录/失败：侧栏留空 */ }
+}
+
+const openDrawer = () => {
+  drawerOpen.value = true
+  loadSessions()
+}
+
+/** 新建对话：清空当前会话与所有对话态 */
+const newSession = () => {
+  if (running.value) return
+  sessionId.value = ''
+  historyMessages.value = []
+  ctxTokens.value = 0
+  drawerOpen.value = false
+  reset()
+}
+
+/** 打开历史会话：加载消息并进入对话态 */
+const openSession = async (s) => {
+  if (running.value) return
+  drawerOpen.value = false
+  sessionId.value = s.sessionId
+  drawerOpen.value = false
+  try {
+    const res = await listAgentMessages(s.sessionId, 200)
+    historyMessages.value = (res && res.data) || []
+  } catch (e) {
+    historyMessages.value = []
+  }
+  // 进入对话态，但清空「本轮」状态（历史消息单独渲染）
+  started.value = true
+  sentGoal.value = ''
+  goal.value = ''
+  quotedText.value = ''
+  answer.value = ''
+  steps.value = []
+  errorMsg.value = ''
+  scrollToBottom()
+}
+
 const onStart = async () => {
   const typed = goal.value.trim()
   if (running.value || (!typed && !quotedText.value)) return
@@ -461,6 +586,7 @@ const runAgent = async () => {
   try {
     agentRun(
       {
+        sessionId: sessionId.value || undefined,
         goal: sentGoal.value,
         modelCode: modelCodes[modelIndex.value] || '',
         files: attachments.value.map(a => ({ name: a.name, url: a.url }))
@@ -473,6 +599,19 @@ const runAgent = async () => {
           if (kind === '运行') {
             // 首帧：拿到 runId（取消接口的入参）
             runId.value = body
+          } else if (kind === '会话') {
+            // 后端创建的会话ID：记录下来并刷新侧栏
+            if (body && body !== sessionId.value) {
+              sessionId.value = body
+              historyMessages.value = []
+            }
+            loadSessions()
+          } else if (kind === '上下文') {
+            const parts = String(body).split(':')
+            const tokens = Number(parts[0]) || 0
+            const win = Number(parts[1]) || 0
+            ctxTokens.value = tokens
+            if (win > 0) ctxWindow.value = win
           } else if (kind === '思考开始') {
             // 模型开始思考：插入进行中的步骤，本地计时
             pushStep({ type: 'thought', text: '正在思考…', running: true, startAt: Date.now() })
@@ -878,6 +1017,33 @@ $ref-sub: var(--text-secondary);
   font-size: 34rpx; color: #4A4A54;
   background: var(--bg-gray);
 }
+.composer__ctx {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  padding: 0 8rpx;
+}
+.composer__ctx-t {
+  font-size: 20rpx;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.composer__ctx-bar {
+  flex: 1;
+  min-width: 40rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: var(--bg-gray);
+  overflow: hidden;
+}
+.composer__ctx-fill {
+  height: 100%;
+  border-radius: 999rpx;
+  background: var(--brand-primary);
+  transition: width 0.3s ease;
+}
 .composer__gap { flex: 1; }
 .composer__model {
   display: flex;
@@ -934,4 +1100,81 @@ $ref-sub: var(--text-secondary);
 .model-menu__ok { color: $ref-ink; font-size: 24rpx; margin-left: 12rpx; }
 
 .bottom-anchor { height: 1rpx; }
+
+/* ==================== 会话抽屉 ==================== */
+.topbar__left { display: flex; align-items: center; gap: 14rpx; min-width: 0; }
+.topbar__menu {
+  width: 64rpx;
+  height: 64rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14rpx;
+}
+.topbar__menu:active { background: var(--bg-gray); }
+.topbar__menu svg {
+  width: 40rpx;
+  height: 40rpx;
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.drawer-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 40;
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 560rpx;
+  background: var(--bg-card);
+  z-index: 41;
+  transform: translateX(-100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 6rpx 0 24rpx rgba(0, 0, 0, 0.12);
+}
+.drawer--open { transform: translateX(0); }
+.drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 40rpx 32rpx 16rpx;
+}
+.drawer__title { font-size: 30rpx; font-weight: 700; color: var(--text-primary); }
+.drawer__close { font-size: 40rpx; line-height: 1; color: var(--text-tertiary); }
+.drawer__new {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin: 8rpx 24rpx 16rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 16rpx;
+  background: var(--bg-gray);
+  color: var(--brand-primary);
+  font-size: 26rpx;
+  font-weight: 600;
+}
+.drawer__new-ic { font-size: 30rpx; line-height: 1; }
+.drawer__list { flex: 1; padding: 0 16rpx 32rpx; }
+.drawer__item { padding: 20rpx 16rpx; border-radius: 14rpx; margin-bottom: 8rpx; }
+.drawer__item--on { background: var(--bg-gray); }
+.drawer__item-t {
+  display: block;
+  font-size: 26rpx;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer__item-time { display: block; margin-top: 6rpx; font-size: 20rpx; color: var(--text-tertiary); }
+.drawer__empty { padding: 48rpx 16rpx; text-align: center; font-size: 24rpx; color: var(--text-tertiary); }
 </style>

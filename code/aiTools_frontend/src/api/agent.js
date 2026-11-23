@@ -92,3 +92,25 @@ export const cancelAgentRun = (runId) => {
     data: { runId }
   })
 }
+
+/* ==================== 会话 ==================== */
+
+/** 最近会话列表 */
+export const listAgentSessions = (limit = 20) =>
+  request({ url: '/api/agent/sessions', method: 'GET', data: { limit } })
+
+/** 新建会话 */
+export const createAgentSession = () =>
+  request({ url: '/api/agent/sessions', method: 'POST' })
+
+/** 会话消息回放 */
+export const listAgentMessages = (sessionId, limit = 200) =>
+  request({ url: `/api/agent/sessions/${sessionId}/messages`, method: 'GET', data: { limit } })
+
+/** 重命名会话 */
+export const renameAgentSession = (sessionId, title) =>
+  request({ url: `/api/agent/sessions/${sessionId}`, method: 'PATCH', data: { title } })
+
+/** 删除会话 */
+export const deleteAgentSession = (sessionId) =>
+  request({ url: `/api/agent/sessions/${sessionId}`, method: 'DELETE' })
