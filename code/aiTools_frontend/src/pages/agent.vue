@@ -53,7 +53,6 @@
             <template v-else><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/></svg></template>
             </view>
             <text class="file__n">{{ a.name }}</text>
-            <text class="file__x" @click="removeAttachment(i)">×</text>
           </view>
         </view>
       </view>
@@ -318,6 +317,18 @@ const planCollapsed = ref(false)
 
 const pushStep = (step) => {
   steps.value.push(step)
+  scrollToBottom()
+}
+
+/** 追加流式答案分片 */
+const appendAnswer = (text) => {
+  if (!text) return
+  answer.value += text
+  scrollToBottom()
+}
+
+/** 流结束：收尾（保证最后一段已落地并滚到底） */
+const flushAnswer = () => {
   scrollToBottom()
 }
 
