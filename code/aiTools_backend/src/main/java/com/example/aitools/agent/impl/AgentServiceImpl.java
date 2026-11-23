@@ -207,6 +207,8 @@ public class AgentServiceImpl implements AgentService {
             }
 
             long toolStart = System.currentTimeMillis();
+            // 先告诉前端「开始执行哪个工具」，前端据此立刻插入一条进行中的步骤并本地计时
+            onFrame.accept(frame(FRAME_TOOL_START, tool.getName() + "（" + tool.getCode() + "）"));
             String toolOutput;
             try {
                 String input = resolveInput(tool, action, attachments, lastToolOutput);

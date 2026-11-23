@@ -65,7 +65,10 @@
             <text class="hist-card__line">
               结果：{{ item.status === 1 ? outputLine(item) : (item.errorMsg || '处理失败') }}
             </text>
-            <text class="hist-card__time">{{ formatTime(item.createTime) }}</text>
+            <view class="hist-card__foot">
+              <text class="hist-card__time">{{ formatTime(item.createTime) }}</text>
+              <text v-if="item.duration" class="hist-card__dur">耗时 {{ fmtDuration(item.duration) }}</text>
+            </view>
           </view>
         </view>
       </view>
@@ -104,6 +107,12 @@ const tabs = [
 ]
 
 const getToolName = (item) => item.toolName || item.aiCode || '未知工具'
+
+/** duration 单位毫秒 → 友好时长（历史记录卡片展示） */
+const fmtDuration = (ms) => {
+  const n = Math.max(0, Math.round(Number(ms) || 0))
+  return n >= 1000 ? (n / 1000).toFixed(1) + 's' : n + 'ms'
+}
 
 const formatTime = (time) => {
   if (!time) return ''
@@ -424,11 +433,19 @@ const onClearAll = () => {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.hist-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12rpx;
+}
 .hist-card__time {
-  display: block;
   font-size: 22rpx;
   color: var(--text-tertiary);
-  margin-top: 12rpx;
+}
+.hist-card__dur {
+  font-size: 22rpx;
+  color: var(--brand-primary);
 }
 
 .safe-bottom { height: 40rpx; }

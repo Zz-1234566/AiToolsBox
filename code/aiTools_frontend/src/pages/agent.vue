@@ -40,7 +40,7 @@
     <!-- 对话态 -->
     <scroll-view v-else scroll-y class="chat" :scroll-into-view="scrollAnchor" scroll-with-animation>
       <view class="msg msg--me">
-        <view class="bubble bubble--me">{{ goal }}</view>
+        <view class="bubble bubble--me">{{ sentGoal }}</view>
       </view>
 
       <view v-if="attachments.length" class="msg msg--me">
@@ -64,6 +64,7 @@
               <text>任务规划</text>
               <view v-if="steps.length" class="card__meta">
                 <text class="card__count">{{ steps.length }} 步</text>
+                <text v-if="totalElapsed" class="card__count card__count--total">· {{ totalElapsed }}</text>
                 <svg class="card__chev" :class="{ 'card__chev--collapsed': planCollapsed }" viewBox="0 0 24 24"
                      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M6 15l6-6 6 6"/>
@@ -90,7 +91,7 @@
               </view>
               <view class="tl__body">
                 <text class="tl__t">{{ st.title || st.text || '处理中' }}</text>
-                <text class="tl__s">{{ isRunningStep(i) ? '进行中…' : '已完成' }}</text>
+                <text class="tl__s">{{ stepStatusText(st) }}</text>
               </view>
             </view>
           </view>
@@ -175,6 +176,8 @@ onShow(() => {
 })
 
 const goal = ref('')
+/** 已发送的用户消息（输入框发送后会被清空，气泡仍要保留原文） */
+const sentGoal = ref('')
 const attachments = ref([])
 
 /** 附件类型（决定图标）：doc / image / audio / file */
@@ -302,7 +305,7 @@ const removeAttachment = (idx) => {
 const showModelMenu = ref(false)
 const pickModel = (i) => { modelIndex.value = i; showModelMenu.value = false }
 
-const isRunningStep = (i) => running.value && i === steps.value.length - 1
+const isRunningStep = (i) => !!(steps.value[i] && steps.value[i].running)
 const isDoneStep = (i) => !isRunningStep(i)
 
 const onModelChange = (e) => {
@@ -314,6 +317,42 @@ let chunkTarget = 'answer'
 
 /** 任务规划是否折叠：运行中展开，完成后自动收起，避免长思考链把答案顶到很下面 */
 const planCollapsed = ref(false)
+
+/** 实时计时用的心跳（只有运行中才走，避免无谓渲染） */
+const nowTick = ref(Date.now())
+let tickTimer = null
+const startTick = () => {
+  stopTick()
+  tickTimer = setInterval(() => { nowTick.value = Date.now() }, 100)
+}
+const stopTick = () => {
+  if (tickTimer) { clearInterval(tickTimer); tickTimer = null }
+}
+
+/** 本次任务开始/结束时间（用于总耗时） */
+const runStartAt = ref(0)
+const runEndAt = ref(0)
+
+/** 毫秒 → 友好时长 */
+const fmtMs = (ms) => {
+  const n = Math.max(0, Math.round(ms || 0))
+  return n >= 1000 ? (n / 1000).toFixed(1) + 's' : n + 'ms'
+}
+
+/** 步骤副标题：思考=已完成；工具=执行中（实时）/ 耗时 xxx */
+const stepStatusText = (st) => {
+  if (st.running) return '执行中 ' + fmtMs(nowTick.value - (st.startAt || nowTick.value))
+  if (st.costMs != null) return '耗时 ' + fmtMs(st.costMs)
+  return '已完成'
+}
+
+/** 总耗时（运行中实时，结束后定格） */
+const totalElapsed = computed(() => {
+  if (!runStartAt.value) return ''
+  if (!running.value && runEndAt.value) return '总耗时 ' + fmtMs(runEndAt.value - runStartAt.value)
+  if (!running.value) return ''
+  return '总耗时 ' + fmtMs(nowTick.value - runStartAt.value)
+})
 
 const pushStep = (step) => {
   steps.value.push(step)
@@ -340,20 +379,35 @@ const scrollToBottom = async () => {
   scrollAnchor.value = 'agent-bottom'
 }
 
+/** 统一收尾：停心跳、定格总耗时、折叠计划、清理进行中状态 */
+const finishRun = () => {
+  running.value = false
+  steps.value.forEach((st) => { if (st.running) st.running = false })
+  if (!runEndAt.value) runEndAt.value = Date.now()
+  stopTick()
+  if (steps.value.length) planCollapsed.value = true
+}
+
 const onStart = async () => {
   if (running.value || !goal.value.trim()) return
+  sentGoal.value = goal.value.trim()
+  goal.value = ''
   started.value = true
   running.value = true
   errorMsg.value = ''
   answer.value = ''
   steps.value = []
   planCollapsed.value = false
+  runStartAt.value = Date.now()
+  runEndAt.value = 0
+  nowTick.value = Date.now()
+  startTick()
   chunkTarget = 'answer'
 
   try {
     agentRun(
       {
-        goal: goal.value.trim(),
+        goal: sentGoal.value,
         modelCode: modelCodes[modelIndex.value] || '',
         files: attachments.value.map(a => ({ name: a.name, url: a.url }))
       },
@@ -368,16 +422,27 @@ const onStart = async () => {
           } else if (kind === '思考') {
             chunkTarget = 'answer'
             pushStep({ type: 'thought', text: body })
+          } else if (kind === '工具开始') {
+            // 工具刚开跑：立刻插入一条进行中的步骤，前端本地计时
+            pushStep({ type: 'tool', title: body, result: '', running: true, startAt: Date.now() })
           } else if (kind === '工具') {
             chunkTarget = 'tool'
-            pushStep({ type: 'tool', title: body, result: '' })
+            // 工具执行结束：把开始帧插入的那条步骤收尾，并写入最终耗时
+            const m = /耗时\s*(\d+)\s*ms/.exec(body)
+            const last = steps.value[steps.value.length - 1]
+            if (last && last.type === 'tool' && last.running) {
+              last.running = false
+              last.costMs = m ? Number(m[1]) : (Date.now() - (last.startAt || Date.now()))
+              last.title = body.replace(/\s*耗时\s*\d+\s*ms\s*$/, '')
+            } else {
+              pushStep({ type: 'tool', title: body, result: '', running: false, costMs: m ? Number(m[1]) : null })
+            }
           } else if (kind === '工具结果结束') {
             chunkTarget = 'answer'
           } else if (kind === '答案') {
             chunkTarget = 'answer'
           } else if (kind === '完成') {
-            running.value = false
-            if (steps.value.length) planCollapsed.value = true
+            finishRun()
           }
         },
         onChunk: (text) => {
@@ -394,12 +459,11 @@ const onStart = async () => {
         },
         onDone: () => {
           flushAnswer()
-          running.value = false
-          if (steps.value.length) planCollapsed.value = true
+          finishRun()
         },
         onError: (err) => {
           flushAnswer()
-          running.value = false
+          finishRun()
           errorMsg.value = (err && err.message) || '智能体运行失败，请重试'
         }
       }
@@ -428,7 +492,11 @@ const reset = () => {
   answer.value = ''
   errorMsg.value = ''
   goal.value = ''
+  sentGoal.value = ''
   attachments.value = []
+  runStartAt.value = 0
+  runEndAt.value = 0
+  stopTick()
   runId.value = ''
   typing.value = false
   chunkTarget = 'answer'
@@ -614,6 +682,7 @@ $ref-sub: var(--text-secondary);
 .card__title--toggle { display: flex; align-items: center; justify-content: space-between; }
 .card__meta { display: flex; align-items: center; gap: 8rpx; }
 .card__count { font-size: 22rpx; font-weight: 400; color: $ref-sub; }
+.card__count--total { color: $ref-orange; }
 .card__chev { width: 28rpx; height: 28rpx; color: $ref-sub; transition: transform 0.2s ease; }
 .card__chev--collapsed { transform: rotate(180deg); }
 .card--answer { font-size: 27rpx; color: $ref-ink; line-height: 1.7; }

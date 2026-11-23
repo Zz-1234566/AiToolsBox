@@ -63,7 +63,9 @@ public interface AgentService {
 
     /** 帧前缀：模型的思考 */
     String FRAME_THOUGHT = "思考";
-    /** 帧前缀：开始调用工具 */
+    /** 帧前缀：工具开始执行（紧接着前端可就地计时） */
+    String FRAME_TOOL_START = "工具开始";
+    /** 帧前缀：工具执行结束（携带最终耗时） */
     String FRAME_TOOL = "工具";
     /** 帧前缀：工具结果结束（结果正文是普通 chunk，不带标记） */
     String FRAME_TOOL_END = "工具结果结束";
