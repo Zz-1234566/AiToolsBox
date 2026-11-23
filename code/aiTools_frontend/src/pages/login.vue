@@ -1,7 +1,7 @@
 <template>
   <view class="auth-wrap">
     <!-- 顶部 LOGO -->
-    <view class="auth-logo">AIT</view>
+    <image class="auth-logo-img" :class="{ 'auth-logo-img--dark': isDarkMode }" src="/static/ref/logo.png" mode="widthFix" />
     <text class="auth-brand">AI Tools Box</text>
 
     <text class="auth-title">欢迎回来</text>
@@ -9,7 +9,7 @@
 
     <!-- 账号 -->
     <view class="auth-field" :class="{ shake: shakeField === 'account' }">
-      <text class="af-icon">👤</text>
+      <view class="af-icon"><svg viewBox="0 0 24 24" style="width:36rpx;height:36rpx;fill:var(--text-tertiary)"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-5 0-9 2.5-9 5.5V22h18v-2.5c0-3-4-5.5-9-5.5z"/></svg></view>
       <input
         class="af-input"
         type="text"
@@ -21,7 +21,7 @@
 
     <!-- 密码 -->
     <view class="auth-field" :class="{ shake: shakeField === 'password' }">
-      <text class="af-icon">🔒</text>
+      <view class="af-icon"><svg viewBox="0 0 24 24" style="width:36rpx;height:36rpx;fill:var(--text-tertiary)"><path d="M17 9V7a5 5 0 10-10 0v2H5v12h14V9h-2zM9 7a3 3 0 116 0v2H9V7z"/></svg></view>
       <input
         class="af-input"
         :type="showPassword ? 'text' : 'password'"
@@ -29,7 +29,14 @@
         placeholder="请输入密码"
         placeholder-class="af-placeholder"
       />
-      <text class="af-eye" @click="showPassword = !showPassword">{{ showPassword ? '🙈' : '👁' }}</text>
+      <view class="af-eye" @click="showPassword = !showPassword">
+        <svg viewBox="0 0 24 24" style="width:40rpx;height:40rpx;fill:none;stroke:var(--text-tertiary);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round">
+          <path v-if="!showPassword" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/>
+          <circle v-if="!showPassword" cx="12" cy="12" r="3"/>
+          <path v-if="showPassword" d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
+          <path v-if="showPassword" d="M1 1l22 22"/>
+        </svg>
+      </view>
     </view>
 
     <view class="auth-forgot" @click="goToResetPassword">忘记密码？</view>
@@ -50,6 +57,7 @@ import { STORAGE_KEYS } from '@/utils/auth'
 import { ref, nextTick } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { request } from '../api/request'
+import { isDarkMode } from '@/utils/theme'
 import { switchTab } from '@/utils/pageTransition'
 
 const form = ref({
@@ -147,46 +155,43 @@ const goToResetPassword = () => {
 
 .auth-wrap {
   min-height: 100vh;
-  background: #fff;
+  background: var(--bg-card);
   /* App 端刘海屏：顶部避让状态栏（H5 端该变量为 0，不影响布局）。
      ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
   padding: var(--status-bar-height, 0px) 40rpx 48rpx;
   box-sizing: border-box;
 }
 
-.auth-logo {
-  width: 144rpx;
-  height: 144rpx;
-  border-radius: 40rpx;
-  background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
-  color: #fff;
-  font-size: 52rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.auth-logo-img {
+  display: block;
+  width: 210rpx;
+  height: auto;
   margin: 64rpx auto 24rpx;
+}
+/* 深色底上深色 logo 看不清 → 反白 */
+.auth-logo-img--dark {
+  filter: brightness(0) invert(1);
 }
 .auth-brand {
   display: block;
   text-align: center;
   font-size: 32rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 72rpx;
 }
 
 .auth-title {
   display: block;
-  font-size: 48rpx;
+  font-size: 56rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 8rpx;
 }
 .auth-sub {
   display: block;
   font-size: 28rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   margin-bottom: 48rpx;
 }
 
@@ -196,25 +201,25 @@ const goToResetPassword = () => {
   gap: 24rpx;
   height: 112rpx;
   padding: 0 32rpx;
-  border: 2rpx solid #E5E7EB;
+  border: 2rpx solid var(--border-color);
   border-radius: 24rpx;
   margin-bottom: 24rpx;
-  background: #fff;
+  background: var(--bg-card);
 }
 .af-icon { font-size: 36rpx; flex-shrink: 0; }
 .af-input {
   flex: 1;
   font-size: 28rpx;
-  color: #111827;
+  color: var(--text-primary);
   background: transparent;
 }
-.af-placeholder { color: #D1D5DB; }
-.af-eye { font-size: 34rpx; flex-shrink: 0; }
+.af-placeholder { color: var(--text-tertiary); }
+.af-eye { display: flex; align-items: center; flex-shrink: 0; }
 
 .auth-forgot {
   text-align: right;
   font-size: 26rpx;
-  color: #3B82F6;
+  color: var(--brand-primary);
   margin-bottom: 40rpx;
 }
 
@@ -224,10 +229,10 @@ const goToResetPassword = () => {
   justify-content: center;
   margin-top: 40rpx;
   font-size: 26rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
 }
 .auth-foot__link {
-  color: #3B82F6;
+  color: var(--brand-primary);
   font-weight: 600;
   margin-left: 6rpx;
 }

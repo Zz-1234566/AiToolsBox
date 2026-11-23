@@ -11,28 +11,28 @@
     <!-- 原密码 -->
     <text class="cp-label">原密码</text>
     <view class="auth-field" :class="{ shake: shakeField === 'oldPassword' }">
-      <text class="af-icon">🔒</text>
+      <svg class="af-icon-svg" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="#9A9AA4" stroke-width="1.8"/><path d="M8 10V7a4 4 0 118 0v3" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg>
       <input class="af-input" :type="show1 ? 'text' : 'password'" v-model="form.oldPassword"
              placeholder="请输入当前密码" placeholder-class="af-placeholder" />
-      <text class="af-eye" @click="show1 = !show1">{{ show1 ? '🙈' : '👁' }}</text>
+      <view class="af-eye" @click="show1 = !show1"><template v-if="show1"><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6c2 0 3.7.6 5.2 1.5M22 12s-3.6 6-10 6c-2 0-3.7-.6-5.2-1.5" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4l16 16" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg></template><template v-else><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#9A9AA4" stroke-width="1.8"/></svg></template></view>
     </view>
 
     <!-- 新密码 -->
     <text class="cp-label">新密码</text>
     <view class="auth-field" :class="{ shake: shakeField === 'newPassword' }">
-      <text class="af-icon">🔒</text>
+      <svg class="af-icon-svg" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="#9A9AA4" stroke-width="1.8"/><path d="M8 10V7a4 4 0 118 0v3" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg>
       <input class="af-input" :type="show2 ? 'text' : 'password'" v-model="form.newPassword"
              placeholder="请输入新密码" placeholder-class="af-placeholder" />
-      <text class="af-eye" @click="show2 = !show2">{{ show2 ? '🙈' : '👁' }}</text>
+      <view class="af-eye" @click="show2 = !show2"><template v-if="show2"><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6c2 0 3.7.6 5.2 1.5M22 12s-3.6 6-10 6c-2 0-3.7-.6-5.2-1.5" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4l16 16" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg></template><template v-else><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#9A9AA4" stroke-width="1.8"/></svg></template></view>
     </view>
 
     <!-- 确认新密码 -->
     <text class="cp-label">确认新密码</text>
     <view class="auth-field" :class="{ shake: shakeField === 'confirmPassword' }">
-      <text class="af-icon">🔒</text>
+      <svg class="af-icon-svg" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" fill="none" stroke="#9A9AA4" stroke-width="1.8"/><path d="M8 10V7a4 4 0 118 0v3" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg>
       <input class="af-input" :type="show3 ? 'text' : 'password'" v-model="form.confirmPassword"
              placeholder="请再次输入新密码" placeholder-class="af-placeholder" />
-      <text class="af-eye" @click="show3 = !show3">{{ show3 ? '🙈' : '👁' }}</text>
+      <view class="af-eye" @click="show3 = !show3"><template v-if="show3"><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6c2 0 3.7.6 5.2 1.5M22 12s-3.6 6-10 6c-2 0-3.7-.6-5.2-1.5" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4l16 16" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg></template><template v-else><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#9A9AA4" stroke-width="1.8"/></svg></template></view>
     </view>
 
     <!-- 密码强度 -->
@@ -145,7 +145,7 @@ const goBack = () => safeBack('/pages/my')
 
 .cp-wrap {
   min-height: 100vh;
-  background: #fff;
+  background: var(--bg-card);
   /* App 端刘海屏：顶部避让状态栏（H5 端该变量为 0）。
      ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
   padding: var(--status-bar-height, 0px) 40rpx 48rpx;
@@ -153,19 +153,19 @@ const goBack = () => safeBack('/pages/my')
 }
 
 .auth-back { padding: 24rpx 0 8rpx; }
-.auth-back__icon { font-size: 56rpx; color: #111827; line-height: 1; }
+.auth-back__icon { font-size: 56rpx; color: var(--text-primary); line-height: 1; }
 
 .auth-title {
   display: block;
-  font-size: 48rpx;
+  font-size: 56rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 8rpx;
 }
 .auth-sub {
   display: block;
   font-size: 28rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   margin-bottom: 40rpx;
 }
 
@@ -173,7 +173,7 @@ const goBack = () => safeBack('/pages/my')
   display: block;
   font-size: 26rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 16rpx;
 }
 
@@ -183,36 +183,38 @@ const goBack = () => safeBack('/pages/my')
   gap: 24rpx;
   height: 112rpx;
   padding: 0 32rpx;
-  border: 2rpx solid #E5E7EB;
+  border: 2rpx solid var(--border-color);
   border-radius: 24rpx;
   margin-bottom: 24rpx;
-  background: #fff;
+  background: var(--bg-card);
 }
-.af-icon { font-size: 36rpx; flex-shrink: 0; }
+.af-icon { display: flex; flex-shrink: 0; }
+.af-icon-svg { width: 36rpx; height: 36rpx; }
 .af-input {
   flex: 1;
   font-size: 28rpx;
-  color: #111827;
+  color: var(--text-primary);
   background: transparent;
 }
-.af-placeholder { color: #D1D5DB; }
-.af-eye { font-size: 34rpx; flex-shrink: 0; }
+.af-placeholder { color: var(--text-tertiary); }
+.af-eye { display: flex; flex-shrink: 0; }
+.af-eye-svg { width: 36rpx; height: 36rpx; }
 
 /* 密码强度条 */
 .pwd-strength { margin: 8rpx 0 24rpx; }
 .pwd-strength__row { display: flex; align-items: center; gap: 24rpx; }
-.pwd-strength__label { font-size: 26rpx; color: #4B5563; flex-shrink: 0; }
+.pwd-strength__label { font-size: 26rpx; color: var(--text-secondary); flex-shrink: 0; }
 .pwd-strength__bars { flex: 1; display: flex; gap: 8rpx; }
 .pwd-strength__bar {
-  flex: 1; height: 12rpx; border-radius: 6rpx; background: #E5E7EB;
+  flex: 1; height: 12rpx; border-radius: 6rpx; background: var(--bg-gray);
 }
-.pwd-strength__bar--low { background: #EF4444; }
+.pwd-strength__bar--low { background: var(--color-danger); }
 .pwd-strength__bar--mid { background: #F59E0B; }
-.pwd-strength__bar--high { background: #10B981; }
+.pwd-strength__bar--high { background: var(--color-success); }
 .pwd-strength__scale {
   display: flex; justify-content: space-between;
   margin-left: 150rpx; margin-top: 8rpx;
-  font-size: 24rpx; color: #9CA3AF;
+  font-size: 24rpx; color: var(--text-tertiary);
 }
 
 .btn-submit { margin-top: 16rpx; }

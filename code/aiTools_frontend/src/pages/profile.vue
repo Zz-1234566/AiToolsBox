@@ -259,7 +259,7 @@ const handleSave = async () => {
   font-size: $font-size-lg;
   font-weight: 600;
   color: #FFFFFF;
-  background-color: $text-primary;
+  background-color: #F5671D;
   border-radius: $radius-md;
   border: none;
   margin-top: $spacing-md;

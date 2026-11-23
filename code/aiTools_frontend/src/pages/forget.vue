@@ -6,6 +6,8 @@
     </view>
     <view class="forget-card animate-fade-in-up">
       <!-- 标题 -->
+      <!-- 品牌 LOGO -->
+      <image class="auth-logo-img" :class="{ 'auth-logo-img--dark': isDarkMode }" src="/static/ref/logo.png" mode="widthFix" />
       <view class="title-section">
         <text class="title">智汇工具箱</text>
         <text class="subtitle">找回账号</text>
@@ -51,6 +53,7 @@ import { STORAGE_KEYS } from '@/utils/auth'
 import { ref, nextTick } from 'vue'
 import { findAccountApi } from '@/api/user'
 import { safeBack } from '@/utils/pageTransition'
+import { isDarkMode } from '@/utils/theme'
 
 const email = ref('')
 const loading = ref(false)
@@ -122,7 +125,7 @@ const goBack = () => {
 }
 .auth-back__icon {
   font-size: 56rpx;
-  color: #111827;
+  color: var(--text-primary);
   line-height: 1;
 }
 
@@ -130,8 +133,7 @@ const goBack = () => {
   min-height: 100vh;
   background-color: $bg-color;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   /* App 端刘海屏：顶部避让状态栏（H5 端该变量为 0）。
      ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
   padding: var(--status-bar-height, 0px) $spacing-lg $spacing-lg;
@@ -140,6 +142,7 @@ const goBack = () => {
 .forget-card {
   width: 100%;
   max-width: 680rpx;
+  margin: auto;
   background-color: $bg-white;
   border-radius: $radius-lg;
   padding: $spacing-xl $spacing-lg;
@@ -209,8 +212,8 @@ const goBack = () => {
   font-size: $font-size-lg;
   font-weight: 600;
   color: #FFFFFF;
-  background-color: $text-primary;
-  border-radius: $radius-md;
+  background-color: $brand-primary;
+  border-radius: 9999rpx;
   border: none;
   margin-top: $spacing-md;
   transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -277,5 +280,14 @@ const goBack = () => {
       opacity: 0.7;
     }
   }
+}
+.auth-logo-img {
+  display: block;
+  width: 180rpx;
+  height: auto;
+  margin: 0 auto 28rpx;
+}
+.auth-logo-img--dark {
+  filter: brightness(0) invert(1);
 }
 </style>

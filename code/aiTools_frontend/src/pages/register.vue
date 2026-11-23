@@ -5,7 +5,7 @@
       <text class="auth-back__icon">‹</text>
     </view>
 
-    <view class="auth-logo">AIT</view>
+    <image class="auth-logo-img" :class="{ 'auth-logo-img--dark': isDarkMode }" src="/static/ref/logo.png" mode="widthFix" />
     <text class="auth-brand">AI Tools Box</text>
 
     <text class="auth-title">创建账号</text>
@@ -13,7 +13,7 @@
 
     <!-- 邮箱 -->
     <view class="auth-field" :class="{ shake: shakeField === 'email' }">
-      <text class="af-icon">✉️</text>
+      <view class="af-icon"><svg viewBox="0 0 24 24" style="width:36rpx;height:36rpx;fill:var(--text-tertiary)"><path d="M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></view>
       <view class="af-body">
         <text class="af-label">邮箱</text>
         <input class="af-input" v-model="form.email" placeholder="请输入邮箱" placeholder-class="af-placeholder" />
@@ -22,7 +22,7 @@
 
     <!-- 验证码 -->
     <view class="auth-field" :class="{ shake: shakeField === 'code' }">
-      <text class="af-icon">🛡</text>
+      <view class="af-icon"><svg viewBox="0 0 24 24" style="width:36rpx;height:36rpx;fill:var(--text-tertiary)"><path d="M12 2l8 4v6c0 5-3.4 9.3-8 10-4.6-.7-8-5-8-10V6l8-4z"/></svg></view>
       <view class="af-body">
         <text class="af-label">验证码</text>
         <input class="af-input" v-model="form.code" placeholder="请输入验证码" placeholder-class="af-placeholder" />
@@ -34,7 +34,7 @@
 
     <!-- 用户名 -->
     <view class="auth-field" :class="{ shake: shakeField === 'username' }">
-      <text class="af-icon">👤</text>
+      <view class="af-icon"><svg viewBox="0 0 24 24" style="width:36rpx;height:36rpx;fill:var(--text-tertiary)"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-5 0-9 2.5-9 5.5V22h18v-2.5c0-3-4-5.5-9-5.5z"/></svg></view>
       <view class="af-body">
         <text class="af-label">用户名</text>
         <input class="af-input" v-model="form.username" placeholder="请输入用户名" placeholder-class="af-placeholder" />
@@ -43,22 +43,22 @@
 
     <!-- 设置密码 -->
     <view class="auth-field" :class="{ shake: shakeField === 'password' }">
-      <text class="af-icon">🔒</text>
+      <view class="af-icon"><svg viewBox="0 0 24 24" style="width:36rpx;height:36rpx;fill:var(--text-tertiary)"><path d="M17 9V7a5 5 0 10-10 0v2H5v12h14V9h-2zM9 7a3 3 0 116 0v2H9V7z"/></svg></view>
       <view class="af-body">
         <text class="af-label">设置密码</text>
         <input class="af-input" :type="showPwd ? 'text' : 'password'" v-model="form.password" placeholder="请输入 6-16 位密码" placeholder-class="af-placeholder" />
       </view>
-      <text class="af-eye" @click="showPwd = !showPwd">{{ showPwd ? '🙈' : '👁' }}</text>
+      <view class="af-eye" @click="showPwd = !showPwd"><template v-if="showPwd"><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6c2 0 3.7.6 5.2 1.5M22 12s-3.6 6-10 6c-2 0-3.7-.6-5.2-1.5" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4l16 16" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg></template><template v-else><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#9A9AA4" stroke-width="1.8"/></svg></template></view>
     </view>
 
     <!-- 确认密码 -->
     <view class="auth-field" :class="{ shake: shakeField === 'confirmPassword' }">
-      <text class="af-icon">🔒</text>
+      <view class="af-icon"><svg viewBox="0 0 24 24" style="width:36rpx;height:36rpx;fill:var(--text-tertiary)"><path d="M17 9V7a5 5 0 10-10 0v2H5v12h14V9h-2zM9 7a3 3 0 116 0v2H9V7z"/></svg></view>
       <view class="af-body">
         <text class="af-label">确认密码</text>
         <input class="af-input" :type="showPwd2 ? 'text' : 'password'" v-model="form.confirmPassword" placeholder="请再次输入密码" placeholder-class="af-placeholder" />
       </view>
-      <text class="af-eye" @click="showPwd2 = !showPwd2">{{ showPwd2 ? '🙈' : '👁' }}</text>
+      <view class="af-eye" @click="showPwd2 = !showPwd2"><template v-if="showPwd2"><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6c2 0 3.7.6 5.2 1.5M22 12s-3.6 6-10 6c-2 0-3.7-.6-5.2-1.5" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/><path d="M4 4l16 16" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linecap="round"/></svg></template><template v-else><svg class="af-eye-svg" viewBox="0 0 24 24"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" fill="none" stroke="#9A9AA4" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.6" fill="none" stroke="#9A9AA4" stroke-width="1.8"/></svg></template></view>
     </view>
 
     <view class="btn-solid btn-register" :class="{ 'btn-solid--disabled': loading }" @click="loading ? null : handleRegister()">
@@ -89,6 +89,7 @@ import { STORAGE_KEYS } from '@/utils/auth'
 import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { safeBack } from '@/utils/pageTransition'
 import { request } from '../api/request'
+import { isDarkMode } from '@/utils/theme'
 import { sendCodeApi } from '../api/user'
 
 const form = ref({
@@ -251,7 +252,7 @@ const goBack = () => safeBack('/pages/login')
 
 .auth-wrap {
   min-height: 100vh;
-  background: #fff;
+  background: var(--bg-card);
   /* App 端刘海屏：顶部避让状态栏（H5 端该变量为 0）。
      ⚠️ 用四值简写，避免后续 padding 简写把 padding-top 重置掉。 */
   padding: var(--status-bar-height, 0px) 40rpx 48rpx;
@@ -263,43 +264,39 @@ const goBack = () => safeBack('/pages/login')
 }
 .auth-back__icon {
   font-size: 56rpx;
-  color: #111827;
+  color: var(--text-primary);
   line-height: 1;
 }
 
-.auth-logo {
-  width: 144rpx;
-  height: 144rpx;
-  border-radius: 40rpx;
-  background: linear-gradient(135deg, #3B82F6 0%, #6366F1 100%);
-  color: #fff;
-  font-size: 52rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.auth-logo-img {
+  display: block;
+  width: 210rpx;
+  height: auto;
   margin: 8rpx auto 24rpx;
+}
+.auth-logo-img--dark {
+  filter: brightness(0) invert(1);
 }
 .auth-brand {
   display: block;
   text-align: center;
   font-size: 32rpx;
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 64rpx;
 }
 
 .auth-title {
   display: block;
-  font-size: 48rpx;
+  font-size: 56rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 8rpx;
 }
 .auth-sub {
   display: block;
   font-size: 28rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   margin-bottom: 40rpx;
 }
 
@@ -309,34 +306,35 @@ const goBack = () => safeBack('/pages/login')
   gap: 24rpx;
   height: 112rpx;
   padding: 0 32rpx;
-  border: 2rpx solid #E5E7EB;
+  border: 2rpx solid var(--border-color);
   border-radius: 24rpx;
   margin-bottom: 24rpx;
-  background: #fff;
+  background: var(--bg-card);
 }
 .af-icon { font-size: 36rpx; flex-shrink: 0; }
 .af-body { flex: 1; min-width: 0; }
 .af-label {
   display: block;
   font-size: 22rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   margin-bottom: 4rpx;
 }
 .af-input {
   width: 100%;
   font-size: 28rpx;
-  color: #111827;
+  color: var(--text-primary);
   background: transparent;
 }
-.af-placeholder { color: #D1D5DB; }
-.af-eye { font-size: 34rpx; flex-shrink: 0; }
+.af-placeholder { color: var(--text-tertiary); }
+.af-eye { display: flex; flex-shrink: 0; }
+.af-eye-svg { width: 36rpx; height: 36rpx; }
 .af-code {
   font-size: 26rpx;
-  color: #3B82F6;
+  color: var(--brand-primary);
   font-weight: 500;
   flex-shrink: 0;
 }
-.af-code--disabled { color: #9CA3AF; }
+.af-code--disabled { color: var(--text-tertiary); }
 
 .btn-register { margin-top: 40rpx; }
 
@@ -346,10 +344,10 @@ const goBack = () => safeBack('/pages/login')
   justify-content: center;
   margin-top: 40rpx;
   font-size: 26rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
 }
 .auth-foot__link {
-  color: #3B82F6;
+  color: var(--brand-primary);
   font-weight: 600;
   margin-left: 6rpx;
 }
@@ -374,7 +372,7 @@ const goBack = () => safeBack('/pages/login')
 }
 .success-card {
   width: 100%;
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 32rpx;
   padding: 56rpx 40rpx 40rpx;
   display: flex;
@@ -385,7 +383,7 @@ const goBack = () => safeBack('/pages/login')
   width: 112rpx;
   height: 112rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #34D399, #10B981);
+  background: linear-gradient(135deg, #34D399, var(--color-success));
   color: #fff;
   font-size: 60rpx;
   display: flex;
@@ -396,20 +394,20 @@ const goBack = () => safeBack('/pages/login')
 .success-title {
   font-size: 36rpx;
   font-weight: 700;
-  color: #111827;
+  color: var(--text-primary);
   margin-bottom: 24rpx;
 }
-.success-tip { font-size: 26rpx; color: #9CA3AF; }
+.success-tip { font-size: 26rpx; color: var(--text-tertiary); }
 .success-account {
   font-size: 40rpx;
   font-weight: 700;
-  color: #3B82F6;
+  color: var(--brand-primary);
   letter-spacing: 2rpx;
   margin: 12rpx 0 16rpx;
 }
 .success-note {
   font-size: 24rpx;
-  color: #9CA3AF;
+  color: var(--text-tertiary);
   margin-bottom: 40rpx;
   text-align: center;
 }
