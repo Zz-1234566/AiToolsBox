@@ -10,7 +10,7 @@
           <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </view>
         <view class="topbar__text">
-        <text class="topbar__title">智能体</text>
+        <text class="topbar__title">智小T</text>
           <text class="topbar__sub">把复杂任务交给 AI，自动调用工具完成</text>
         </view>
       </view>
@@ -32,7 +32,7 @@
     <!-- 欢迎态 -->
     <view v-if="!started" class="welcome">
       <image class="welcome__robot" :src="ROBOT_BASE" mode="aspectFit" />
-      <text class="welcome__t1">你好，我是 AI 助手</text>
+      <text class="welcome__t1">你好，我是智小T</text>
       <text class="welcome__t2">有什么可以帮你？</text>
       <text class="sugs__label">试试这样问我：</text>
       <view class="sugs">
@@ -755,7 +755,7 @@ $ref-sub: var(--text-secondary);
 
 .topbar {
   position: relative;
-  height: 116rpx;
+  height: 136rpx;
   padding: 0 32rpx;
   display: flex;
   align-items: center;
@@ -862,8 +862,8 @@ $ref-sub: var(--text-secondary);
 
 .ai-avatar-wrap {
   position: relative;
-  width: 84rpx;
-  height: 84rpx;
+  width: 104rpx;
+  height: 104rpx;
   flex-shrink: 0;
 }
 .topbar__avatar {
@@ -871,20 +871,20 @@ $ref-sub: var(--text-secondary);
   align-items: center;
 }
 .ai-avatar {
-  width: 80rpx;
-  height: 80rpx;
+  width: 96rpx;
+  height: 96rpx;
   border-radius: 50%;
   background: var(--bg-card);
   display: block;
-  padding: 6rpx;
+  padding: 4rpx;
   box-sizing: border-box;
 }
 .ai-badge {
   position: absolute;
-  right: -6rpx;
-  top: -6rpx;
-  width: 36rpx;
-  height: 36rpx;
+  right: -4rpx;
+  top: -4rpx;
+  width: 42rpx;
+  height: 42rpx;
   border-radius: 50%;
   background: var(--bg-card);
   border: 2rpx solid $ref-orange;
