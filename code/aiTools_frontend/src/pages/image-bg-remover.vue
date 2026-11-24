@@ -6,9 +6,9 @@
         <view class="topbar__back" hover-class="topbar__back--hover" @click="goBack">
           <text class="topbar__back-icon">‹</text>
         </view>
-        <text class="topbar__title">图片背景去除</text>
+        <text class="topbar__title">{{ isIdPhoto ? '证件照换底色' : '图片背景去除' }}</text>
       </view>
-      <text class="topbar__desc">上传图片，自动抠出主体并处理背景</text>
+      <text class="topbar__desc">{{ isIdPhoto ? '上传人像照片，一键换成红/蓝/白底' : '上传图片，自动抠出主体并处理背景' }}</text>
     </view>
 
     <scroll-view scroll-y class="page-content" @touchmove.stop.prevent="onNoop">
@@ -335,6 +335,7 @@ export default {
   /** 从工具页「证件照换底色」进入时，默认使用白色底 */
   onLoad(options) {
     if (options && options.preset === 'id-photo') {
+      this.isIdPhoto = true
       this.$nextTick(() => {
         this.currentBgColor = '#FFFFFF'
       })
@@ -342,6 +343,8 @@ export default {
   },
   data() {
     return {
+      /** 是否从「证件照换底色」入口进入 */
+      isIdPhoto: false,
       // ===== 3 状态机 =====
       // A: 上传 + 「去背景」按钮（换底色/换背景图 不显示）
       // B: 处理中（进度条 + 「正在去背景」+ 「请稍候」）
