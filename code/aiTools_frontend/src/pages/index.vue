@@ -7,11 +7,6 @@
       </view>
       <text class="brandbar__name">AI Tools Box</text>
       <view class="brandbar__acts">
-        <view class="ibtn" @click="goToSearch">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
-          </svg>
-        </view>
         <view class="ibtn ibtn--avatar" @click="switchTab('/pages/my')">
           <image v-if="userInfo && userInfo.avatar" class="avatar-img" :src="userInfo.avatar" mode="aspectFill" />
           <text v-else class="avatar-letter">{{ initials }}</text>
