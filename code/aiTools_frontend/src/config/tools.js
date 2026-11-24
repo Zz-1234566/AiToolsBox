@@ -131,7 +131,7 @@ export const TOOLS = {
   'work-summary': {
     name: '工作总结', icon: 'summary', category: 'AI办公助手', realized: true,
     inputLabel: '工作内容',
-    desc: '输入零散的工作记录，AI 自动整理成结构化的工作总结。文件请先用【文档提取】转为文字。',
+    desc: '记录零散内容，AI 整理成工作总结',
     inputTypes: ['text'], defaultInput: 'text',
     placeholder: '请粘贴或输入工作记录（可先用【文档提取】/【录音转写】准备好文字）...',
     actionText: '开始总结', resultTitle: '总结结果', resultPlaceholder: '整理后的工作总结将在这里显示...',
@@ -144,7 +144,7 @@ export const TOOLS = {
   'doc-keypoint-extract': {
     name: '重点提取', icon: 'summary', category: 'AI办公助手', realized: true,
     inputLabel: '文本内容',
-    desc: '输入已获取的文字内容，AI 逐条提炼核心要点、关键数据与结论建议。文件请先用【文档提取】转为文字。',
+    desc: '提炼核心要点与关键数据',
     inputTypes: ['text'], defaultInput: 'text',
     placeholder: '请粘贴或输入文档内容（可先用【文档提取】/【录音转写】准备好文字）...',
     actionText: '开始提取', resultTitle: '提取结果', resultPlaceholder: '文档重点将在这里显示...',
@@ -157,7 +157,7 @@ export const TOOLS = {
   'weekly-report': {
     name: '周报生成', icon: 'weekly', category: 'AI办公助手', realized: true,
     inputLabel: '本周工作内容',
-    desc: '输入本周工作内容，一键生成结构化周报',
+    desc: '一键生成结构化工作周报',
     inputTypes: ['text'], defaultInput: 'text',
     placeholder: '请粘贴或输入本周完成的工作内容...',
     actionText: '生成周报', resultTitle: '周报内容', resultPlaceholder: '生成的周报将在这里显示...',
@@ -171,7 +171,7 @@ export const TOOLS = {
   'meeting-minutes': {
     name: '会议纪要', icon: 'meeting', category: 'AI办公助手', realized: true,
     inputLabel: '会议内容',
-    desc: '输入会议内容，AI 帮你整理会议核心结论和行动项。',
+    desc: '整理会议结论与待办行动项',
     // 已移除录音上传：转写能力解耦为独立节点/工具（audio-transcribe / doc-to-text）
     inputTypes: ['text'], defaultInput: 'text',
     placeholder: '请输入或粘贴会议内容（可先用【录音转写】/【文档转文本】工具准备好文字）...',
