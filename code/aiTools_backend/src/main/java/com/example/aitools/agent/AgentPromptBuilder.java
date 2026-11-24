@@ -40,7 +40,8 @@ public class AgentPromptBuilder {
                                      String profileText) {
         StringBuilder sb = new StringBuilder();
         if (profileText != null && !profileText.isBlank()) {
-            sb.append("【用户画像（来自历史对话，可作为偏好参考，不要直接复述给用户）】\n");
+            sb.append("【用户长期偏好（仅作表达风格参考，与本会话内容无关）】\n");
+            sb.append("注意：以下偏好不代表本会话中出现过任何事实；不得据此猜测或复述历史对话内容。\n");
             sb.append(profileText.trim());
             sb.append("\n\n");
         }

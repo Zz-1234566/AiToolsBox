@@ -116,12 +116,20 @@ public class AgentSessionServiceImpl implements AgentSessionService {
         if (sessionId == null || sessionId.isBlank()) {
             throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "缺少会话标识");
         }
-        AgentSession s = sessionMapper.selectOne(new LambdaQueryWrapper<AgentSession>()
+        // 先只按 sessionId 查：若存在但不属于当前用户，必须拒绝 ——
+        // 否则会走下面的「自动创建」，撞唯一索引报 500，且语义上是越权访问
+        AgentSession existing = sessionMapper.selectOne(new LambdaQueryWrapper<AgentSession>()
                 .eq(AgentSession::getSessionId, sessionId)
-                .eq(AgentSession::getUserId, userId)
                 .last("LIMIT 1"));
-        if (s == null) {
-            // 前端带了未知 sessionId：视为新会话（避免运行直接失败）
+        if (existing != null) {
+            if (existing.getUserId() == null || !existing.getUserId().equals(userId)) {
+                throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "会话不存在或无权访问");
+            }
+            return existing;
+        }
+        // 前端带了未知 sessionId：视为新会话（避免运行直接失败）
+        {
+
             AgentSession created = new AgentSession();
             created.setSessionId(sessionId);
             created.setUserId(userId);
@@ -134,7 +142,6 @@ public class AgentSessionServiceImpl implements AgentSessionService {
             log.info("[agent-session] 会话不存在，自动创建 userId={} sessionId={}", userId, sessionId);
             return created;
         }
-        return s;
     }
 
     @Override
