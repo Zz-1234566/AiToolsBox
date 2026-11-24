@@ -40,7 +40,8 @@
       <text class="sec__t">热门工具</text>
       <text class="sec__more" @click="goToCategory">全部 ›</text>
     </view>
-    <view class="grid3">
+    <view class="marquee">
+      <view class="marquee__track">
       <view v-for="(tool, i) in hotTools" :key="tool.id" class="tcell" @click="goToTool(tool.id)">
         <view class="tcell__ico" :class="{ 'tcell__ico--dark': i === 1 }">
           <svg v-if="tool.iconType === 'doc'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
@@ -69,21 +70,56 @@
         <text class="tcell__n">{{ tool.name }}</text>
         <text class="tcell__d">{{ tool.desc }}</text>
       </view>
+    
+      <view v-for="(tool, i) in hotTools" :key="'dup' + tool.id" class="tcell" @click="goToTool(tool.id)">
+        <view class="tcell__ico" :class="{ 'tcell__ico--dark': i === 1 }">
+          <svg v-if="tool.iconType === 'doc'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+            <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>
+          </svg>
+          <svg v-else-if="tool.iconType === 'text'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+            <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/>
+          </svg>
+          <svg v-else-if="tool.iconType === 'code'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+            <rect x="4" y="4" width="12" height="16" rx="2"/><path d="M16 8h2a2 2 0 012 2v8a2 2 0 01-2 2"/><path d="M8 9h4M8 13h4"/>
+          </svg>
+          <svg v-else-if="tool.iconType === 'video'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+            <rect x="4" y="5" width="16" height="16" rx="3"/><path d="M8 3v4M16 3v4"/><path d="M9 13l2.5 1.8L9 16.5z"/>
+          </svg>
+          <svg v-else-if="tool.iconType === 'ocr'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+            <path d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2"/>
+            <path d="M8 12h8"/>
+          </svg>
+          <svg v-else-if="tool.iconType === 'audio'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+            <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 16l5-5 4 4 3-3 6 6"/>
+          </svg>
+        </view>
+        <text class="tcell__n">{{ tool.name }}</text>
+        <text class="tcell__d">{{ tool.desc }}</text>
+      </view>
+      </view>
     </view>
 
-    <!-- 图片去背景 宽卡 -->
-    <view class="wide" @click="goToTool('image-bg-remover')">
-      <view class="wide__thumb">
-        <image class="wide__thumb-img" src="/static/ref/thumb-bg.png" mode="aspectFill" />
+    <!-- 轮播推荐：与热门工具同一批数据，定时轮换 -->
+    <view class="wide" :key="bannerTool.id" @click="goToTool(bannerTool.id)">
+      <view class="wide__thumb" :class="'wide__thumb--' + (bannerTool.iconType || 'image')">
+        <text class="wide__emoji">{{ bannerTool.emoji || '✨' }}</text>
       </view>
       <view class="wide__body">
-        <text class="wide__t">图片去背景</text>
-        <text class="wide__d">一键抠图，轻松换背景</text>
+        <text class="wide__t">{{ bannerTool.name }}</text>
+        <text class="wide__d">{{ bannerTool.desc }}</text>
       </view>
       <view class="wide__go">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h13M13 6l6 6-6 6"/>
         </svg>
+      </view>
+      <!-- 轮播指示点 -->
+      <view class="wide__dots">
+        <view v-for="(b, bi) in bannerTools" :key="b.id" class="wide__dot"
+              :class="{ 'wide__dot--on': bi === bannerIndex }" />
       </view>
     </view>
 
@@ -117,6 +153,10 @@ import { TOOLS, REALIZED_TOOLS, toolDetailUrl, getToolGradient, getToolCategoryT
 import { favoriteListApi, favoriteAddApi, favoriteRemoveApi } from '@/api/favorite'
 import { switchTab } from '@/utils/pageTransition'
 import { STORAGE_KEYS } from '@/utils/auth'
+import { onMounted, onUnmounted } from 'vue'
+
+// 每个工具的 emoji（轮播卡缩略图用）
+const TOOL_EMOJI = { 'work-summary': '📝', 'doc-keypoint-extract': '📄', 'weekly-report': '📋', 'meeting-minutes': '🎯', 'doc-to-text': '📑', 'image-bg-remover': '🖼️', 'id-photo-bg-change': '🪪', 'audio-transcribe': '🎙️' }
 
 // 渐变类型 / 分类 tag 统一取自 config/tools.js（唯一定义处），
 // 此前本页自维护 ICON_TYPE_MAP / TAG_MAP，与分类页各一份，新增工具容易漏改。
@@ -127,9 +167,24 @@ const hotTools = ref(Object.keys(TOOLS).slice(0, 6).map(id => {
     name: t.name || id,
     desc: TOOL_SHORT_DESC[id] || t.desc || '',
     tag: getToolCategoryTag(id) || t.category || '工具',
-    iconType: getToolGradient(id)
+    iconType: getToolGradient(id),
+    emoji: TOOL_EMOJI[id] || '✨'
   }
 }))
+
+// 轮播推荐：取热门工具里的前 4 个，每 4s 切换
+const bannerTools = computed(() => hotTools.value.slice(0, 4))
+const bannerIndex = ref(0)
+const bannerTool = computed(() => bannerTools.value[bannerIndex.value] || hotTools.value[0] || {})
+let bannerTimer = null
+onMounted(() => {
+  bannerTimer = setInterval(() => {
+    if (!bannerTools.value.length) return
+    bannerIndex.value = (bannerIndex.value + 1) % bannerTools.value.length
+  }, 4000)
+})
+onUnmounted(() => { if (bannerTimer) clearInterval(bannerTimer) })
+
 const userInfo = ref(null)
 const initials = computed(() => {
   const u = userInfo.value
@@ -450,4 +505,24 @@ $ref-bg: var(--bg-page);
 .recent__n { display: block; font-size: 28rpx; font-weight: 600; color: $ref-ink; }
 .recent__t { display: block; margin-top: 6rpx; font-size: 22rpx; color: $ref-sub; }
 .recent__chev { font-size: 36rpx; color: #C4C4CC; }
+
+/* 热门工具：单行循环滚动（内容复制两份，位移 -50% 实现无缝） */
+.marquee { overflow: hidden; margin: 0 32rpx; }
+.marquee__track { display: flex; gap: 16rpx; width: max-content; animation: marquee-flow 26s linear infinite; }
+.marquee__track .tcell { flex: 0 0 auto; width: 200rpx; }
+@keyframes marquee-flow {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+/* 用户按住在看的时候暂停，避免点错 */
+.marquee:active .marquee__track { animation-play-state: paused; }
+
+/* 轮播推荐卡：切换时淡入；position:relative 让指示点相对卡片定位（否则会跑到页面右下角） */
+.wide { position: relative; animation: wide-fade .45s ease; }
+@keyframes wide-fade { from { opacity: .35; transform: translateY(4rpx); } to { opacity: 1; transform: none; } }
+.wide__emoji { font-size: 44rpx; line-height: 1; }
+.wide__thumb { display: flex; align-items: center; justify-content: center; }
+.wide__dots { position: absolute; left: 50%; transform: translateX(-50%); bottom: 14rpx; display: flex; gap: 6rpx; }
+.wide__dot { width: 8rpx; height: 8rpx; border-radius: 50%; background: rgba(0,0,0,.15); }
+.wide__dot--on { background: var(--brand-primary); width: 16rpx; border-radius: 4rpx; }
 </style>

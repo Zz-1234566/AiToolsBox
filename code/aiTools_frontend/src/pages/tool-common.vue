@@ -31,17 +31,7 @@
       @change="onAiModelChange"
     />
 
-    <view class="example-section" v-if="FORMAT_TOOLS[toolId]">
-        <view class="example-section__title">格式要求<span class="fmt-tip">（可选，决定输出形态）</span></view>
-        <view class="fmt-list">
-          <view v-for="f in FORMAT_OPTIONS" :key="f.key"
-                class="fmt-item" :class="{ 'fmt-item--on': formatStyle === f.key }"
-                @click="pickFormat(f)">
-            <text class="fmt-item__t">{{ f.label }}</text>
-            <text class="fmt-item__d">{{ f.desc }}</text>
-          </view>
-        </view>
-      </view>
+    
 
     <!-- ============ 工具特化 UI（按 toolId 分发） ============ -->
 
@@ -249,6 +239,18 @@
         </view>
       </block>
     </block>
+
+    <view class="example-section" v-if="FORMAT_TOOLS[toolId]">
+        <view class="example-section__title">格式要求<span class="fmt-tip">（可选，决定输出形态）</span></view>
+        <view class="fmt-list">
+          <view v-for="f in FORMAT_OPTIONS" :key="f.key"
+                class="fmt-item" :class="{ 'fmt-item--on': formatStyle === f.key }"
+                @click="pickFormat(f)">
+            <text class="fmt-item__t">{{ f.label }}</text>
+            <text class="fmt-item__d">{{ f.desc }}</text>
+          </view>
+        </view>
+      </view>
 
     <!-- ============ 通用结果区（加工层工具共用） ============ -->
     <!-- 覆盖 work-summary / weekly-report / doc-keypoint-extract / 纯转换类工具：
