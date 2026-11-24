@@ -57,6 +57,11 @@ public class AgentToolCatalog {
     public static final String STEP_OCR = "ocr";
     /** 管线步骤：文本加工（走 AI + 该工具的 format/generate 提示词） */
     public static final String STEP_PROCESS = "process";
+    /** 管线步骤：图片理解（走多模态模型，把图片真正喂给模型看） */
+    public static final String STEP_VISION = "vision";
+
+    /** 内置工具编码：图片理解（不入库，避免出现在工具页） */
+    public static final String TOOL_IMAGE_UNDERSTAND = "image-understand";
 
     private final AiToolMapper aiToolMapper;
     private final AiPromptTemplateService promptTemplateService;
@@ -65,6 +70,7 @@ public class AgentToolCatalog {
     private final TranscribeService transcribeService;
     private final OcrService ocrService;
     private final com.example.aitools.service.HistoryService historyService;
+    private final com.example.aitools.ai.AiVisionClient aiVisionClient;
 
     /**
      * 智能体可用工具。
@@ -148,6 +154,8 @@ public class AgentToolCatalog {
                 tools.add(tool);
             }
         }
+        // 内置工具：图片理解（走多模态模型）。不写 DB，避免出现在工具页/工作流里
+        tools.add(builtinVisionTool());
         log.info("[agent] 可用工具 {} 个：{}", tools.size(),
                 tools.stream().map(AgentTool::getCode).toList());
         return tools;
@@ -159,6 +167,9 @@ public class AgentToolCatalog {
     public AgentTool find(String code) {
         if (code == null || code.isBlank()) {
             return null;
+        }
+        if (TOOL_IMAGE_UNDERSTAND.equals(code.trim())) {
+            return builtinVisionTool();
         }
         AiTool t = aiToolMapper.selectOne(new LambdaQueryWrapper<AiTool>()
                 .eq(AiTool::getToolCode, code.trim())
@@ -240,7 +251,7 @@ public class AgentToolCatalog {
             throw new IllegalArgumentException("工具输入为空");
         }
         Long historyId = null;
-        if (userId != null) {
+        if (userId != null && tool.getToolId() != null) {
             historyId = historyService.createAgentToolHistory(userId, tool.getToolId(), null,
                     tool.getCode(), brief(input), runId, tool.getName());
         }
@@ -287,9 +298,28 @@ public class AgentToolCatalog {
                 return ocrService.recognizeText(nodeExecutor.toMultipartFile(content, "input.png"));
             case STEP_PROCESS:
                 return nodeExecutor.processText(tool.getCode(), content, params);
+            case STEP_VISION: {
+                String question = params == null ? null : params.get("question");
+                if (question == null || question.isBlank()) {
+                    question = "请详细描述这张图片的内容；如果有人物，说明其外貌、动作与所处场景。用中文回答。";
+                }
+                try {
+                    byte[] bytes = nodeExecutor.toMultipartFile(content, "image.png").getBytes();
+                    return aiVisionClient.chatImages(question, List.of(bytes), null);
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException("读取图片失败：" + e.getMessage(), e);
+                }
+            }
             default:
                 throw new IllegalStateException("未知的工具管线步骤：" + step);
         }
+    }
+
+    /** 内置的图片理解工具（不入库；find 与 listTools 共用） */
+    private AgentTool builtinVisionTool() {
+        return new AgentTool(null, TOOL_IMAGE_UNDERSTAND, "图片理解",
+                "看图回答问题：人物、场景、物体、画面文字、图表内容等；不识别具体身份",
+                "image", "text", List.of(STEP_VISION));
     }
 
     /** 取逗号分隔类型里的第一个（与 NodeExecutor#firstInputType 同口径） */

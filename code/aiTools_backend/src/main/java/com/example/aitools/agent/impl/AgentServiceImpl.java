@@ -272,7 +272,13 @@ public class AgentServiceImpl implements AgentService {
             String toolOutput;
             try {
                 String input = resolveInput(tool, action, attachments, lastToolOutput);
-                toolOutput = catalog.invoke(tool, input, new HashMap<>(), userId, runId);
+                // 只透传 question（图片理解用），其余工具忽略该参数，避免影响既有行为
+                Map<String, String> toolParams = new HashMap<>();
+                Object q = action.getArgs() == null ? null : action.getArgs().get("question");
+                if (q != null && !String.valueOf(q).isBlank()) {
+                    toolParams.put("question", String.valueOf(q));
+                }
+                toolOutput = catalog.invoke(tool, input, toolParams, userId, runId);
                 consecutiveFailures = 0;
             } catch (Exception e) {
                 consecutiveFailures++;
