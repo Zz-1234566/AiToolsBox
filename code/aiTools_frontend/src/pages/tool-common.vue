@@ -173,7 +173,6 @@
       <view class="prompt-card">
         <view class="prompt-card__header">
           <text class="prompt-card__label">格式要求</text>
-          <text class="prompt-card__hint">示例：语气正式，突出关键数据，不要口语化表达</text>
           <view class="prompt-card__pick" @click="goPromptManage">
             <text>管理我的提示词</text>
           </view>
@@ -192,14 +191,20 @@
       <!-- 生成提示词（告诉 AI 你是谁、怎么说话） -->
       <view class="prompt-card">
         <view class="prompt-card__header">
-          <text class="prompt-card__label">生成提示词</text>
-          <view class="prompt-card__pick" @click="openPromptPicker('generate')">
-            <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-            <text>选择系统提示词</text>
+          <text class="prompt-card__label">生成要求</text>
+          <view class="prompt-card__pick" @click="goPromptManage">
+            <text>管理我的提示词</text>
           </view>
         </view>
-        <textarea class="prompt-card__textarea" v-model="promptGenerateText" placeholder="例如：你是严谨的会议整理助手，语气正式、结构清晰…" :maxlength="1000"></textarea>
-        <text class="prompt-card__counter">{{ promptGenerateText.length }}/1000</text>
+        <view v-if="generatePrompts.length" class="fp-list">
+          <view v-for="gp in generatePrompts" :key="gp.id"
+                class="fp-card" :class="{ 'fp-card--on': generatePromptId === gp.id }"
+                @click="pickGeneratePrompt(gp)">
+            <text class="fp-card__name">{{ gp.promptName }}</text>
+            <text class="fp-card__text">{{ gp.promptContent }}</text>
+          </view>
+        </view>
+        <view v-else class="fp-empty">暂无可用生成要求，将使用默认设置</view>
       </view>
 
       <!-- ============ 会议纪要结果渲染区（JSON 树 / SSE Markdown） ============ -->
@@ -1134,6 +1139,11 @@ const loadFormatPrompts = async () => {
     const res = await systemPromptListApi(toolId.value)
     const list = (res && res.data) || []
     formatPrompts.value = list.filter((x) => x.promptUse === 'format')
+    generatePrompts.value = list.filter((x) => x.promptUse === 'generate')
+    if (generatePrompts.value.length) {
+      generatePromptId.value = generatePrompts.value[0].id
+      promptGenerateText.value = generatePrompts.value[0].promptContent
+    }
     if (formatPrompts.value.length) {
       formatPromptId.value = formatPrompts.value[0].id
       promptFormatText.value = formatPrompts.value[0].promptContent
@@ -1150,6 +1160,19 @@ const pickFormatPrompt = (fp) => {
   } else {
     formatPromptId.value = fp.id
     promptFormatText.value = fp.promptContent
+  }
+}
+
+const generatePrompts = ref([])
+const generatePromptId = ref(null)
+
+const pickGeneratePrompt = (gp) => {
+  if (generatePromptId.value === gp.id) {
+    generatePromptId.value = null
+    promptGenerateText.value = ''
+  } else {
+    generatePromptId.value = gp.id
+    promptGenerateText.value = gp.promptContent
   }
 }
 
@@ -1775,7 +1798,7 @@ svg {
   justify-content: space-between;
   margin-bottom: 16rpx;
 }
-.prompt-card__label {
+.prompt-card__label { white-space: nowrap; flex-shrink: 0;
   font-size: 28rpx;
   font-weight: 500;
   color: var(--text-primary, #111827);
