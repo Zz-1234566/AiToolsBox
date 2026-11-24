@@ -41,21 +41,24 @@
           <view v-if="chipList(u).length" class="ap-chips">
             <view v-for="c in chipList(u)" :key="c.k" class="ap-chip">
               <text class="ap-chip__k">{{ labelOf(c.k) }}</text>
-              <input class="ap-chip__in" v-model="c.v" placeholder="空值表示删除" />
+              <input class="ap-chip__in" v-model="c.v" placeholder="请输入" />
               <text class="ap-chip__x" @click="removeChip(u, c.k)">×</text>
             </view>
           </view>
           <text v-else class="ap-none">暂无词条</text>
 
-          <view class="ap-add">
-            <input v-model="drafts[u.userId]" class="ap-add__in" placeholder="新增词条，如：语气=简洁" />
-            <view class="ap-add__btn" @click="addChip(u)">添加</view>
+          <view class="ap-add-line" @click="drafts['_'] = drafts[u.userId] || ''">
+            <input v-model="drafts[u.userId]" class="ap-add__in" placeholder="新增属性，如：语气=简洁" />
+            <view class="ap-add__btn" @click="addChip(u)">+ 添加属性</view>
           </view>
 
           <text class="ap-label">画像摘要</text>
           <textarea v-model="texts[u.userId]" class="ap-text" placeholder="画像摘要（可留空）" />
 
-          <view class="ap-save" @click="save(u)">保存</view>
+          <view class="ap-btns">
+            <view class="ap-btn ap-btn--ghost" @click="preview(u)">预览提示词</view>
+            <view class="ap-btn ap-btn--primary" @click="save(u)">保存</view>
+          </view>
         </view>
       </view>
     </scroll-view>
@@ -125,6 +128,11 @@ const addChip = (u) => {
   list.push({ k, v })
   edit[u.userId].list = list
   drafts[u.userId] = ''
+}
+
+const preview = (u) => {
+  const prefs = (edit[u.userId] ? edit[u.userId].list : []).filter((c) => c.v).map((c) => labelOf(c.k) + '：' + c.v).join('；')
+  uni.showModal({ title: '画像预览', content: prefs || '暂无属性', showCancel: false })
 }
 
 const save = async (u) => {
@@ -205,4 +213,11 @@ onLoad(() => {
 .ap-add__btn { padding: 0 24rpx; height: 68rpx; line-height: 68rpx; border-radius: 12rpx; border: 1rpx solid var(--brand-primary); color: var(--brand-primary); font-size: 24rpx; }
 .ap-text { width: 100%; min-height: 140rpx; box-sizing: border-box; padding: 18rpx; border-radius: 12rpx; background: var(--bg-gray); font-size: 24rpx; color: var(--text-primary); }
 .ap-save { margin-top: 24rpx; height: 80rpx; line-height: 80rpx; text-align: center; border-radius: 16rpx; background: var(--brand-primary); color: #fff; font-size: 28rpx; }
+
+/* 属性行：属性 / 值 / 删除，与参考稿一致的层级 */
+.ap-add-line { display: flex; align-items: center; gap: 12rpx; margin-top: 18rpx; }
+.ap-btns { display: flex; gap: 16rpx; margin-top: 28rpx; }
+.ap-btn { flex: 1; height: 84rpx; line-height: 84rpx; text-align: center; border-radius: 42rpx; font-size: 28rpx; }
+.ap-btn--ghost { background: var(--bg-card); border: 1rpx solid var(--border-color); color: var(--text-secondary); }
+.ap-btn--primary { background: var(--brand-primary); color: #fff; }
 </style>
