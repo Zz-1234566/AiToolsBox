@@ -5,10 +5,7 @@
       <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
     </view>
     <!-- 顶栏标题 + 副标题（与参考设计一致：标题在主栏，说明在下方小字） -->
-    <view class="topbar__text">
-      <text class="topbar__title">{{ toolInfo.name }}</text>
-      <text class="topbar__sub">{{ toolInfo.desc }}</text>
-    </view>
+    <text class="topbar__title">{{ toolInfo.name }}</text>
     <view class="topbar__act" aria-label="历史记录" @click="goHistoryList">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
            stroke-linecap="round" stroke-linejoin="round" style="fill:none">
@@ -17,6 +14,8 @@
       </svg>
     </view>
   </view>
+  <!-- 副标题独立一行，与标题左对齐（设计稿 .desc: margin 2px 0 17px 28px） -->
+  <text class="topbar__desc">{{ toolInfo.desc }}</text>
 
   <!-- App 端 SSE 传输组件（视图层发起 XHR）；H5 端用原生 XHR，不需要此组件 -->
   <!-- #ifdef APP-PLUS -->
@@ -60,6 +59,22 @@
           <view class="pill-btn" @click="applyQuickPrompt('项目进展汇报')">项目进展汇报</view>
           <view class="pill-btn" @click="applyQuickPrompt('自定义内容')">自定义内容</view>
         </view>
+      </view>
+    </block>
+
+    <!-- 重点提取：文本输入（此前模板里没有这个分支，页面只剩模型选择） -->
+    <block v-if="toolId === 'doc-keypoint-extract'">
+      <view class="kp-card">
+        <view class="kp-card__head">
+          <text class="kp-card__label">待提取内容</text>
+          <text class="kp-card__count">{{ (inputText || '').length }}/5000</text>
+        </view>
+        <textarea
+          class="kp-card__ta"
+          v-model="inputText"
+          maxlength="5000"
+          placeholder="请粘贴需要提炼重点的文字内容…"
+        />
       </view>
     </block>
 
@@ -1688,7 +1703,7 @@ svg {
 }
 .prompt-card__pick {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8rpx;
   height: 48rpx;
   padding: 0 16rpx;
@@ -2101,8 +2116,8 @@ svg {
 .topbar {
   /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
      ⚠️ 必须用四值简写：`padding: 0 24rpx` 简写会重置 padding-top。 */
-  padding: calc(var(--status-bar-height, 0px) + 26rpx) 20rpx 22rpx;
-  min-height: 124rpx;
+  padding: calc(var(--status-bar-height, 0px) + 22rpx) 24rpx 0;
+  min-height: 88rpx;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -2110,8 +2125,8 @@ svg {
   background: var(--bg-card, #FFFFFF);
   border-bottom: 1rpx solid var(--divider-color, var(--border-color));
 }
-.topbar__text { flex: 1; display: flex; flex-direction: column; gap: 6rpx; min-width: 0; padding: 8rpx 8rpx 0 4rpx; }
-.topbar__title { font-size: 34rpx; font-weight: 700; color: var(--text-primary); line-height: 40rpx; }
+.topbar__title { flex: 1; min-width: 0; }
+.topbar__title { font-size: 36rpx; font-weight: 700; color: var(--text-primary); line-height: 44rpx; }
 .topbar__sub {
   font-size: 23rpx; color: var(--text-tertiary); line-height: 1.5;
   /* 副标题最多两行：长描述不再被截成「文件…」，同时不把顶栏顶太高 */
