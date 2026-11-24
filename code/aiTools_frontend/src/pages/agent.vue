@@ -109,19 +109,19 @@
       </block>
 
       <view v-if="sentGoal" class="msg msg--me">
-        <view class="bubble bubble--me">{{ sentGoal }}</view>
-      </view>
+        <view class="me-col">
+          <view class="bubble bubble--me">{{ sentGoal }}</view>
 
-      <view v-if="attachments.length" class="msg msg--me">
-        <view class="files">
-          <view v-for="(a,i) in attachments" :key="a.url" class="file">
-            <view class="file__ico">
+          <view v-if="attachments.length" class="files">
+            <view v-for="(a,i) in attachments" :key="a.url" class="file">
+              <view class="file__ico">
             <template v-if="fileKind(a.name) === 'doc'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></template>
             <template v-else-if="fileKind(a.name) === 'image'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.4"/><path d="M21 16l-5-5-9 9"/></svg></template>
             <template v-else-if="fileKind(a.name) === 'audio'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg></template>
             <template v-else><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/></svg></template>
             </view>
-            <text class="file__n">{{ a.name }}</text>
+              <text class="file__n">{{ a.name }}</text>
+            </view>
           </view>
         </view>
       </view>
@@ -670,6 +670,7 @@ const openSession = async (s) => {
   sentGoal.value = ''
   goal.value = ''
   quotedText.value = ''
+  attachments.value = []
   answer.value = ''
   steps.value = []
   errorMsg.value = ''
@@ -919,11 +920,11 @@ $ref-sub: var(--text-secondary);
 .chat { flex: 1; min-height: 0; padding: 8rpx 32rpx 24rpx; }
 .msg { display: flex; margin-bottom: 22rpx; }
 .msg--me { justify-content: flex-end; }
-.me-col { display: flex; flex-direction: column; align-items: flex-end; }
+.me-col { display: flex; flex-direction: column; align-items: flex-end; max-width: 76%; }
 .msg--ai { display: block; }
 
 .bubble--me {
-  max-width: 76%;
+  max-width: 100%;
   /* 底色固定浅暖色，文字必须固定深色 —— 用 token 会在深色主题下变成浅字压浅底 */
   background: #FBE3D5;
   color: #3D2B20;
