@@ -127,7 +127,7 @@ public class AgentServiceImpl implements AgentService {
         messages.add(message("system", systemPrompt));
         maybeCompressContext(userId, session, cred);
         appendHistoryContext(messages, userId, session, currentGoalSeq);
-        messages.add(message("user", goal));
+        messages.add(message("user", buildUserTurn(goal, attachments)));
 
         java.util.concurrent.atomic.AtomicReference<String> finalAnswer = new java.util.concurrent.atomic.AtomicReference<>("");
         java.util.concurrent.atomic.AtomicReference<List<com.example.aitools.agent.dto.AgentStep>> stepsRef =
@@ -711,11 +711,69 @@ public class AgentServiceImpl implements AgentService {
             if (h.getSeq() == null || h.getSeq() <= summarized) continue;
             // 本次目标单独作为最后一条 user 消息加入，这里排除
             if (h.getSeq() >= currentGoalSeq) continue;
-            messages.add(message(h.getRole(), h.getContent()));
+            String content = h.getContent();
+            if ("user".equals(h.getRole())) {
+                content = appendHistoryFiles(content, h.getMeta());
+            }
+            messages.add(message(h.getRole(), content));
         }
     }
 
     /** user 消息的 meta：记录本次附件，供历史回放展示 */
+    /**
+     * 本轮 user 消息：把附件清单**贴在用户原话后面**。
+     * 只放 system 提示词里，模型经常视而不见 → 明明带了图却回答“没有收到文件”。
+     */
+    private String buildUserTurn(String goal, List<AgentAttachment> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return goal;
+        }
+        StringBuilder sb = new StringBuilder(goal == null ? "" : goal);
+        sb.append("\n\n【本条消息附带的附件】\n");
+        for (AgentAttachment a : attachments) {
+            sb.append("- ").append(a.getId()).append("：").append(a.getFileName())
+                    .append("（").append(kindOf(a.getFileName())).append("）\n");
+        }
+        sb.append("（以上附件已收到，不要回答“没有收到文件/图片”；需要读取时用上面的附件 ID 调用对应工具。）");
+        return sb.toString();
+    }
+
+    /** 历史 user 消息补一句附件名，便于多轮追问“那张图” */
+    private String appendHistoryFiles(String content, String meta) {
+        if (meta == null || meta.isBlank()) {
+            return content;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode files =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(meta).path("files");
+            if (!files.isArray() || files.isEmpty()) {
+                return content;
+            }
+            StringBuilder names = new StringBuilder();
+            for (com.fasterxml.jackson.databind.JsonNode f : files) {
+                if (names.length() > 0) {
+                    names.append("、");
+                }
+                names.append(f.path("name").asText("附件"));
+            }
+            return (content == null ? "" : content) + "\n（附件：" + names + "）";
+        } catch (Exception e) {
+            return content;
+        }
+    }
+
+    /** 按扩展名粗判附件类型（只用于给模型看的描述） */
+    private String kindOf(String name) {
+        String n = name == null ? "" : name.toLowerCase();
+        if (n.matches(".*\\.(png|jpg|jpeg|bmp|webp|gif)$")) {
+            return "图片";
+        }
+        if (n.matches(".*\\.(mp3|wav|m4a|aac|amr|flac|ogg)$")) {
+            return "音频";
+        }
+        return "文档";
+    }
+
     private String buildUserMeta(List<AgentAttachment> attachments) {
         if (attachments == null || attachments.isEmpty()) {
             return null;
