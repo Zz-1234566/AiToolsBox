@@ -62,6 +62,8 @@ public class AgentToolCatalog {
 
     /** 内置工具编码：图片理解（不入库，避免出现在工具页） */
     public static final String TOOL_IMAGE_UNDERSTAND = "image-understand";
+    /** 内置工具编码：图片背景去除（DB 里该工具 input_type 为空，不会自动进目录） */
+    public static final String TOOL_BG_REMOVER = "image-bg-remover";
 
     private final AiToolMapper aiToolMapper;
     private final AiPromptTemplateService promptTemplateService;
@@ -158,6 +160,7 @@ public class AgentToolCatalog {
         }
         // 内置工具：图片理解（走多模态模型）。不写 DB，避免出现在工具页/工作流里
         tools.add(builtinVisionTool());
+        tools.add(builtinBgRemoverTool());
         log.info("[agent] 可用工具 {} 个：{}", tools.size(),
                 tools.stream().map(AgentTool::getCode).toList());
         return tools;
@@ -172,6 +175,9 @@ public class AgentToolCatalog {
         }
         if (TOOL_IMAGE_UNDERSTAND.equals(code.trim())) {
             return builtinVisionTool();
+        }
+        if (TOOL_BG_REMOVER.equals(code.trim())) {
+            return builtinBgRemoverTool();
         }
         AiTool t = aiToolMapper.selectOne(new LambdaQueryWrapper<AiTool>()
                 .eq(AiTool::getToolCode, code.trim())
@@ -322,6 +328,13 @@ public class AgentToolCatalog {
             default:
                 throw new IllegalStateException("未知的工具管线步骤：" + step);
         }
+    }
+
+    /** 内置的图片背景去除工具（不入库；find 与 listTools 共用） */
+    private AgentTool builtinBgRemoverTool() {
+        return new AgentTool(null, TOOL_BG_REMOVER, "图片背景去除",
+                "去掉图片背景并输出透明底 PNG（不要用于换底色，换底色用 id-photo-bg-change）",
+                "image", "image", List.of());
     }
 
     /** 是否为图片产物工具 */

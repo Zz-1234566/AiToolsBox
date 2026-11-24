@@ -743,6 +743,7 @@ const openSession = async (s) => {
   goal.value = ''
   quotedText.value = ''
   attachments.value = []
+  turnImages.value = []
   answer.value = ''
   steps.value = []
   errorMsg.value = ''
