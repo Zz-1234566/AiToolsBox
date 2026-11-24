@@ -177,18 +177,10 @@
             <text>管理我的提示词</text>
           </view>
         </view>
-        <view v-if="formatPrompts.length" class="fp-list">
-          <view v-for="fp in formatPrompts" :key="fp.source + '-' + fp.id"
-                class="fp-card" :class="{ 'fp-card--on': formatPromptId === fp.id }"
-                @click="pickFormatPrompt(fp)">
-            <view class="fp-card__head">
-              <text class="fp-card__name">{{ fp.promptName }}</text>
-              <text class="fp-card__tag" :class="{ 'fp-card__tag--mine': fp.source === 'mine' }">{{ fp.source === 'mine' ? '我的' : '系统' }}</text>
-            </view>
-            <text class="fp-card__text">{{ fp.promptContent }}</text>
-          </view>
+        <view class="fp-entry" @click="openPicker('format')">
+          <text class="fp-entry__name" :class="{ 'fp-entry__name--empty': !formatPromptName }">{{ formatPromptName || '使用默认格式' }}</text>
+          <text class="fp-entry__chev">›</text>
         </view>
-        <view v-else class="fp-empty">暂无可用格式，将使用默认格式</view>
       </view>
 
       <!-- 生成提示词（告诉 AI 你是谁、怎么说话） -->
@@ -199,18 +191,10 @@
             <text>管理我的提示词</text>
           </view>
         </view>
-        <view v-if="generatePrompts.length" class="fp-list">
-          <view v-for="gp in generatePrompts" :key="gp.source + '-' + gp.id"
-                class="fp-card" :class="{ 'fp-card--on': generatePromptId === gp.id }"
-                @click="pickGeneratePrompt(gp)">
-            <view class="fp-card__head">
-              <text class="fp-card__name">{{ gp.promptName }}</text>
-              <text class="fp-card__tag" :class="{ 'fp-card__tag--mine': gp.source === 'mine' }">{{ gp.source === 'mine' ? '我的' : '系统' }}</text>
-            </view>
-            <text class="fp-card__text">{{ gp.promptContent }}</text>
-          </view>
+        <view class="fp-entry" @click="openPicker('generate')">
+          <text class="fp-entry__name" :class="{ 'fp-entry__name--empty': !generatePromptName }">{{ generatePromptName || '使用默认设置' }}</text>
+          <text class="fp-entry__chev">›</text>
         </view>
-        <view v-else class="fp-empty">暂无可用生成要求，将使用默认设置</view>
       </view>
 
       <!-- ============ 会议纪要结果渲染区（JSON 树 / SSE Markdown） ============ -->
@@ -335,6 +319,17 @@
       :system-prompts="systemPromptList"
       :user-prompts="userPromptList"
       @confirm="onPromptPickerConfirm"
+    />
+
+    <!-- 格式/生成要求共用同一个抽屉，按 pickerTarget 区分 -->
+    <PromptPickerDrawer
+      :show="pickerShow"
+      :tool-name="toolInfo.name || ''"
+      :tool-desc="toolInfo.desc || ''"
+      :system-prompts="pickerSystem"
+      :user-prompts="pickerUser"
+      @update:show="pickerShow = $event"
+      @confirm="onPickPrompt"
     />
 
 </template>
@@ -1160,14 +1155,47 @@ const loadFormatPrompts = async () => {
     generatePrompts.value = unique.filter((x) => x.promptUse === 'generate')
     if (generatePrompts.value.length) {
       generatePromptId.value = generatePrompts.value[0].id
+      generatePromptName.value = generatePrompts.value[0].promptName || ''
       promptGenerateText.value = generatePrompts.value[0].promptContent
     }
     if (formatPrompts.value.length) {
       formatPromptId.value = formatPrompts.value[0].id
+      formatPromptName.value = formatPrompts.value[0].promptName || ''
       promptFormatText.value = formatPrompts.value[0].promptContent
     }
   } catch (e) {
     formatPrompts.value = []
+  }
+}
+
+const pickerShow = ref(false)
+const pickerTarget = ref('format')
+const formatPromptName = ref('')
+const generatePromptName = ref('')
+
+/** 抽屉按 tab 分别传系统 / 我的 */
+const pickerSystem = computed(() =>
+  (pickerTarget.value === 'format' ? formatPrompts.value : generatePrompts.value)
+    .filter((x) => x.source !== 'mine'))
+const pickerUser = computed(() =>
+  (pickerTarget.value === 'format' ? formatPrompts.value : generatePrompts.value)
+    .filter((x) => x.source === 'mine'))
+
+const openPicker = (target) => {
+  pickerTarget.value = target
+  pickerShow.value = true
+}
+
+const onPickPrompt = (item) => {
+  if (!item) return
+  if (pickerTarget.value === 'format') {
+    formatPromptId.value = item.id
+    formatPromptName.value = item.promptName || '已选格式'
+    promptFormatText.value = item.promptContent || ''
+  } else {
+    generatePromptId.value = item.id
+    generatePromptName.value = item.promptName || '已选生成要求'
+    promptGenerateText.value = item.promptContent || ''
   }
 }
 
@@ -3227,4 +3255,13 @@ svg {
   background: var(--bg-gray); color: var(--text-tertiary);
 }
 .fp-card__tag--mine { background: rgba(245,103,29,.12); color: var(--brand-primary); }
+
+.fp-entry {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 22rpx 24rpx; border-radius: 16rpx 16rpx 0 0;
+  background: rgba(245,103,29,.06); border: 1rpx solid var(--brand-primary);
+}
+.fp-entry__name { font-size: 26rpx; font-weight: 600; color: var(--brand-primary); }
+.fp-entry__name--empty { color: var(--text-tertiary); font-weight: 400; }
+.fp-entry__chev { font-size: 30rpx; color: var(--brand-primary); }
 </style>
