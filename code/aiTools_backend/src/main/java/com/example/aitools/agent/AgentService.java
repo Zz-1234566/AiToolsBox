@@ -84,4 +84,6 @@ public interface AgentService {
     String FRAME_SESSION = "会话";
     /** 帧前缀：上下文占用（格式 {tokens}:{window}，前端换算成百分比展示） */
     String FRAME_CONTEXT = "上下文";
+    /** 帧前缀：图片产物（值为可访问 URL，前端渲染预览与下载） */
+    String FRAME_IMAGE = "图片";
 }

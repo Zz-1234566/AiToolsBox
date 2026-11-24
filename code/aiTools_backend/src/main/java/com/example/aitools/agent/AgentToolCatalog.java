@@ -71,6 +71,8 @@ public class AgentToolCatalog {
     private final OcrService ocrService;
     private final com.example.aitools.service.HistoryService historyService;
     private final com.example.aitools.ai.AiVisionClient aiVisionClient;
+    private final com.example.aitools.service.SegmentationService segmentationService;
+    private final com.example.aitools.service.FileStorageService fileStorageService;
 
     /**
      * 智能体可用工具。
@@ -190,10 +192,8 @@ public class AgentToolCatalog {
             return null;
         }
         String outputType = t.getOutputType();
-        if (outputType != null && outputType.contains("image")) {
-            // 产物是文件（抠图/压缩/二维码），喂不回上下文
-            return null;
-        }
+        // 图片产物工具（抠图/证件照换底）现在也开放给智能体：
+        // 产物落 COS，文本说明进上下文，URL 通过 [图片] 帧给前端展示
         List<String> pipeline = new ArrayList<>();
         switch (inputType) {
             case "audio":
@@ -242,8 +242,8 @@ public class AgentToolCatalog {
      * @param runId  本次智能体运行 ID（写历史用，可为 null）
      * @return 工具输出（文本）
      */
-    public String invoke(AgentTool tool, String input, Map<String, String> params,
-                         Long userId, String runId) {
+    public ToolResult invoke(AgentTool tool, String input, Map<String, String> params,
+                             Long userId, String runId) {
         if (tool == null) {
             throw new IllegalArgumentException("工具不存在");
         }
@@ -257,6 +257,15 @@ public class AgentToolCatalog {
         }
         long start = System.currentTimeMillis();
         try {
+            // 图片产物工具：走独立管线（分割 → 落 COS），返回带 URL 的结果
+            if (isImageOutput(tool)) {
+                ToolResult imageResult = runImageTool(tool, input, params);
+                if (historyId != null) {
+                    historyService.completeHistory(historyId, imageResult.getText(),
+                            (int) (System.currentTimeMillis() - start));
+                }
+                return imageResult;
+            }
             String content = input;
             for (String step : tool.getPipeline()) {
                 content = runStep(tool, step, content, params);
@@ -265,7 +274,7 @@ public class AgentToolCatalog {
                 historyService.completeHistory(historyId, content,
                         (int) (System.currentTimeMillis() - start));
             }
-            return content;
+            return ToolResult.text(content);
         } catch (Exception e) {
             if (historyId != null) {
                 try {
@@ -312,6 +321,36 @@ public class AgentToolCatalog {
             }
             default:
                 throw new IllegalStateException("未知的工具管线步骤：" + step);
+        }
+    }
+
+    /** 是否为图片产物工具 */
+    private boolean isImageOutput(AgentTool tool) {
+        return tool.getOutputType() != null && tool.getOutputType().contains("image");
+    }
+
+    /**
+     * 图片产物工具：原图 → 分割 → 结果落 COS。
+     * <p>
+     * 证件照换底色按 params.backgroundColor（red/blue/white）；其余默认去背景（透明）。
+     */
+    private ToolResult runImageTool(AgentTool tool, String input, Map<String, String> params) {
+        try {
+            byte[] src = nodeExecutor.toMultipartFile(input, "input.png").getBytes();
+            String color = params == null ? null : params.get("backgroundColor");
+            com.example.aitools.dto.SegmentResult result;
+            if ("id-photo-bg-change".equals(tool.getCode())) {
+                result = segmentationService.removeBackground(src, color == null ? "white" : color);
+            } else {
+                result = segmentationService.removeBackgroundTransparent(src);
+            }
+            com.example.aitools.dto.FileUploadResponse up = fileStorageService.store(
+                    result.getImageBytes(), "result.png", "image/png", "ai-bg");
+            String url = up.getFileUrl();
+            return ToolResult.image(
+                    "图片处理完成，已生成结果图，可直接下载：\n" + url, List.of(url));
+        } catch (Exception e) {
+            throw new IllegalStateException("图片处理失败：" + e.getMessage(), e);
         }
     }
 

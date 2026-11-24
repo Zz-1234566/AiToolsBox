@@ -132,12 +132,14 @@ public class AgentServiceImpl implements AgentService {
         java.util.concurrent.atomic.AtomicReference<String> finalAnswer = new java.util.concurrent.atomic.AtomicReference<>("");
         java.util.concurrent.atomic.AtomicReference<List<com.example.aitools.agent.dto.AgentStep>> stepsRef =
                 new java.util.concurrent.atomic.AtomicReference<>(new ArrayList<>());
+        // 本轮生成的图片产物（落 meta，供历史回放）
+        List<String> runImages = new ArrayList<>();
         try {
-            doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, stepsRef, onFrame);
+            doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, stepsRef, runImages, onFrame);
             String answer = finalAnswer.get();
             // 成功：把最终答案落成一条 assistant 消息（meta 里带运行信息，供回放）
             agentSessionService.appendMessage(session, "assistant", answer,
-                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get()));
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get(), runImages));
             // 画像抽取：异步，不阻塞本次回答
             agentProfileService.updateAsync(userId, session.getSessionId(),
                     agentSessionService.messages(userId, session.getSessionId(), 12), cred);
@@ -150,7 +152,7 @@ public class AgentServiceImpl implements AgentService {
             failRunRecord(runId, "运行中断：" + reason, new ArrayList<>(), start);
             // 失败也落一条 assistant 消息，保证回放时上下文完整
             agentSessionService.appendMessage(session, "assistant", "[运行中断] " + reason,
-                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get()));
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get(), runImages));
             throw e;
         }
     }
@@ -164,6 +166,7 @@ public class AgentServiceImpl implements AgentService {
                          AtomicBoolean cancelFlag,
                          java.util.concurrent.atomic.AtomicReference<String> finalAnswer,
                          java.util.concurrent.atomic.AtomicReference<List<com.example.aitools.agent.dto.AgentStep>> stepsRef,
+                         List<String> runImages,
                          Consumer<String> onFrame) {
         long start = System.currentTimeMillis();
         List<AgentStep> steps = new ArrayList<>();
@@ -278,7 +281,16 @@ public class AgentServiceImpl implements AgentService {
                 if (q != null && !String.valueOf(q).isBlank()) {
                     toolParams.put("question", String.valueOf(q));
                 }
-                toolOutput = catalog.invoke(tool, input, toolParams, userId, runId);
+                com.example.aitools.agent.ToolResult toolResult =
+                        catalog.invoke(tool, input, toolParams, userId, runId);
+                toolOutput = toolResult.getText();
+                // 图片产物：追加 [图片:url] 帧，并记录到本轮图片列表（落 meta 供回放）
+                if (toolResult.hasImages()) {
+                    for (String imgUrl : toolResult.getImageUrls()) {
+                        onFrame.accept(frame(FRAME_IMAGE, imgUrl));
+                        if (runImages != null) runImages.add(imgUrl);
+                    }
+                }
                 consecutiveFailures = 0;
             } catch (Exception e) {
                 consecutiveFailures++;
@@ -726,10 +738,12 @@ public class AgentServiceImpl implements AgentService {
 
     /** assistant 消息的 meta（运行信息，供回放展示） */
     private String buildAssistantMeta(String runId, long durationMs,
-                                      List<com.example.aitools.agent.dto.AgentStep> steps) {
+                                      List<com.example.aitools.agent.dto.AgentStep> steps,
+                                      List<String> images) {
         Map<String, Object> meta = new HashMap<>();
         meta.put("runId", runId);
         meta.put("duration", durationMs);
+        if (images != null && !images.isEmpty()) meta.put("images", images);
         // 步骤落库：重新打开会话时据此回放任务规划
         if (steps != null) meta.put("steps", steps);
         try {

@@ -90,6 +90,20 @@
               </view>
             </view>
 
+            <!-- 历史图片产物 -->
+            <view v-if="histImages(hm).length" class="img-cards">
+              <view v-for="(u, ii) in histImages(hm)" :key="'himg' + ii" class="img-card">
+                <image class="img-card__img" :src="u" mode="widthFix" @click="previewImage(u)" />
+                <view class="img-card__bar">
+                  <text class="img-card__name">结果图片 {{ ii + 1 }}</text>
+                  <view class="img-card__dl" @click="downloadImage(u)">
+                    <svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+                    <text>下载</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+
             <view class="card card--answer">
               <MarkdownView :source="hm.content" />
               <view class="ans-foot">
@@ -176,6 +190,20 @@
                 </view>
                 <view class="ans-act ans-act--right" @click="regenerate">
                   <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                </view>
+              </view>
+            </view>
+
+            <!-- 图片产物：预览 + 下载 -->
+            <view v-if="turnImages.length" class="img-cards">
+              <view v-for="(u, ii) in turnImages" :key="'img' + ii" class="img-card">
+                <image class="img-card__img" :src="u" mode="widthFix" @click="previewImage(u)" />
+                <view class="img-card__bar">
+                  <text class="img-card__name">结果图片 {{ ii + 1 }}</text>
+                  <view class="img-card__dl" @click="downloadImage(u)">
+                    <svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+                    <text>下载</text>
+                  </view>
                 </view>
               </view>
             </view>
@@ -320,6 +348,9 @@ const sessions = ref([])
 const drawerOpen = ref(false)
 /** 历史消息（切换会话时回放） */
 const historyMessages = ref([])
+/** 本轮工具生成的图片（[图片:url] 帧收集） */
+const turnImages = ref([])
+
 /** 历史任务规划展开状态（按消息 seq 记录） */
 const histOpen = ref({})
 
@@ -332,6 +363,46 @@ const histSteps = (hm) => {
   const m = parseMeta(hm)
   return Array.isArray(m.steps) ? m.steps : []
 }
+/** 历史消息里的图片产物 */
+const histImages = (hm) => {
+  const m = parseMeta(hm)
+  return Array.isArray(m.images) ? m.images : []
+}
+
+/** 预览大图 */
+const previewImage = (url) => {
+  uni.previewImage({ urls: [url], current: url })
+}
+
+/** 下载图片（H5 走浏览器下载，App 存相册） */
+const downloadImage = (url) => {
+  // #ifdef H5
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'image.png'
+  a.target = '_blank'
+  a.rel = 'noopener'
+  a.click()
+  // #endif
+  // #ifndef H5
+  uni.downloadFile({
+    url,
+    success: (res) => {
+      if (res.statusCode === 200) {
+        uni.saveImageToPhotosAlbum({
+          filePath: res.tempFilePath,
+          success: () => uni.showToast({ title: '已保存到相册', icon: 'success' }),
+          fail: () => uni.showToast({ title: '保存失败', icon: 'none' })
+        })
+      } else {
+        uni.showToast({ title: '下载失败', icon: 'none' })
+      }
+    },
+    fail: () => uni.showToast({ title: '下载失败', icon: 'none' })
+  })
+  // #endif
+}
+
 /** 历史消息里的附件 */
 const histFiles = (hm) => {
   const m = parseMeta(hm)
@@ -618,6 +689,7 @@ const syncHistoryAfterRun = async () => {
       answer.value = ''
       steps.value = []
       attachments.value = []
+      turnImages.value = []
       planCollapsed.value = false
     }
   } catch (e) { /* 同步失败就保留本地渲染，不影响使用 */ }
@@ -714,6 +786,7 @@ const runAgent = async () => {
   errorMsg.value = ''
   answer.value = ''
   steps.value = []
+  turnImages.value = []
   planCollapsed.value = false
   runStartAt.value = Date.now()
   runEndAt.value = 0
@@ -744,6 +817,8 @@ const runAgent = async () => {
               historyMessages.value = []
             }
             loadSessions()
+          } else if (kind === '图片') {
+            if (body) turnImages.value.push(body)
           } else if (kind === '上下文') {
             const parts = String(body).split(':')
             const tokens = Number(parts[0]) || 0
@@ -1079,6 +1154,35 @@ $ref-sub: var(--text-secondary);
   line-height: 1.5;
   color: var(--text-tertiary);
 }
+.img-cards { display: flex; flex-direction: column; gap: 16rpx; margin-top: 16rpx; }
+.img-card {
+  background: var(--bg-card);
+  border-radius: 24rpx;
+  overflow: hidden;
+}
+.img-card__img { display: block; width: 100%; }
+.img-card__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 20rpx;
+}
+.img-card__name { font-size: 22rpx; color: var(--text-tertiary); }
+.img-card__dl {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: var(--bg-gray);
+}
+.img-card__dl svg {
+  width: 26rpx; height: 26rpx; fill: none;
+  stroke: var(--brand-primary); stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.img-card__dl text { font-size: 22rpx; color: var(--brand-primary); }
+
 .ans-acts { display: flex; gap: 16rpx; margin-top: 16rpx; }
 .ans-act {
   width: 68rpx;
