@@ -248,29 +248,3 @@
 .markdown-view--dark .markdown-body tbody tr:nth-child(even) td {
   background: rgba(31, 41, 55, 0.6);
 }
-
-/* 允许选中正文文本：uni-app H5 默认给页面容器加了 user-select:none，
-   导致 window.getSelection() 永远为空，无法实现「引用选中片段」。
-   注意：只放开 .markdown-body 不够 —— Chrome 会因为父级仍是 none 而阻止起始选区，
-   必须把消息容器到正文整条链都设为 text。 */
-.markdown-view,
-.markdown-view *,
-.markdown-body,
-.markdown-body * {
-  -webkit-user-select: text;
-  user-select: text;
-}
-/* AI 回答所在的容器链（卡片/气泡），同样放开 */
-.msg--ai,
-.msg--ai * {
-  -webkit-user-select: text;
-  user-select: text;
-}
-
-/* 聊天滚动容器同样要放开：Chrome 会因外层 user-select:none 阻止拖拽起始。
-   .chat 是本项目聊天页专用类名，作用范围可控。 */
-.chat,
-.chat * {
-  -webkit-user-select: text;
-  user-select: text;
-}

@@ -354,30 +354,6 @@ const sessions = ref([])
 const drawerOpen = ref(false)
 /** 历史消息（切换会话时回放） */
 const historyMessages = ref([])
-/** 最近一次有效选区（H5 专有；点按钮会清空选区，故需缓存） */
-let lastSelText = ''
-let lastSelTs = 0
-// #ifdef H5
-if (typeof document !== 'undefined') {
-  document.addEventListener('selectionchange', () => {
-    try {
-      const t = String(window.getSelection() || '').trim()
-      if (t.length >= 2) {
-        lastSelText = t
-        lastSelTs = Date.now()
-      }
-    } catch (e) { /* ignore */ }
-  })
-}
-// #endif
-
-/** 取引用文本：优先最近 8 秒内的选中片段，否则回退整段 */
-const pickQuoteText = (fallback) => {
-  const fresh = lastSelText && (Date.now() - lastSelTs < 8000)
-  const t = fresh ? lastSelText : fallback
-  return t.length > 300 ? t.slice(0, 300) + '…' : t
-}
-
 /** 本轮工具生成的图片（[图片:url] 帧收集） */
 const turnImages = ref([])
 
@@ -445,7 +421,7 @@ const copyHistory = (hm) => copyRaw(hm.content || '', '回答')
 const quoteHistory = (hm) => {
   const text = String(hm.content || '').replace(/\s+/g, ' ').trim()
   if (!text) return
-  quotedText.value = pickQuoteText(text)
+  quotedText.value = text.length > 300 ? text.slice(0, 300) + '…' : text
 }
 
 /** 用历史里对应的问题重跑（仅最后一条回答可用） */
@@ -807,7 +783,7 @@ const copyAnswer = () => {
 const quoteAnswer = () => {
   const text = String(answer.value || '').replace(/\s+/g, ' ').trim()
   if (!text) return
-  quotedText.value = pickQuoteText(text)
+  quotedText.value = text.length > 300 ? text.slice(0, 300) + '…' : text
 }
 
 /** 真正发起一次运行（首次发送与重新生成共用） */
