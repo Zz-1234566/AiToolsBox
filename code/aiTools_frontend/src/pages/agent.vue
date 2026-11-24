@@ -1175,8 +1175,8 @@ $ref-sub: var(--text-secondary);
 }
 .composer__input {
   width: 100%;
-  height: 56rpx;
-  font-size: 27rpx;
+  height: 64rpx;
+  font-size: 29rpx;
   color: $ref-ink;
 }
 .composer__row {
@@ -1185,9 +1185,9 @@ $ref-sub: var(--text-secondary);
   margin-top: 12rpx;
 }
 .composer__plus {
-  width: 56rpx; height: 56rpx; border-radius: 50%;
+  width: 64rpx; height: 64rpx; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 34rpx; color: #4A4A54;
+  font-size: 38rpx; color: #4A4A54;
   background: var(--bg-gray);
 }
 .composer__ring {
@@ -1198,40 +1198,40 @@ $ref-sub: var(--text-secondary);
   flex-shrink: 0;
 }
 .composer__ctx-ring {
-  width: 26rpx;
-  height: 26rpx;
+  width: 30rpx;
+  height: 30rpx;
   flex-shrink: 0;
 }
 .composer__gap { flex: 1; }
 .composer__model {
   display: flex;
   align-items: center;
-  gap: 4rpx;
-  padding: 0 10rpx;
-  max-width: 220rpx;
+  gap: 6rpx;
+  padding: 0 12rpx;
+  max-width: 260rpx;
 }
 .composer__model-t {
-  font-size: 24rpx;
+  font-size: 27rpx;
   color: $ref-ink;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.composer__chev { font-size: 24rpx; color: $ref-sub; }
+.composer__chev { font-size: 28rpx; color: $ref-sub; }
 .composer__send {
-  width: 64rpx; height: 64rpx; border-radius: 50%;
+  width: 72rpx; height: 72rpx; border-radius: 50%;
   background: $ref-orange; color: #fff;
   display: flex; align-items: center; justify-content: center;
   margin-left: 12rpx;
 }
-.send-arrow { font-size: 30rpx; font-weight: 700; line-height: 1; }
+.send-arrow { font-size: 34rpx; font-weight: 700; line-height: 1; }
 .composer__stop {
-  width: 64rpx; height: 64rpx; border-radius: 50%;
+  width: 72rpx; height: 72rpx; border-radius: 50%;
   background: #E14B3B;
   display: flex; align-items: center; justify-content: center;
   margin-left: 12rpx;
 }
-.stop-square { width: 22rpx; height: 22rpx; border-radius: 4rpx; background: var(--bg-card); }
+.stop-square { width: 26rpx; height: 26rpx; border-radius: 5rpx; background: var(--bg-card); }
 
 .ctx-menu {
   position: absolute;
