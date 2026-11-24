@@ -999,10 +999,10 @@ $ref-sub: var(--text-secondary);
 /* 执行中的步骤：文字亮度呼吸（1 → 0.35 → 1），提示「正在处理」 */
 @keyframes step-breathe {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  50% { opacity: 0.45; }
 }
 .tl__t--live {
-  animation: step-breathe 1.4s ease-in-out infinite;
+  animation: step-breathe 3s ease-in-out infinite;
 }
 
 .tl__body { flex: 1; min-width: 0; }
