@@ -1,8 +1,21 @@
 <template>
   <view class="page">
-    <page-header title="用户画像词条" :showBack="true" />
-
-    <view class="ap-tip">画像只用于调整 AI 的表达风格，不会影响对话内容。仅管理员可查看与修改。</view>
+    <view class="ap-top">
+      <view class="ap-top__back" @click="goBack">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </view>
+      <view class="ap-top__text">
+        <text class="ap-top__title">用户画像管理</text>
+        <text class="ap-top__sub">管理用户画像，提供更精准的服务</text>
+      </view>
+      <view class="ap-top__act">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" style="fill:none">
+          <circle cx="12" cy="12" r="8.5" style="fill:none"/><path d="M12 7.5v5l3 1.8" style="fill:none"/>
+        </svg>
+      </view>
+    </view>
 
     <view class="ap-search">
       <input v-model="keyword" class="ap-search__input" placeholder="搜索账号或昵称" @confirm="load" />
@@ -52,9 +65,10 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import PageHeader from '@/components/PageHeader.vue'
 import { listAdminProfiles, updateAdminProfile } from '@/api/admin'
 import { isAdmin } from '@/utils/auth'
+
+const goBack = () => uni.navigateBack()
 
 const KEY_LABELS = {
   output_style: '输出风格',
@@ -152,7 +166,20 @@ onLoad(() => {
 
 <style scoped>
 .page { min-height: 100vh; background: var(--bg-page); display: flex; flex-direction: column; }
-.ap-tip { padding: 20rpx 32rpx; font-size: 22rpx; color: var(--text-tertiary); line-height: 1.6; }
+.ap-top { display: flex; align-items: center; gap: 8rpx; padding: 24rpx 24rpx 20rpx; }
+.ap-top__back {
+  width: 56rpx; height: 56rpx; display: flex; align-items: center; justify-content: center;
+  color: var(--text-primary);
+}
+.ap-top__back svg { width: 40rpx; height: 40rpx; }
+.ap-top__text { flex: 1; display: flex; flex-direction: column; gap: 4rpx; min-width: 0; }
+.ap-top__title { font-size: 34rpx; font-weight: 700; color: var(--text-primary); }
+.ap-top__sub { font-size: 22rpx; color: var(--text-tertiary); }
+.ap-top__act {
+  width: 56rpx; height: 56rpx; display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+}
+.ap-top__act svg { width: 40rpx; height: 40rpx; }
 .ap-search { display: flex; gap: 16rpx; padding: 0 32rpx 16rpx; }
 .ap-search__input { flex: 1; height: 72rpx; padding: 0 24rpx; border-radius: 16rpx; background: var(--bg-card); font-size: 26rpx; color: var(--text-primary); }
 .ap-search__btn { padding: 0 28rpx; height: 72rpx; line-height: 72rpx; border-radius: 16rpx; background: var(--brand-primary); color: #fff; font-size: 26rpx; }

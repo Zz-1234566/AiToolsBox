@@ -2101,18 +2101,22 @@ svg {
 .topbar {
   /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
      ⚠️ 必须用四值简写：`padding: 0 24rpx` 简写会重置 padding-top。 */
-  padding: var(--status-bar-height, 0px) 24rpx 0;
+  padding: calc(var(--status-bar-height, 0px) + 28rpx) 24rpx 26rpx;
+  min-height: 132rpx;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   height: 88rpx;
   background: var(--bg-card, #FFFFFF);
   border-bottom: 1rpx solid var(--divider-color, var(--border-color));
 }
-.topbar__text { flex: 1; display: flex; flex-direction: column; gap: 4rpx; min-width: 0; }
-.topbar__title { font-size: 32rpx; font-weight: 700; color: var(--text-primary); }
+.topbar__text { flex: 1; display: flex; flex-direction: column; gap: 10rpx; min-width: 0; padding-right: 8rpx; }
+.topbar__title { font-size: 34rpx; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
 .topbar__sub {
-  font-size: 22rpx; color: var(--text-tertiary); line-height: 1.35;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 23rpx; color: var(--text-tertiary); line-height: 1.5;
+  /* 副标题最多两行：长描述不再被截成「文件…」，同时不把顶栏顶太高 */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 .topbar__act {
   flex-shrink: 0; width: 56rpx; height: 56rpx; display: flex;

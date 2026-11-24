@@ -150,7 +150,7 @@ const goToTool = (tool) => {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  padding: 12rpx 24rpx;
+  padding: 22rpx 24rpx;
   background: var(--bg-page);
 }
 .stbar__back, .stbar__go {
@@ -169,7 +169,7 @@ const goToTool = (tool) => {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  height: 72rpx;
+  height: 80rpx;
   padding: 0 24rpx;
   border-radius: 999rpx;
   background: var(--bg-card);
