@@ -1062,7 +1062,7 @@ $ref-sub: var(--text-secondary);
   50% { opacity: 0.45; }
 }
 .tl__t--live {
-  animation: step-breathe 3s ease-in-out infinite;
+  animation: step-breathe 2s ease-in-out infinite;
 }
 
 .tl__body { flex: 1; min-width: 0; }
