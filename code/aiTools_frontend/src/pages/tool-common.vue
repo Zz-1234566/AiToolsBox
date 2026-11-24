@@ -172,15 +172,21 @@
 <!-- 格式提示词（告诉 AI 输出什么结构） -->
       <view class="prompt-card">
         <view class="prompt-card__header">
-          <text class="prompt-card__label">格式提示词</text>
+          <text class="prompt-card__label">格式要求</text>
           <text class="prompt-card__hint">示例：语气正式，突出关键数据，不要口语化表达</text>
-          <view class="prompt-card__pick" @click="openPromptPicker('format')">
-            <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
-            <text>选择系统提示词</text>
+          <view class="prompt-card__pick" @click="goPromptManage">
+            <text>管理我的提示词</text>
           </view>
         </view>
-        <textarea class="prompt-card__textarea" v-model="promptFormatText" placeholder="例如：按四部分输出（已完成/进行中/问题/下一步），每部分用编号列表…" :maxlength="1000"></textarea>
-        <text class="prompt-card__counter">{{ promptFormatText.length }}/1000</text>
+        <view v-if="formatPrompts.length" class="fp-list">
+          <view v-for="fp in formatPrompts" :key="fp.id"
+                class="fp-card" :class="{ 'fp-card--on': formatPromptId === fp.id }"
+                @click="pickFormatPrompt(fp)">
+            <text class="fp-card__name">{{ fp.promptName }}</text>
+            <text class="fp-card__text">{{ fp.promptContent }}</text>
+          </view>
+        </view>
+        <view v-else class="fp-empty">暂无可用格式，将使用默认格式</view>
       </view>
 
       <!-- 生成提示词（告诉 AI 你是谁、怎么说话） -->
@@ -240,7 +246,7 @@
       </block>
     </block>
 
-    <view class="example-section" v-if="FORMAT_TOOLS[toolId]">
+    <view class="example-section" v-if="false">
         <view class="example-section__title">格式要求<span class="fmt-tip">（可选，决定输出形态）</span></view>
         <view class="fmt-list">
           <view v-for="f in FORMAT_OPTIONS" :key="f.key"
@@ -927,6 +933,8 @@ const initPageState = (option = {}) => {
 let lastInitKey = ''
 
 onLoad((option) => {
+  // 放到下一轮：onLoad 里 toolId 是后面才赋值的，直接调用会因 toolId 为空提前返回
+  setTimeout(() => loadFormatPrompts(), 0)
   if (!requireLogin()) return
   lastInitKey = `${option.id || ''}#${option.historyId || ''}`
   initPageState(option)
@@ -1114,6 +1122,39 @@ const onFileChoose = async (info) => {
 }
 
 // 打开选择弹窗：同时拉取该用途下的用户自定义 + 系统提示词，target 指定填充哪个输入框（format/generate）
+const formatPrompts = ref([])
+const formatPromptId = ref(null)
+let formatPromptLoadedFor = ''
+
+/** 拉取提示词库里「格式类」的系统提示词 */
+const loadFormatPrompts = async () => {
+  if (!toolId.value || formatPromptLoadedFor === toolId.value) return
+  formatPromptLoadedFor = toolId.value
+  try {
+    const res = await systemPromptListApi(toolId.value)
+    const list = (res && res.data) || []
+    formatPrompts.value = list.filter((x) => x.promptUse === 'format')
+    if (formatPrompts.value.length) {
+      formatPromptId.value = formatPrompts.value[0].id
+      promptFormatText.value = formatPrompts.value[0].promptContent
+    }
+  } catch (e) {
+    formatPrompts.value = []
+  }
+}
+
+const pickFormatPrompt = (fp) => {
+  if (formatPromptId.value === fp.id) {
+    formatPromptId.value = null
+    promptFormatText.value = ''
+  } else {
+    formatPromptId.value = fp.id
+    promptFormatText.value = fp.promptContent
+  }
+}
+
+const goPromptManage = () => uni.navigateTo({ url: '/pages/prompt-list' })
+
 const openPromptPicker = async (target = 'generate') => {
   promptPickerTarget.value = target
   // 默认显示系统提示词 tab；重置 AI 生成 tab 的状态（避免上次残留）
@@ -3126,4 +3167,16 @@ svg {
 .fmt-example__k { font-size: 22rpx; color: var(--brand-primary); margin-right: 12rpx; }
 .fmt-example__v { font-size: 22rpx; color: var(--text-secondary); line-height: 1.5; }
 .prompt-card__hint { display: block; margin-top: 6rpx; font-size: 22rpx; color: var(--text-tertiary); }
+
+/* 格式要求：提示词库卡片 */
+.fp-list { display: flex; flex-direction: column; gap: 14rpx; }
+.fp-card { padding: 18rpx 20rpx; border-radius: 16rpx; background: var(--bg-gray); border: 1rpx solid transparent; }
+.fp-card--on { background: rgba(245,103,29,.07); border-color: var(--brand-primary); }
+.fp-card__name { display: block; font-size: 26rpx; font-weight: 600; color: var(--text-primary); }
+.fp-card--on .fp-card__name { color: var(--brand-primary); }
+.fp-card__text {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: var(--text-tertiary);
+}
+.fp-empty { padding: 22rpx; border-radius: 14rpx; background: var(--bg-gray); font-size: 23rpx; color: var(--text-tertiary); }
 </style>
