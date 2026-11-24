@@ -3035,4 +3035,31 @@ svg {
 }
 
 .safe-area-bottom { height: 60rpx; }
+
+/* 顶栏副标题：独立一行，与标题左对齐（布局参考设计稿，非像素照搬） */
+.topbar__desc {
+  display: block;
+  margin: 4rpx 24rpx 26rpx 74rpx;
+  font-size: 23rpx;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 重点提取输入卡 */
+.kp-card {
+  margin: 0 32rpx 24rpx;
+  padding: 28rpx;
+  background: var(--bg-card, #fff);
+  border-radius: 24rpx;
+}
+.kp-card__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }
+.kp-card__label { font-size: 28rpx; font-weight: 600; color: var(--text-primary); }
+.kp-card__count { font-size: 22rpx; color: var(--text-tertiary); }
+.kp-card__ta {
+  width: 100%; min-height: 320rpx; font-size: 26rpx; line-height: 1.6;
+  color: var(--text-primary); background: transparent;
+}
 </style>
