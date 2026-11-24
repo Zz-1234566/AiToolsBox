@@ -71,7 +71,7 @@
                   </svg>
                 </view>
                 <view class="tl__body">
-                  <text class="tl__t">{{ histStepTitle(st) }}</text>
+                  <text class="tl__t tl__t--hist">{{ histStepTitle(st) }}</text>
                   <text class="tl__s">{{ st.costMs ? '耗时 ' + fmtMs(st.costMs) : '已完成' }}</text>
                 </view>
               </view>
@@ -1063,6 +1063,13 @@ $ref-sub: var(--text-secondary);
 }
 .tl__t--live {
   animation: step-breathe 2s ease-in-out infinite;
+}
+/* 历史里的思考文本可能较长，最多展示两行 */
+.tl__t--hist {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .tl__body { flex: 1; min-width: 0; }
