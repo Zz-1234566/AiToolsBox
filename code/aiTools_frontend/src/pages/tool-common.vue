@@ -169,7 +169,11 @@
         <text class="prompt-card__counter">{{ inputText.length }}/5000</text>
       </view>
 
-<!-- 格式提示词（告诉 AI 输出什么结构） -->
+</block>
+
+    <!-- 格式要求 / 生成要求：所有带提示词的加工类工具共用（纯转换工具不显示） -->
+    <block v-if="!isPureConvert">
+      <!-- 格式提示词（告诉 AI 输出什么结构） -->
       <view class="prompt-card">
         <view class="prompt-card__header">
           <text class="prompt-card__label">格式要求</text>
