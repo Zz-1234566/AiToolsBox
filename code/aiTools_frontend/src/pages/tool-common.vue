@@ -2133,10 +2133,10 @@ svg {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .topbar__act {
-  flex-shrink: 0; width: 56rpx; height: 56rpx; margin-top: 4rpx; display: flex;
+  flex-shrink: 0; width: 64rpx; height: 64rpx; margin-top: 0; display: flex;
   align-items: center; justify-content: center; color: var(--text-secondary);
 }
-.topbar__act svg { width: 40rpx; height: 40rpx; }
+.topbar__act svg { width: 52rpx; height: 52rpx; }
 .topbar__back {
   width: 56rpx;
   height: 56rpx;
