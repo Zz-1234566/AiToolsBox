@@ -31,7 +31,7 @@
 
     <!-- 欢迎态 -->
     <view v-if="!started" class="welcome">
-      <image class="welcome__robot" :src="ROBOT_BASE" mode="aspectFit" />
+      <image class="welcome__robot" :src="ROBOT_ANIM" mode="aspectFill" />
       <text class="welcome__t1">你好，我是智小T</text>
       <text class="welcome__t2">有什么可以帮你？</text>
       <text class="sugs__label">试试这样问我：</text>
@@ -359,6 +359,8 @@ const running = ref(false)
  */
 const ROBOT_HEAD = '/static/ref/robot-head.png'
 const ROBOT_BASE = '/static/ref/robot-base.png'
+/** 动态形象（GIF，180px 压缩版约 220KB） */
+const ROBOT_ANIM = '/static/ref/robot-anim.gif'
 const STATE_CLASSES = ['is-thinking', 'is-idea']
 const stateIdx = ref(0)
 let stateTimer = null
@@ -835,7 +837,14 @@ $ref-sub: var(--text-secondary);
   align-items: center;
   padding: 40rpx 56rpx 0;
 }
-.welcome__robot { width: 340rpx; height: 340rpx; }
+.welcome__robot {
+  /* GIF 为 4:3，用同比例圆角卡片展示，避免裁切 */
+  width: 360rpx;
+  height: 270rpx;
+  border-radius: 28rpx;
+  background: var(--bg-card);
+  overflow: hidden;
+}
 .welcome__t1 { margin-top: 16rpx; font-size: 38rpx; font-weight: 700; color: $ref-ink; }
 .welcome__t2 { margin-top: 10rpx; font-size: 28rpx; color: $ref-sub; }
 .sugs__label {
