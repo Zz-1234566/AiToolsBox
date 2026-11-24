@@ -27,7 +27,10 @@ public class UserProfile implements Serializable {
     /** 结构化偏好 JSON */
     private String preferences;
 
-    /** AI 生成的画像摘要 */
+    /** 用户手工维护的偏好键 JSON 数组（AI 抽取不会覆盖这些键） */
+    private String manualKeys;
+
+    /** AI 生成的画像摘要（仅展示，不注入模型） */
     private String profileText;
 
     /** 最近一次产出画像的会话 */

@@ -83,13 +83,54 @@ public class AgentProfileServiceImpl implements AgentProfileService {
         if (p == null) return "";
         java.util.Map<String, Object> prefs = parseMap(p.getPreferences());
         StringBuilder sb = new StringBuilder();
-        for (String key : ALLOWED_KEYS) {
-            Object v = prefs.get(key);
-            if (v == null || String.valueOf(v).isBlank()) continue;
+        // 输出全部词条：AI 抽取的已按白名单过滤，用户手工添加的是其显式表达
+        prefs.forEach((key, v) -> {
+            if (v == null || String.valueOf(v).isBlank()) return;
             sb.append("- ").append(KEY_LABELS.getOrDefault(key, key))
               .append("：").append(v).append('\n');
-        }
+        });
         return sb.toString().trim();
+    }
+
+    @Override
+    public java.util.Map<String, String> getPreferences(Long userId) {
+        UserProfile p = find(userId);
+        if (p == null) return java.util.Map.of();
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        parseMap(p.getPreferences()).forEach((k, v) -> out.put(k, v == null ? "" : String.valueOf(v)));
+        return out;
+    }
+
+    @Override
+    public void savePreferences(Long userId, java.util.Map<String, String> preferences) {
+        UserProfile p = find(userId);
+        boolean insert = p == null;
+        if (insert) {
+            p = new UserProfile();
+            p.setUserId(userId);
+            p.setDr(0);
+        }
+        java.util.Map<String, String> clean = new java.util.LinkedHashMap<>();
+        if (preferences != null) {
+            preferences.forEach((k, v) -> {
+                if (k == null || k.isBlank() || v == null || String.valueOf(v).isBlank()) return;
+                clean.put(k.trim(), String.valueOf(v).trim());
+            });
+        }
+        try {
+            p.setPreferences(objectMapper.writeValueAsString(clean));
+            // 用户手工维护的键全部记入 manualKeys，AI 抽取时跳过
+            p.setManualKeys(objectMapper.writeValueAsString(new java.util.ArrayList<>(clean.keySet())));
+        } catch (Exception e) {
+            log.warn("[agent-profile] 序列化偏好失败 userId={}: {}", userId, e.getMessage());
+            return;
+        }
+        if (insert) {
+            userProfileMapper.insert(p);
+        } else {
+            userProfileMapper.updateById(p);
+        }
+        log.info("[agent-profile] 用户手工保存偏好 userId={} keys={}", userId, clean.keySet());
     }
 
     @Override
@@ -131,7 +172,7 @@ public class AgentProfileServiceImpl implements AgentProfileService {
         }
         if (!profileText.isBlank()) p.setProfileText(profileText);
         // 偏好合并而不是覆盖：新出现的键覆盖旧值，旧键保留（避免画像随最近对话漂移）
-        p.setPreferences(mergePreferences(p.getPreferences(), preferences));
+        p.setPreferences(mergePreferences(p.getPreferences(), preferences, p.getManualKeys()));
         p.setSourceSessionId(sessionId);
         if (insert) {
             userProfileMapper.insert(p);
@@ -171,10 +212,20 @@ public class AgentProfileServiceImpl implements AgentProfileService {
      * 全量覆盖会让长期稳定的偏好被最近几句对话冲掉。
      */
     @SuppressWarnings("unchecked")
-    private String mergePreferences(String oldJson, String newJson) {
+    private String mergePreferences(String oldJson, String newJson, String manualKeysJson) {
         java.util.Map<String, Object> merged = new java.util.LinkedHashMap<>();
         merged.putAll(parseMap(oldJson));
-        merged.putAll(parseMap(newJson));
+        // 用户手工维护的键不允许被 AI 覆盖
+        java.util.Set<String> manual = new java.util.HashSet<>();
+        if (manualKeysJson != null && !manualKeysJson.isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode arr = objectMapper.readTree(manualKeysJson);
+                arr.forEach(n -> manual.add(n.asText()));
+            } catch (Exception ignored) { }
+        }
+        parseMap(newJson).forEach((k, v) -> {
+            if (!manual.contains(k)) merged.put(k, v);
+        });
         try {
             return objectMapper.writeValueAsString(merged);
         } catch (Exception e) {

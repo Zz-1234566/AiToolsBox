@@ -18,6 +18,20 @@ public interface AgentProfileService {
     String getProfileText(Long userId);
 
     /**
+     * 读取结构化偏好（词条）。
+     *
+     * @return 键值对；无画像时返回空 Map
+     */
+    java.util.Map<String, String> getPreferences(Long userId);
+
+    /**
+     * 保存用户手工编辑的偏好（整体覆盖）。
+     * <p>
+     * 这些键会记入 manualKeys，后续 AI 抽取不会覆盖。
+     */
+    void savePreferences(Long userId, java.util.Map<String, String> preferences);
+
+    /**
      * 异步从最近对话中抽取画像并落库（不阻塞回答）。
      *
      * @param userId     用户
