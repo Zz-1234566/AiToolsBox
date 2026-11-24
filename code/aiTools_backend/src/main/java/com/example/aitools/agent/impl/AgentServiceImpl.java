@@ -100,7 +100,7 @@ public class AgentServiceImpl implements AgentService {
                 ? createAndGetSession(userId)
                 : agentSessionService.requireSession(userId, sessionId);
         agentSessionService.autoTitle(session, goal);
-        agentSessionService.appendMessage(session, "user", goal, null);
+        agentSessionService.appendMessage(session, "user", goal, buildUserMeta(attachments));
         // 本次目标刚写入的序号：注入历史时要排除它（下面会单独作为本轮 user 消息加入）
         int currentGoalSeq = session.getMessageCount() == null ? 0 : session.getMessageCount();
 
@@ -694,6 +694,27 @@ public class AgentServiceImpl implements AgentService {
             // 本次目标单独作为最后一条 user 消息加入，这里排除
             if (h.getSeq() >= currentGoalSeq) continue;
             messages.add(message(h.getRole(), h.getContent()));
+        }
+    }
+
+    /** user 消息的 meta：记录本次附件，供历史回放展示 */
+    private String buildUserMeta(List<AgentAttachment> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return null;
+        }
+        List<Map<String, Object>> files = new ArrayList<>();
+        for (AgentAttachment a : attachments) {
+            Map<String, Object> f = new HashMap<>();
+            f.put("name", a.getFileName());
+            f.put("url", a.getFileRef());
+            files.add(f);
+        }
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("files", files);
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(meta);
+        } catch (Exception e) {
+            return null;
         }
     }
 
