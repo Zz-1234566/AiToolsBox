@@ -995,7 +995,8 @@ $ref-sub: var(--text-secondary);
   width: 96rpx;
   height: 96rpx;
   border-radius: 50%;
-  background: var(--bg-card);
+  /* 固定浅色底：机器人白色身体 + 深色面罩/键盘在深色主题下都能看清 */
+  background: #F4F4F6;
   display: block;
   padding: 4rpx;
   box-sizing: border-box;
