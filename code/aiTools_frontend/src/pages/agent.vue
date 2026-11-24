@@ -213,7 +213,7 @@
     </view>
 
     <!-- 已上传附件（欢迎态：展示在输入条上方；发送后由对话气泡展示） -->
-    <view v-if="!started && attachments.length" class="attach-bar">
+    <view v-if="attachments.length && !sentGoal" class="attach-bar">
       <view v-for="(a,i) in attachments" :key="a.url" class="attach-chip">
         <view class="attach-chip__ico">
           <template v-if="fileKind(a.name) === 'doc'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></template>
