@@ -217,6 +217,14 @@ public class AgentServiceImpl implements AgentService {
 
             if (action.getThought() != null && !action.getThought().isBlank()) {
                 onFrame.accept(frame(FRAME_THOUGHT, action.getThought()));
+                // 思考步骤也落库：不调工具的轮次（如纯对话）只有这一条，
+                // 否则历史里会完全没有「任务规划」可回放
+                com.example.aitools.agent.dto.AgentStep thoughtStep =
+                        new com.example.aitools.agent.dto.AgentStep();
+                thoughtStep.setSeq(steps.size() + 1);
+                thoughtStep.setThought(action.getThought());
+                thoughtStep.setCostMs(thinkCost);
+                steps.add(thoughtStep);
             }
             // 收尾：把本步耗时告诉前端（空思考也要发，保证步骤能结束计时）
             onFrame.accept(frame(FRAME_THOUGHT_COST, String.valueOf(thinkCost)));
