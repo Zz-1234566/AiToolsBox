@@ -109,7 +109,7 @@
                 </svg>
               </view>
               <view class="tl__body">
-                <text class="tl__t">{{ st.title || st.text || '处理中' }}</text>
+                <text class="tl__t" :class="{ 'tl__t--live': isRunningStep(i) }">{{ st.title || st.text || '处理中' }}</text>
                 <text class="tl__s">{{ stepStatusText(st) }}</text>
               </view>
             </view>
@@ -996,6 +996,15 @@ $ref-sub: var(--text-secondary);
   transform-origin: 50% 50%;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* 执行中的步骤：文字亮度呼吸（1 → 0.35 → 1），提示「正在处理」 */
+@keyframes step-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.tl__t--live {
+  animation: step-breathe 1.4s ease-in-out infinite;
+}
+
 .tl__body { flex: 1; min-width: 0; }
 .tl__t { display: block; font-size: 26rpx; font-weight: 600; color: $ref-ink; }
 .tl__s { display: block; margin-top: 4rpx; font-size: 22rpx; color: $ref-sub; }
