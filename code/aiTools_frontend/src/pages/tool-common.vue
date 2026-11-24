@@ -178,10 +178,13 @@
           </view>
         </view>
         <view v-if="formatPrompts.length" class="fp-list">
-          <view v-for="fp in formatPrompts" :key="fp.id"
+          <view v-for="fp in formatPrompts" :key="fp.source + '-' + fp.id"
                 class="fp-card" :class="{ 'fp-card--on': formatPromptId === fp.id }"
                 @click="pickFormatPrompt(fp)">
-            <text class="fp-card__name">{{ fp.promptName }}</text>
+            <view class="fp-card__head">
+              <text class="fp-card__name">{{ fp.promptName }}</text>
+              <text class="fp-card__tag" :class="{ 'fp-card__tag--mine': fp.source === 'mine' }">{{ fp.source === 'mine' ? '我的' : '系统' }}</text>
+            </view>
             <text class="fp-card__text">{{ fp.promptContent }}</text>
           </view>
         </view>
@@ -197,10 +200,13 @@
           </view>
         </view>
         <view v-if="generatePrompts.length" class="fp-list">
-          <view v-for="gp in generatePrompts" :key="gp.id"
+          <view v-for="gp in generatePrompts" :key="gp.source + '-' + gp.id"
                 class="fp-card" :class="{ 'fp-card--on': generatePromptId === gp.id }"
                 @click="pickGeneratePrompt(gp)">
-            <text class="fp-card__name">{{ gp.promptName }}</text>
+            <view class="fp-card__head">
+              <text class="fp-card__name">{{ gp.promptName }}</text>
+              <text class="fp-card__tag" :class="{ 'fp-card__tag--mine': gp.source === 'mine' }">{{ gp.source === 'mine' ? '我的' : '系统' }}</text>
+            </view>
             <text class="fp-card__text">{{ gp.promptContent }}</text>
           </view>
         </view>
@@ -1136,10 +1142,22 @@ const loadFormatPrompts = async () => {
   if (!toolId.value || formatPromptLoadedFor === toolId.value) return
   formatPromptLoadedFor = toolId.value
   try {
-    const res = await systemPromptListApi(toolId.value)
-    const list = (res && res.data) || []
-    formatPrompts.value = list.filter((x) => x.promptUse === 'format')
-    generatePrompts.value = list.filter((x) => x.promptUse === 'generate')
+    const [sysRes, mineRes] = await Promise.all([
+      systemPromptListApi(toolId.value).catch(() => ({ data: [] })),
+      promptListApi(toolId.value).catch(() => ({ data: [] }))
+    ])
+    const tag = (arr, source) => (arr || []).map((x) => ({ ...x, source }))
+    const merged = [...tag((mineRes && mineRes.data) || [], 'mine'),
+                    ...tag((sysRes && sysRes.data) || [], 'system')]
+    const seen = new Set()
+    const unique = merged.filter((x) => {
+      const k = (x.promptName || '') + '|' + x.promptUse
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
+    })
+    formatPrompts.value = unique.filter((x) => x.promptUse === 'format')
+    generatePrompts.value = unique.filter((x) => x.promptUse === 'generate')
     if (generatePrompts.value.length) {
       generatePromptId.value = generatePrompts.value[0].id
       promptGenerateText.value = generatePrompts.value[0].promptContent
@@ -3202,4 +3220,11 @@ svg {
   overflow: hidden; margin-top: 8rpx; font-size: 22rpx; line-height: 1.5; color: var(--text-tertiary);
 }
 .fp-empty { padding: 22rpx; border-radius: 14rpx; background: var(--bg-gray); font-size: 23rpx; color: var(--text-tertiary); }
+
+.fp-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; }
+.fp-card__tag {
+  flex-shrink: 0; font-size: 19rpx; padding: 2rpx 12rpx; border-radius: 8rpx;
+  background: var(--bg-gray); color: var(--text-tertiary);
+}
+.fp-card__tag--mine { background: rgba(245,103,29,.12); color: var(--brand-primary); }
 </style>
