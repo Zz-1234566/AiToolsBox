@@ -31,6 +31,18 @@
       @change="onAiModelChange"
     />
 
+    <view class="example-section" v-if="FORMAT_TOOLS[toolId]">
+        <view class="example-section__title">格式要求<span class="fmt-tip">（可选，决定输出形态）</span></view>
+        <view class="fmt-list">
+          <view v-for="f in FORMAT_OPTIONS" :key="f.key"
+                class="fmt-item" :class="{ 'fmt-item--on': formatStyle === f.key }"
+                @click="pickFormat(f)">
+            <text class="fmt-item__t">{{ f.label }}</text>
+            <text class="fmt-item__d">{{ f.desc }}</text>
+          </view>
+        </view>
+      </view>
+
     <!-- ============ 工具特化 UI（按 toolId 分发） ============ -->
 
     <!-- 工作总结 -->
@@ -51,17 +63,7 @@
         <textarea class="content-card__textarea" v-model="inputText" placeholder="请详细描述今天的工作内容、完成的任务、遇到的问题等…" :maxlength="2000"></textarea>
         <text class="content-card__counter">{{ inputText.length }}/2000</text>
       </view>
-      <view class="example-section">
-        <view class="example-section__title">格式要求<span class="fmt-tip">（可选，决定输出形态）</span></view>
-        <view class="fmt-list">
-          <view v-for="f in FORMAT_OPTIONS" :key="f.key"
-                class="fmt-item" :class="{ 'fmt-item--on': formatStyle === f.key }"
-                @click="pickFormat(f)">
-            <text class="fmt-item__t">{{ f.label }}</text>
-            <text class="fmt-item__d">{{ f.desc }}</text>
-          </view>
-        </view>
-      </view>
+      
     </block>
 
     <!-- 重点提取：文本输入（此前模板里没有这个分支，页面只剩模型选择） -->
@@ -461,6 +463,8 @@ const useExample = () => {
   }
   uni.showToast({ title: '已填入示例', icon: 'none' })
 }
+
+const FORMAT_TOOLS = { 'work-summary': 1, 'weekly-report': 1, 'meeting-minutes': 1, 'mm': 1, 'doc-keypoint-extract': 1 }
 
 const FORMAT_OPTIONS = [
   { key: 'brief', label: '简洁版', desc: '300 字以内，只讲结论，不铺陈细节', prompt: '请输出简洁版：300 字以内，直接给结论，不展开细节。' },
