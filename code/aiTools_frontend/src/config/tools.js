@@ -157,7 +157,7 @@ export const TOOLS = {
   'weekly-report': {
     name: '周报生成', icon: 'weekly', category: 'AI办公助手', realized: true,
     inputLabel: '本周工作内容',
-    desc: '输入本周工作内容，一键生成结构化的工作周报。文件请先用【文档提取】转为文字。',
+    desc: '输入本周工作内容，一键生成结构化周报',
     inputTypes: ['text'], defaultInput: 'text',
     placeholder: '请粘贴或输入本周完成的工作内容...',
     actionText: '生成周报', resultTitle: '周报内容', resultPlaceholder: '生成的周报将在这里显示...',

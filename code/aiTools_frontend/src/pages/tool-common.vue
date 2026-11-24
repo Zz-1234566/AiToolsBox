@@ -1688,7 +1688,7 @@ svg {
 }
 .prompt-card__pick {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8rpx;
   height: 48rpx;
   padding: 0 16rpx;
@@ -2101,8 +2101,8 @@ svg {
 .topbar {
   /* App 端自绘导航栏需避开状态栏/刘海（uni 注入 --status-bar-height，H5 端为 0）
      ⚠️ 必须用四值简写：`padding: 0 24rpx` 简写会重置 padding-top。 */
-  padding: calc(var(--status-bar-height, 0px) + 28rpx) 24rpx 26rpx;
-  min-height: 132rpx;
+  padding: calc(var(--status-bar-height, 0px) + 26rpx) 20rpx 22rpx;
+  min-height: 124rpx;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -2110,16 +2110,15 @@ svg {
   background: var(--bg-card, #FFFFFF);
   border-bottom: 1rpx solid var(--divider-color, var(--border-color));
 }
-.topbar__text { flex: 1; display: flex; flex-direction: column; gap: 10rpx; min-width: 0; padding-right: 8rpx; }
-.topbar__title { font-size: 34rpx; font-weight: 700; color: var(--text-primary); line-height: 1.25; }
+.topbar__text { flex: 1; display: flex; flex-direction: column; gap: 6rpx; min-width: 0; padding: 8rpx 8rpx 0 4rpx; }
+.topbar__title { font-size: 34rpx; font-weight: 700; color: var(--text-primary); line-height: 40rpx; }
 .topbar__sub {
   font-size: 23rpx; color: var(--text-tertiary); line-height: 1.5;
   /* 副标题最多两行：长描述不再被截成「文件…」，同时不把顶栏顶太高 */
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .topbar__act {
-  flex-shrink: 0; width: 56rpx; height: 56rpx; display: flex;
+  flex-shrink: 0; width: 56rpx; height: 56rpx; margin-top: 4rpx; display: flex;
   align-items: center; justify-content: center; color: var(--text-secondary);
 }
 .topbar__act svg { width: 40rpx; height: 40rpx; }
