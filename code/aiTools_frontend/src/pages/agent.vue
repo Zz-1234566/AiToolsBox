@@ -47,7 +47,20 @@
       <!-- 历史消息回放（切换会话时加载） -->
       <block v-for="(hm, hi) in historyMessages" :key="'h' + hi">
         <view v-if="hm.role === 'user'" class="msg msg--me">
-          <view class="bubble bubble--me">{{ hm.content }}</view>
+          <view class="me-col">
+            <view class="bubble bubble--me">{{ hm.content }}</view>
+            <view v-if="histFiles(hm).length" class="files">
+              <view v-for="(f, fi) in histFiles(hm)" :key="'f' + fi" class="file">
+                <view class="file__ico">
+                  <template v-if="fileKind(f.name) === 'doc'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></template>
+                  <template v-else-if="fileKind(f.name) === 'image'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.4"/><path d="M21 16l-5-5-9 9"/></svg></template>
+                  <template v-else-if="fileKind(f.name) === 'audio'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></svg></template>
+                  <template v-else><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/></svg></template>
+                </view>
+                <text class="file__n">{{ f.name }}</text>
+              </view>
+            </view>
+          </view>
         </view>
         <view v-else class="msg msg--ai">
           <view class="ai-body">
@@ -79,6 +92,23 @@
 
             <view class="card card--answer">
               <MarkdownView :source="hm.content" />
+              <view class="ans-foot">
+                <text class="ans-disclaimer">本回答由AI生成，内容仅供参考，请仔细甄别</text>
+                <view class="ans-acts">
+                  <view class="ans-act" @click="copyHistory(hm)">
+                    <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
+                    <text>复制</text>
+                  </view>
+                  <view v-if="hi === historyMessages.length - 1" class="ans-act" @click="regenerateFrom(hi)">
+                    <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+                    <text>重新生成</text>
+                  </view>
+                  <view class="ans-act" @click="quoteHistory(hm)">
+                    <svg viewBox="0 0 24 24"><path d="M7 7h4v4a4 4 0 01-4 4"/><path d="M14 7h4v4a4 4 0 01-4 4"/></svg>
+                    <text>引用</text>
+                  </view>
+                </view>
+              </view>
             </view>
           </view>
         </view>
@@ -314,6 +344,38 @@ const histSteps = (hm) => {
   const m = parseMeta(hm)
   return Array.isArray(m.steps) ? m.steps : []
 }
+/** 历史消息里的附件 */
+const histFiles = (hm) => {
+  const m = parseMeta(hm)
+  return Array.isArray(m.files) ? m.files : []
+}
+
+/** 历史回答的复制 / 引用 / 重新生成 */
+const copyHistory = (hm) => copyRaw(hm.content || '', '回答')
+
+const quoteHistory = (hm) => {
+  const text = String(hm.content || '').replace(/\s+/g, ' ').trim()
+  if (!text) return
+  quotedText.value = text.length > 300 ? text.slice(0, 300) + '…' : text
+}
+
+/** 用历史里对应的问题重跑（仅最后一条回答可用） */
+const regenerateFrom = (idx) => {
+  if (running.value) return
+  let question = ''
+  for (let i = idx - 1; i >= 0; i--) {
+    if (historyMessages.value[i].role === 'user') { question = historyMessages.value[i].content || ''; break }
+  }
+  if (!question) {
+    uni.showToast({ title: '找不到对应的问题', icon: 'none' })
+    return
+  }
+  sentGoal.value = question
+  historyMessages.value = []
+  histOpen.value = {}
+  runAgent()
+}
+
 /** 步骤标题：工具名优先，其次思考文本 */
 const histStepTitle = (st) => (st && (st.tool || st.thought)) || '步骤'
 
@@ -567,6 +629,7 @@ const syncHistoryAfterRun = async () => {
       sentGoal.value = ''
       answer.value = ''
       steps.value = []
+      attachments.value = []
       planCollapsed.value = false
     }
   } catch (e) { /* 同步失败就保留本地渲染，不影响使用 */ }
@@ -868,6 +931,7 @@ $ref-sub: var(--text-secondary);
 .chat { flex: 1; min-height: 0; padding: 8rpx 32rpx 24rpx; }
 .msg { display: flex; margin-bottom: 22rpx; }
 .msg--me { justify-content: flex-end; }
+.me-col { display: flex; flex-direction: column; align-items: flex-end; }
 .msg--ai { display: block; }
 
 .bubble--me {
