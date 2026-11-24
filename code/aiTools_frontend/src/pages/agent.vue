@@ -98,7 +98,7 @@
                   <view class="ans-act" @click="copyHistory(hm)">
                     <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
                   </view>
-                  <view v-if="hi === historyMessages.length - 1" class="ans-act" @click="regenerateFrom(hi)">
+                  <view v-if="hi === historyMessages.length - 1" class="ans-act ans-act--right" @click="regenerateFrom(hi)">
                     <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
                   </view>
                 </view>
@@ -174,7 +174,7 @@
                 <view class="ans-act" @click="copyAnswer">
                   <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
                 </view>
-                <view class="ans-act" @click="regenerate">
+                <view class="ans-act ans-act--right" @click="regenerate">
                   <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
                 </view>
               </view>
@@ -1088,6 +1088,8 @@ $ref-sub: var(--text-secondary);
   justify-content: center;
 }
 .ans-act:active { opacity: 0.65; }
+/* 重新生成固定在最右侧 */
+.ans-act--right { margin-left: auto; }
 .ans-act svg {
   width: 34rpx;
   height: 34rpx;
