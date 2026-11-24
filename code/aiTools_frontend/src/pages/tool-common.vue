@@ -31,17 +31,6 @@
       @change="onAiModelChange"
     />
 
-    <!-- 示例：一键填入一段像样的样例内容（纯转换/抠图类工具不需要） -->
-    <view v-if="toolExamples[toolId]" class="ex-block">
-      <view class="ex-block__head">
-        <text class="ex-block__t">示例</text>
-        <text class="ex-block__use" @click="useExample">填入示例</text>
-      </view>
-      <text class="ex-block__body">{{ toolExamples[toolId] }}</text>
-    </view>
-
-
-
     <!-- ============ 工具特化 UI（按 toolId 分发） ============ -->
 
     <!-- 工作总结 -->
@@ -192,6 +181,7 @@
       <view class="prompt-card">
         <view class="prompt-card__header">
           <text class="prompt-card__label">格式提示词</text>
+          <text class="prompt-card__hint">示例：语气正式，突出关键数据，不要口语化表达</text>
           <view class="prompt-card__pick" @click="openPromptPicker('format')">
             <svg viewBox="0 0 24 24"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>
             <text>选择系统提示词</text>
@@ -3125,4 +3115,9 @@ svg {
 .ex-block__t { font-size: 24rpx; font-weight: 600; color: var(--brand-primary); }
 .ex-block__use { font-size: 23rpx; color: var(--brand-primary); }
 .ex-block__body { font-size: 23rpx; line-height: 1.6; color: var(--text-secondary); }
+
+.fmt-example { margin: 0 0 16rpx; padding: 16rpx 20rpx; border-radius: 14rpx; background: rgba(245,103,29,.05); }
+.fmt-example__k { font-size: 22rpx; color: var(--brand-primary); margin-right: 12rpx; }
+.fmt-example__v { font-size: 22rpx; color: var(--text-secondary); line-height: 1.5; }
+.prompt-card__hint { display: block; margin-top: 6rpx; font-size: 22rpx; color: var(--text-tertiary); }
 </style>
