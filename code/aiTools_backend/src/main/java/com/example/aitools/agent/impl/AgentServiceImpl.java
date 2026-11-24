@@ -130,12 +130,14 @@ public class AgentServiceImpl implements AgentService {
         messages.add(message("user", goal));
 
         java.util.concurrent.atomic.AtomicReference<String> finalAnswer = new java.util.concurrent.atomic.AtomicReference<>("");
+        java.util.concurrent.atomic.AtomicReference<List<com.example.aitools.agent.dto.AgentStep>> stepsRef =
+                new java.util.concurrent.atomic.AtomicReference<>(new ArrayList<>());
         try {
-            doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, onFrame);
+            doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, stepsRef, onFrame);
             String answer = finalAnswer.get();
             // 成功：把最终答案落成一条 assistant 消息（meta 里带运行信息，供回放）
             agentSessionService.appendMessage(session, "assistant", answer,
-                    buildAssistantMeta(runId, System.currentTimeMillis() - start));
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get()));
             // 画像抽取：异步，不阻塞本次回答
             agentProfileService.updateAsync(userId, session.getSessionId(),
                     agentSessionService.messages(userId, session.getSessionId(), 12), cred);
@@ -148,7 +150,7 @@ public class AgentServiceImpl implements AgentService {
             failRunRecord(runId, "运行中断：" + reason, new ArrayList<>(), start);
             // 失败也落一条 assistant 消息，保证回放时上下文完整
             agentSessionService.appendMessage(session, "assistant", "[运行中断] " + reason,
-                    buildAssistantMeta(runId, System.currentTimeMillis() - start));
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get()));
             throw e;
         }
     }
@@ -161,6 +163,7 @@ public class AgentServiceImpl implements AgentService {
                          ResolvedCredential cred,
                          AtomicBoolean cancelFlag,
                          java.util.concurrent.atomic.AtomicReference<String> finalAnswer,
+                         java.util.concurrent.atomic.AtomicReference<List<com.example.aitools.agent.dto.AgentStep>> stepsRef,
                          Consumer<String> onFrame) {
         long start = System.currentTimeMillis();
         List<AgentStep> steps = new ArrayList<>();
@@ -225,6 +228,9 @@ public class AgentServiceImpl implements AgentService {
                 onFrame.accept(frame(FRAME_DONE, ""));
                 if (finalAnswer != null) {
                     finalAnswer.set(action.getOutput() == null ? "" : action.getOutput());
+                }
+                if (stepsRef != null) {
+                    stepsRef.set(new ArrayList<>(steps));
                 }
                 completeRunRecord(runId, action.getOutput(), steps, start);
                 runningAgents.remove(runId);
@@ -684,10 +690,13 @@ public class AgentServiceImpl implements AgentService {
     }
 
     /** assistant 消息的 meta（运行信息，供回放展示） */
-    private String buildAssistantMeta(String runId, long durationMs) {
+    private String buildAssistantMeta(String runId, long durationMs,
+                                      List<com.example.aitools.agent.dto.AgentStep> steps) {
         Map<String, Object> meta = new HashMap<>();
         meta.put("runId", runId);
         meta.put("duration", durationMs);
+        // 步骤落库：重新打开会话时据此回放任务规划
+        if (steps != null) meta.put("steps", steps);
         try {
             return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(meta);
         } catch (Exception e) {
