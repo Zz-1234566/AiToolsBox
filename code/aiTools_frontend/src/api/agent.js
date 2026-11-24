@@ -114,3 +114,13 @@ export const renameAgentSession = (sessionId, title) =>
 /** 删除会话 */
 export const deleteAgentSession = (sessionId) =>
   request({ url: `/api/agent/sessions/${sessionId}`, method: 'DELETE' })
+
+/* ==================== 用户偏���（词条） ==================== */
+
+/** 读取偏好词条与画像摘要 */
+export const getAgentProfile = () =>
+  request({ url: '/api/agent/profile', method: 'GET' })
+
+/** 保存偏好词条（整体覆盖） */
+export const saveAgentProfile = (preferences) =>
+  request({ url: '/api/agent/profile', method: 'PUT', data: { preferences } })

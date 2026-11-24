@@ -206,6 +206,10 @@
         </view>
         <view v-if="!sessions.length" class="drawer__empty">还没有对话记录</view>
       </scroll-view>
+      <view class="drawer__foot" @click="goProfile">
+        <text>我的偏好</text>
+        <text class="drawer__foot-chev">›</text>
+      </view>
     </view>
 
     <!-- 底部输入条（参考豆包：上方引用块 + 输入，下方工具 + 模型选择 + 发送） -->
@@ -514,6 +518,11 @@ const loadSessions = async () => {
     const res = await listAgentSessions(30)
     sessions.value = (res && res.data) || []
   } catch (e) { /* 未登录/失败：侧栏留空 */ }
+}
+
+const goProfile = () => {
+  drawerOpen.value = false
+  uni.navigateTo({ url: '/pages/agent-profile' })
 }
 
 const openDrawer = () => {
@@ -1193,4 +1202,16 @@ $ref-sub: var(--text-secondary);
 }
 .drawer__item-time { display: block; margin-top: 6rpx; font-size: 20rpx; color: var(--text-tertiary); }
 .drawer__empty { padding: 48rpx 16rpx; text-align: center; font-size: 24rpx; color: var(--text-tertiary); }
+.drawer__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 24rpx 32rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 16rpx;
+  background: var(--bg-gray);
+  font-size: 26rpx;
+  color: var(--text-primary);
+}
+.drawer__foot-chev { color: var(--text-tertiary); }
 </style>

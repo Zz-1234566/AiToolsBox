@@ -189,6 +189,17 @@
       }
     },
     {
+      "path": "pages/agent-profile",
+      "style": {
+        "navigationBarTitleText": "我的偏好",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "animationType": "slide-in-right",
+          "animationDuration": 300
+        }
+      }
+    },
+    {
       "path": "pages/tool-custom",
       "style": {
         "navigationStyle": "custom",
