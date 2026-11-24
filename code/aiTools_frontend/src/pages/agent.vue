@@ -31,7 +31,7 @@
 
     <!-- 欢迎态 -->
     <view v-if="!started" class="welcome">
-      <image class="welcome__robot" :src="isDarkMode ? ROBOT_BASE : ROBOT_ANIM" mode="aspectFill" />
+      <image class="welcome__robot" :src="isDarkMode ? ROBOT_ANIM_DARK : ROBOT_ANIM_LIGHT" mode="aspectFill" />
       <text class="welcome__t1">你好，我是智小T</text>
       <text class="welcome__t2">有什么可以帮你？</text>
       <text class="sugs__label">试试这样问我：</text>
@@ -409,8 +409,9 @@ const running = ref(false)
  */
 const ROBOT_HEAD = '/static/ref/robot-head.png'
 const ROBOT_BASE = '/static/ref/robot-base.png'
-/** 动态形象（背景已映射为页面底色，仅亮色主题使用；深色主题用透明 PNG） */
-const ROBOT_ANIM = '/static/ref/robot-anim-light.webp'
+/** 动态形象：亮色版背景=页面底色；深色版带径向渐隐，避免浅色矩形 */
+const ROBOT_ANIM_LIGHT = '/static/ref/robot-anim-light.webp'
+const ROBOT_ANIM_DARK = '/static/ref/robot-anim-dark.webp'
 const STATE_CLASSES = ['is-thinking', 'is-idea']
 const stateIdx = ref(0)
 let stateTimer = null
