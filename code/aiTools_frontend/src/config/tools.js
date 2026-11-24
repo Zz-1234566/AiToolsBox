@@ -11,7 +11,7 @@ export const CATEGORIES = [
   },
   {
     code: '图片创意工具',
-    tools: ['image-bg-remover']
+    tools: ['image-bg-remover', 'id-photo-bg-change']
   }
 ]
 
@@ -73,7 +73,8 @@ const TOOL_GRADIENT_BY_ID = {
   'meeting-minutes': 'video',
   'doc-to-text': 'ocr',
   'audio-transcribe': 'audio',
-  'image-bg-remover': 'image'
+  'image-bg-remover': 'image',
+  'id-photo-bg-change': 'image'
 }
 
 /**
@@ -96,7 +97,8 @@ export const TOOL_SHORT_DESC = {
   'meeting-minutes': '智能整理要点',
   'doc-to-text': '多格式解析',
   'audio-transcribe': '音频转文字',
-  'image-bg-remover': '一键抠图换背景'
+  'image-bg-remover': '一键抠图换背景',
+  'id-photo-bg-change': '红蓝白底一键换'
 }
 
 /**
@@ -220,6 +222,19 @@ export const TOOLS = {
       text:   { unsupported: true, error: '该工具请上传图片' },
     }
   },
+  'id-photo-bg-change': {
+    name: '证件照换底色', icon: 'bg-color', category: '图片创意工具', realized: true,
+    inputLabel: '照片',
+    desc: '上传证件照，一键换成红 / 蓝 / 白底。',
+    inputTypes: ['image'], defaultInput: 'image', fileType: 'image',
+    uploadTitle: '点击上传照片', uploadDesc: '支持 JPG、PNG · 单张不超过 20MB',
+    actionText: '更换底色', resultTitle: '处理结果', resultPlaceholder: '换底后的证件照将在这里显示...',
+    validateRules: {
+      image:  { token: true, file: { type: 'single', min: 1, error: '请先上传照片' } },
+      file:   { unsupported: true, error: '该工具请上传照片（jpg/png）' },
+      text:   { unsupported: true, error: '该工具请上传照片' },
+    }
+  },
   'audio-transcribe': {
     name: '录音转写', icon: 'meeting', category: 'AI办公助手', realized: true,
     inputLabel: '录音内容',
@@ -270,7 +285,9 @@ export const REALIZED_TOOLS = Object.entries(TOOLS).filter(([, v]) => v.realized
  * 会落到通用页而不是专属页）。故收敛为唯一常量，各处统一引用。
  */
 export const TOOL_DETAIL_PAGES = {
-  'image-bg-remover': '/pages/image-bg-remover'
+  'image-bg-remover': '/pages/image-bg-remover',
+  // 证件照换底色复用去背景页：进入后默认白色底
+  'id-photo-bg-change': '/pages/image-bg-remover?preset=id-photo'
 }
 
 /**

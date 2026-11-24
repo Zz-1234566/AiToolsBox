@@ -329,6 +329,14 @@ const RPX_PER_PX = 750 / Math.max(1, _upx2px(750))
 const PREVIEW_CANVAS_RPX = 750 - 64 - 32
 
 export default {
+  /** 从工具页「证件照换底色」进入时，默认使用白色底 */
+  onLoad(options) {
+    if (options && options.preset === 'id-photo') {
+      this.$nextTick(() => {
+        this.currentBgColor = '#FFFFFF'
+      })
+    }
+  },
   data() {
     return {
       // ===== 3 状态机 =====
