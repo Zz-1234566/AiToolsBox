@@ -52,12 +52,14 @@
         <text class="content-card__counter">{{ inputText.length }}/2000</text>
       </view>
       <view class="example-section">
-        <view class="example-section__title">快捷示例</view>
-        <view class="example-grid">
-          <view class="pill-btn" @click="applyQuickPrompt('今天的工作总结')">今天的工作总结</view>
-          <view class="pill-btn" @click="applyQuickPrompt('本周工作总结')">本周工作总结</view>
-          <view class="pill-btn" @click="applyQuickPrompt('项目进展汇报')">项目进展汇报</view>
-          <view class="pill-btn" @click="applyQuickPrompt('自定义内容')">自定义内容</view>
+        <view class="example-section__title">格式要求<span class="fmt-tip">（可选，决定输出形态）</span></view>
+        <view class="fmt-list">
+          <view v-for="f in FORMAT_OPTIONS" :key="f.key"
+                class="fmt-item" :class="{ 'fmt-item--on': formatStyle === f.key }"
+                @click="pickFormat(f)">
+            <text class="fmt-item__t">{{ f.label }}</text>
+            <text class="fmt-item__d">{{ f.desc }}</text>
+          </view>
         </view>
       </view>
     </block>
@@ -442,6 +444,18 @@ const goBack = () => safeBack('/pages/index')
 // ===== 各工具特化状态 =====
 const workDate = ref('2025-09-23')
 const chooseDate = () => { uni.showToast({ title: '日期选择开发中', icon: 'none' }) }
+const FORMAT_OPTIONS = [
+  { key: 'brief', label: '简洁版', desc: '300 字以内，只讲结论，不铺陈细节', prompt: '请输出简洁版：300 字以内，直接给结论，不展开细节。' },
+  { key: 'detail', label: '详细版', desc: '分点展开，每点带具体数据或事例', prompt: '请输出详细版：按要点分条展开，每条补充具体数据或事例。' },
+  { key: 'todo', label: '带待办', desc: '结尾追加待办事项清单，标明负责人和时限', prompt: '请在结论后追加「待办事项」清单，每项标明负责人与完成时限。' },
+  { key: 'table', label: '表格化', desc: '核心信息用表格呈现，便于直接贴进文档', prompt: '请把核心信息整理成 Markdown 表格，便于直接复制到文档。' }
+]
+const formatStyle = ref('')
+const pickFormat = (f) => {
+  formatStyle.value = formatStyle.value === f.key ? '' : f.key
+  promptFormatText.value = formatStyle.value ? f.prompt : ''
+}
+
 const applyQuickPrompt = (text) => { inputText.value = text }
 
 const askText = ref('')
@@ -3064,4 +3078,17 @@ svg {
   width: 100%; min-height: 320rpx; font-size: 26rpx; line-height: 1.6;
   color: var(--text-primary); background: transparent;
 }
+
+/* 格式要求：两列卡片，带说明文字（比原来的单行胶囊更能表达差异） */
+.fmt-tip { font-size: 22rpx; color: var(--text-tertiary); font-weight: 400; }
+.fmt-list { display: flex; flex-wrap: wrap; gap: 16rpx; }
+.fmt-item {
+  width: calc(50% - 8rpx); box-sizing: border-box;
+  padding: 18rpx 20rpx; border-radius: 18rpx;
+  background: var(--bg-card, #fff); border: 1rpx solid var(--border-color);
+}
+.fmt-item--on { border-color: var(--brand-primary); background: rgba(245,103,29,.06); }
+.fmt-item__t { display: block; font-size: 27rpx; font-weight: 600; color: var(--text-primary); }
+.fmt-item--on .fmt-item__t { color: var(--brand-primary); }
+.fmt-item__d { display: block; margin-top: 6rpx; font-size: 22rpx; line-height: 1.45; color: var(--text-tertiary); }
 </style>
