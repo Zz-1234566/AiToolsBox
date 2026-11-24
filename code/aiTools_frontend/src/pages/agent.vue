@@ -11,7 +11,7 @@
         </view>
         <view class="topbar__text">
         <text class="topbar__title">智小T</text>
-          <text class="topbar__sub">把复杂任务交给 AI，自动调用工具完成</text>
+          <text class="topbar__sub">把复杂任务交给小T，自动调用工具完成</text>
         </view>
       </view>
       <view class="topbar__avatar">
