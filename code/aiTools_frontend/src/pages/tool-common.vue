@@ -4,6 +4,18 @@
     <view class="topbar__back" hover-class="topbar__back--hover" aria-label="返回" @click="goBack">
       <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
     </view>
+    <!-- 顶栏标题 + 副标题（与参考设计一致：标题在主栏，说明在下方小字） -->
+    <view class="topbar__text">
+      <text class="topbar__title">{{ toolInfo.name }}</text>
+      <text class="topbar__sub">{{ toolInfo.desc }}</text>
+    </view>
+    <view class="topbar__act" aria-label="历史记录" @click="goHistoryList">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round" style="fill:none">
+        <circle cx="12" cy="12" r="8.5" style="fill:none"/>
+        <path d="M12 7.5v5l3 1.8" style="fill:none"/>
+      </svg>
+    </view>
   </view>
 
   <!-- App 端 SSE 传输组件（视图层发起 XHR）；H5 端用原生 XHR，不需要此组件 -->
@@ -12,19 +24,6 @@
   <!-- #endif -->
 
   <scroll-view scroll-y class="page-content" :style="themeStyle">
-    <!-- Hero（左右布局） -->
-    <section class="hero-tool">
-      <view class="hero-tool__icon">
-        <view class="tool-icon tool-icon--lg" :class="'tool-icon--' + (toolInfo.iconType || 'image')">
-          <svg class="tool-icon__svg" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 13h6M9 17h4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </view>
-      </view>
-      <view class="hero-tool__text">
-        <text class="hero__title">{{ toolInfo.name || '工具详情' }}</text>
-        <text class="hero__subtitle">{{ toolInfo.desc || '让 AI 帮你高效完成任务' }}</text>
-      </view>
-    </section>
-
     <!-- ============ AI 模型选择（按 toolId 过滤 capability） ============ -->
     <AiModelSelector
       v-if="toolId"
@@ -420,6 +419,8 @@ const batchCardsForView = computed(() => batchCards.value.map((c, i) => ({
   errorMsg: c.errorMsg || '',
   output: c.output || ''
 })))
+
+const goHistoryList = () => uni.navigateTo({ url: '/pages/history' })
 
 const goBack = () => safeBack('/pages/index')
 
@@ -2107,6 +2108,17 @@ svg {
   background: var(--bg-card, #FFFFFF);
   border-bottom: 1rpx solid var(--divider-color, var(--border-color));
 }
+.topbar__text { flex: 1; display: flex; flex-direction: column; gap: 4rpx; min-width: 0; }
+.topbar__title { font-size: 32rpx; font-weight: 700; color: var(--text-primary); }
+.topbar__sub {
+  font-size: 22rpx; color: var(--text-tertiary); line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.topbar__act {
+  flex-shrink: 0; width: 56rpx; height: 56rpx; display: flex;
+  align-items: center; justify-content: center; color: var(--text-secondary);
+}
+.topbar__act svg { width: 40rpx; height: 40rpx; }
 .topbar__back {
   width: 56rpx;
   height: 56rpx;
