@@ -1,23 +1,32 @@
 <template>
   <view class="page-container animate-fade-in">
-    <page-header title="搜索" :showBack="true"></page-header>
-    
-    <view class="page-content">
-      <!-- 搜索框 -->
-      <view class="search-box">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="1.5"/>
-          <path d="M21 21L16.65 16.65" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <input 
-          class="search-input" 
-          v-model="keyword" 
-          placeholder="输入工具名称..."
-          placeholder-class="input-placeholder"
-          @input="onSearch"
-        />
-        <text v-if="keyword" class="clear-btn" @click="clearKeyword">清除</text>
+    <!-- 顶栏：返回 + 搜索框 + 搜索按钮（右上角用放大镜图标，而不是文字「取消」） -->
+    <view class="stbar">
+      <view class="stbar__back" @click="goBack">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
       </view>
+      <view class="stbar__box">
+        <input
+          class="stbar__input"
+          v-model="keyword"
+          placeholder="搜索工具..."
+          placeholder-class="input-placeholder"
+          confirm-type="search"
+          @input="onSearch"
+          @confirm="onSearch"
+        />
+        <text v-if="keyword" class="stbar__clear" @click="clearKeyword">×</text>
+      </view>
+      <view class="stbar__go" @click="onSearch" aria-label="搜索">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+        </svg>
+      </view>
+    </view>
+
+    <view class="page-content">
       
       <!-- 搜索结果 -->
       <scroll-view scroll-y class="result-list">
@@ -105,6 +114,8 @@ const clearKeyword = () => {
   keyword.value = ''
 }
 
+const goBack = () => uni.navigateBack()
+
 const goToTool = (tool) => {
   if (tool.isCustom) {
     uni.navigateTo({ url: `/pages/tool-custom?id=${tool.toolId}` })
@@ -135,17 +146,36 @@ const goToTool = (tool) => {
   padding: $spacing-md;
 }
 
-.search-box {
+.stbar {
   display: flex;
   align-items: center;
-  gap: 16rpx;
-  height: 80rpx;
-  margin: 8rpx 32rpx 20rpx;
-  padding: 0 26rpx;
-  border-radius: 999rpx;
-  background: var(--bg-gray);
-  border: none;
+  gap: 12rpx;
+  padding: 12rpx 24rpx;
+  background: var(--bg-page);
 }
+.stbar__back, .stbar__go {
+  flex-shrink: 0;
+  width: 64rpx;
+  height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+}
+.stbar__back svg, .stbar__go svg { width: 40rpx; height: 40rpx; }
+.stbar__go { color: var(--brand-primary); }
+.stbar__box {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  height: 72rpx;
+  padding: 0 24rpx;
+  border-radius: 999rpx;
+  background: var(--bg-card);
+}
+.stbar__input { flex: 1; font-size: 27rpx; color: var(--text-primary); }
+.stbar__clear { font-size: 32rpx; color: var(--text-tertiary); padding: 0 6rpx; }
   
   .search-input {
   flex: 1;

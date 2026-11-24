@@ -185,6 +185,15 @@
           <!-- 答案 + 免责声明 + 操作，同属一张卡片 -->
           <view v-if="answer" class="card card--answer">
             <MarkdownView :source="answer" :streaming="running" />
+            <!-- 中断提示：半截回答必须让用户知道不完整，并给出重试入口 -->
+            <view v-if="!running && interrupted" class="ans-broken">
+              <text class="ans-broken__t">回答中断，以上内容可能不完整</text>
+              <view class="ans-broken__btn" @click="regenerate">重新生成</view>
+            </view>
+            <view v-if="!running && cancelled" class="ans-broken ans-broken--cancel">
+              <text class="ans-broken__t">已停止生成</text>
+              <view class="ans-broken__btn" @click="regenerate">重新生成</view>
+            </view>
             <view v-if="!running" class="ans-foot">
               <text class="ans-disclaimer">本回答由AI生成，内容仅供参考，请仔细甄别</text>
               <view class="ans-acts">
@@ -219,7 +228,10 @@
             <text class="typing__t">正在思考</text>
             <view class="typing__dots"><i></i><i></i><i></i></view>
           </view>
-          <view v-if="errorMsg" class="err">{{ errorMsg }}</view>
+          <view v-if="errorMsg" class="err-box">
+            <text class="err-box__t">{{ errorMsg }}</text>
+            <view v-if="!running && !answer" class="err-box__btn" @click="regenerate">重试</view>
+          </view>
         </view>
       </view>
 
@@ -484,6 +496,12 @@ const attachments = ref([])
 const turnFiles = ref([])
 /** 本次是否为「重新生成」：后端据此复用上一条用户消息及其附件 */
 const regenMode = ref(false)
+/** 本轮是否收到「完成」帧：没收到就结束 = 被中断（后端崩溃/网关掐断） */
+const interrupted = ref(false)
+/** 本轮是否被用户主动取消（取消不算错误，不弹红字） */
+const cancelled = ref(false)
+/** 是否已收到后端的「完成」帧（用于识别静默中断） */
+let sawDone = false
 
 /** 附件类型（决定图标）：doc / image / audio / file */
 const fileKind = (name) => {
@@ -710,6 +728,8 @@ const finishRun = () => {
 /** 运行结束后拉取整段会话消息作为历史，然后清空本轮临时状态 */
 const syncHistoryAfterRun = async () => {
   if (!sessionId.value) return
+  // 中断/取消时保留用户已经看到的半截回答，不用历史的「[运行中断]」把它顶掉
+  if (interrupted.value || cancelled.value) return
   try {
     const res = await listAgentMessages(sessionId.value, 200)
     const list = (res && res.data) || []
@@ -853,6 +873,9 @@ const runAgent = async () => {
   answer.value = ''
   steps.value = []
   turnImages.value = []
+  interrupted.value = false
+  cancelled.value = false
+  sawDone = false
   planCollapsed.value = false
   runStartAt.value = Date.now()
   runEndAt.value = 0
@@ -937,6 +960,7 @@ const runAgent = async () => {
           } else if (kind === '答案') {
             chunkTarget = 'answer'
           } else if (kind === '完成') {
+            sawDone = true
             finishRun()
           }
         },
@@ -954,12 +978,30 @@ const runAgent = async () => {
         },
         onDone: () => {
           flushAnswer()
+          // 关键：正常结束必须有「完成」帧。没有就是被中断（进程被杀 / 网关断开），
+          // 此时 HTTP 层仍是 200，拿不到任何错误回调 —— 必须自己判定并提示。
+          if (!sawDone) {
+            interrupted.value = true
+            errorMsg.value = answer.value
+              ? '回答被中断，以上内容可能不完整，请重试'
+              : '回答被中断，请重试'
+          }
           finishRun()
         },
         onError: (err) => {
           flushAnswer()
+          const msg = (err && err.message) || '智能体运行失败，请重试'
+          if (/取消|cancel/i.test(msg)) {
+            // 用户主动停止：不是错误，不显示红字
+            cancelled.value = true
+            errorMsg.value = ''
+          } else if (answer.value) {
+            interrupted.value = true
+            errorMsg.value = msg + '（以上内容可能不完整，可重试）'
+          } else {
+            errorMsg.value = msg
+          }
           finishRun()
-          errorMsg.value = (err && err.message) || '智能体运行失败，请重试'
         }
       }
     )
@@ -1334,6 +1376,48 @@ $ref-sub: var(--text-secondary);
 @keyframes blink { 0%,60%,100% { opacity: .3 } 30% { opacity: 1 } }
 
 .err { font-size: 24rpx; color: #C0392B; }
+
+/* 错误块（带「重试」） */
+.err-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 12rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 14rpx;
+  background: rgba(224, 49, 49, 0.08);
+}
+.err-box__t { flex: 1; font-size: 24rpx; line-height: 1.5; color: #C0392B; }
+.err-box__btn {
+  flex-shrink: 0;
+  padding: 8rpx 22rpx;
+  border-radius: 999rpx;
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 24rpx;
+}
+
+/* 半截回答的中断提示 */
+.ans-broken {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx dashed var(--border-color);
+}
+.ans-broken__t { flex: 1; font-size: 22rpx; color: var(--text-tertiary); }
+.ans-broken__btn {
+  flex-shrink: 0;
+  padding: 8rpx 22rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid var(--brand-primary);
+  color: var(--brand-primary);
+  font-size: 22rpx;
+}
+.ans-broken--cancel .ans-broken__t { color: var(--text-tertiary); }
 
 /* 输入条（两行：输入 + 工具栏） */
 .composer {
