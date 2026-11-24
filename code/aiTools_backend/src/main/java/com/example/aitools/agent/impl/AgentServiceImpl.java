@@ -205,6 +205,9 @@ public class AgentServiceImpl implements AgentService {
                     throw ErrorFactory.of(com.example.aitools.common.ResultCode.AGENT_PARSE_FAILED, msg);
                 }
                 parseFailures++;
+                // 本步思考必须收尾：否则前端那条「正在思考」永远停在计时中，
+                // 下一轮又开始新的思考 → 界面上出现两条并行的「正在思考」
+                onFrame.accept(frame(FRAME_THOUGHT_COST, String.valueOf(thinkCost)));
                 messages.add(message("assistant", raw == null ? "" : raw));
                 messages.add(message("user",
                         "[格式错误] 你的上一次输出无法解析。请**只输出一个 JSON 对象**，"

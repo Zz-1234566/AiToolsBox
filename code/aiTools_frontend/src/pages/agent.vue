@@ -874,7 +874,14 @@ const runAgent = async () => {
             if (win > 0) ctxWindow.value = win
           } else if (kind === '思考开始') {
             // 模型开始思考：插入进行中的步骤，本地计时
-            pushStep({ type: 'thought', text: '正在思考…', running: true, startAt: Date.now() })
+            // 防御：上一条思考步还没收尾时直接复用，避免出现两条并行的「正在思考」
+            const lastStep = steps.value[steps.value.length - 1]
+            if (lastStep && lastStep.type === 'thought' && lastStep.running) {
+              lastStep.startAt = Date.now()
+              lastStep.text = '正在思考…'
+            } else {
+              pushStep({ type: 'thought', text: '正在思考…', running: true, startAt: Date.now() })
+            }
           } else if (kind === '思考') {
             chunkTarget = 'answer'
             const last = steps.value[steps.value.length - 1]
