@@ -70,7 +70,6 @@ public class AiVisionClient {
                 imgBlock.put("type", "image_url");
                 Map<String, Object> imgUrl = new HashMap<>();
                 imgUrl.put("url", "data:" + mimeType + ";base64," + base64);
-                imgUrl.put("detail", "default");
                 imgBlock.put("image_url", imgUrl);
                 contentBlocks.add(imgBlock);
             }
@@ -78,7 +77,7 @@ public class AiVisionClient {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", cred != null && cred.apiModel() != null ? cred.apiModel() : visionConfig.getModel());
             requestBody.put("stream", false);
-            requestBody.put("thinking", Map.of("type", "disabled"));
+            // 注意：不要带 thinking（MiniMax 专用），OpenCode Go 会按未知参数返回 400
 
             List<Map<String, Object>> messages = new ArrayList<>();
             Map<String, Object> userMsg = new HashMap<>();
@@ -106,9 +105,13 @@ public class AiVisionClient {
             conn.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
 
             int code = conn.getResponseCode();
-            String resp;
-            try (Scanner s = new Scanner(conn.getInputStream(), StandardCharsets.UTF_8)) {
-                resp = s.useDelimiter("\\A").next();
+            // 非 200 时 getInputStream 会直接抛 IOException（丢失错误体），必须读错误流
+            java.io.InputStream is = (code == 200) ? conn.getInputStream() : conn.getErrorStream();
+            String resp = "";
+            if (is != null) {
+                try (Scanner s = new Scanner(is, StandardCharsets.UTF_8)) {
+                    resp = s.useDelimiter("\\A").next();
+                }
             }
 
             if (code != 200) {
