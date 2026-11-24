@@ -51,6 +51,32 @@
         </view>
         <view v-else class="msg msg--ai">
           <view class="ai-body">
+            <!-- 历史任务规划（默认收起，点标题展开） -->
+            <view v-if="histSteps(hm).length" class="card">
+              <view class="card__title card__title--toggle" @click="histOpen[hm.seq] = !histOpen[hm.seq]">
+                <text>任务规划</text>
+                <view class="card__meta">
+                  <text class="card__count">{{ histSteps(hm).length }} 步</text>
+                  <svg class="card__chev" :class="{ 'card__chev--collapsed': !histOpen[hm.seq] }" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 15l6-6 6 6"/>
+                  </svg>
+                </view>
+              </view>
+              <view v-show="histOpen[hm.seq]" v-for="(st, si) in histSteps(hm)" :key="si" class="tl">
+                <view class="tl__dot">
+                  <svg class="tl__ico" viewBox="0 0 24 24">
+                    <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </view>
+                <view class="tl__body">
+                  <text class="tl__t">{{ histStepTitle(st) }}</text>
+                  <text class="tl__s">{{ st.costMs ? '耗时 ' + fmtMs(st.costMs) : '已完成' }}</text>
+                </view>
+              </view>
+            </view>
+
             <view class="card card--answer">
               <MarkdownView :source="hm.content" />
             </view>
@@ -276,6 +302,20 @@ const sessions = ref([])
 const drawerOpen = ref(false)
 /** 历史消息（切换会话时回放） */
 const historyMessages = ref([])
+/** 历史任务规划展开状态（按消息 seq 记录） */
+const histOpen = ref({})
+
+/** 解析历史消息的 meta */
+const parseMeta = (hm) => {
+  try { return JSON.parse(hm.meta || '{}') } catch (e) { return {} }
+}
+/** 历史消息里的步骤 */
+const histSteps = (hm) => {
+  const m = parseMeta(hm)
+  return Array.isArray(m.steps) ? m.steps : []
+}
+/** 步骤标题：工具名优先，其次思考文本 */
+const histStepTitle = (st) => (st && (st.tool || st.thought)) || '步骤'
 
 /** 上下文占用（后端每轮通过 [上下文:tokens:window] 下发） */
 const ctxTokens = ref(0)
@@ -509,6 +549,25 @@ const finishRun = () => {
   if (!runEndAt.value) runEndAt.value = Date.now()
   stopTick()
   if (steps.value.length) planCollapsed.value = true
+  // 本轮结束后从服务端同步历史：既保证步骤可回放，也避免下一轮开始时把上一轮顶掉
+  syncHistoryAfterRun()
+}
+
+/** 运行结束后拉取整段会话消息作为历史，然后清空本轮临时状态 */
+const syncHistoryAfterRun = async () => {
+  if (!sessionId.value) return
+  try {
+    const res = await listAgentMessages(sessionId.value, 200)
+    const list = (res && res.data) || []
+    if (list.length && list[list.length - 1].role === 'assistant') {
+      historyMessages.value = list
+      // 已经落到历史里了，清掉本轮缓存避免重复渲染
+      sentGoal.value = ''
+      answer.value = ''
+      steps.value = []
+      planCollapsed.value = false
+    }
+  } catch (e) { /* 同步失败就保留本地渲染，不影响使用 */ }
 }
 
 /* ==================== 会话操作 ==================== */
@@ -546,6 +605,7 @@ const openSession = async (s) => {
   drawerOpen.value = false
   sessionId.value = s.sessionId
   drawerOpen.value = false
+  histOpen.value = {}
   try {
     const res = await listAgentMessages(s.sessionId, 200)
     historyMessages.value = (res && res.data) || []
