@@ -211,8 +211,7 @@
                 <text>{{ n.errorMsg || '执行失败' }}</text>
               </view>
               <view class="wfr-nerr__meta">
-                <text class="wfr-nerr__code">{{ n.nodeId }}</text>
-                <text class="wfr-nerr__src">node_results[{{ n.nodeId }}].errorMsg</text>
+                <text class="wfr-nerr__src">该节点执行失败，修改后可从本节点重新运行</text>
               </view>
               <view class="wfr-nerr__a" @click="copyErr(n)">
                 <WfIcon name="copy" :size="12" :stroke-width="2" />

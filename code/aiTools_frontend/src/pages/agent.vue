@@ -279,13 +279,16 @@
           :class="{ 'drawer__item--on': s.sessionId === sessionId }"
           @click="openSession(s)"
         >
-          <text class="drawer__item-t">{{ s.title }}</text>
-          <text class="drawer__item-time">{{ s.lastActiveTime }}</text>
+          <view class="drawer__item-main">
+            <text class="drawer__item-t">{{ s.title }}</text>
+            <text class="drawer__item-time">{{ s.lastActiveTime }}</text>
+          </view>
+          <view class="drawer__item-del" @click.stop="confirmDelSession(s)">×</view>
         </view>
         <view v-if="!sessions.length" class="drawer__empty">还没有对话记录</view>
       </scroll-view>
-      <view class="drawer__foot" @click="goProfile">
-        <text>我的偏好</text>
+      <view v-if="isAdminUser" class="drawer__foot" @click="goAdminProfiles">
+        <text>用户画像词条</text>
         <text class="drawer__foot-chev">›</text>
       </view>
     </view>
@@ -296,7 +299,7 @@
         <text class="quote-bar__txt">{{ quotedText }}</text>
         <text class="quote-bar__x" @click="quotedText = ''">×</text>
       </view>
-      <input v-model="goal" class="composer__input" placeholder="发消息或按住空格说话..." :disabled="running" />
+      <input v-model="goal" class="composer__input" placeholder="发消息，或点击 + 上传图片/文档" :disabled="running" />
       <view class="composer__row">
         <view class="composer__plus" @click="onPickFiles">＋</view>
         <view class="composer__gap"></view>
@@ -328,7 +331,8 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { refreshTabBarStyle, isDarkMode } from '@/utils/theme'
 import MarkdownView from '@/components/MarkdownView.vue'
-import { agentRun, uploadAgentFile, cancelAgentRun, listAgentSessions, createAgentSession, listAgentMessages } from '@/api/agent'
+import { agentRun, uploadAgentFile, cancelAgentRun, listAgentSessions, createAgentSession, listAgentMessages, deleteAgentSession } from '@/api/agent'
+import { STORAGE_KEYS } from '@/utils/auth'
 import { listUserAiModels } from '@/api/aiModel'
 import { pickFiles } from '@/utils/filePicker'
 import { copyRaw } from '@/utils/clipboard'
@@ -513,7 +517,16 @@ const runId = ref('')
 
 /** 用户自选模型（BYOK）；留空 = 用系统默认 */
 const modelIndex = ref(0)
-const modelNames = ref(['系统默认'])
+const modelNames = ref(['默认模型'])
+/** 是否管理员（决定是否展示「用户画像词条」入口） */
+const isAdminUser = computed(() => {
+  try {
+    const u = uni.getStorageSync(STORAGE_KEYS.USER_INFO) || {}
+    return String(u.role || '') === 'admin'
+  } catch (e) {
+    return false
+  }
+})
 const modelCodes = ref([''])
 
 const goHistory = () => {
@@ -527,7 +540,7 @@ const loadModels = async () => {
     const list = (res && res.data) || []
     const usable = list.filter(m => m.capability === 'text' || m.capability === 'vision')
     if (usable.length) {
-      modelNames.value = ['系统默认', ...usable.map(m => m.nickname || m.modelCode)]
+      modelNames.value = ['默认模型', ...usable.map(m => m.nickname || m.modelCode)]
       modelCodes.value = ['', ...usable.map(m => m.modelCode)]
     }
   } catch (e) {
@@ -708,6 +721,33 @@ const loadSessions = async () => {
     const res = await listAgentSessions(30)
     sessions.value = (res && res.data) || []
   } catch (e) { /* 未登录/失败：侧栏留空 */ }
+}
+
+const confirmDelSession = (s) => {
+  if (!s || !s.sessionId) return
+  uni.showModal({
+    title: '删除对话',
+    content: '删除后无法恢复，确定删除「' + (s.title || '这条对话') + '」吗？',
+    confirmText: '删除',
+    confirmColor: '#e64340',
+    success: async (r) => {
+      if (!r.confirm) return
+      try {
+        await deleteAgentSession(s.sessionId)
+        sessions.value = sessions.value.filter((x) => x.sessionId !== s.sessionId)
+        if (sessionId.value === s.sessionId) {
+          newSession()
+        }
+      } catch (e) {
+        uni.showToast({ title: '删除失败，请重试', icon: 'none' })
+      }
+    }
+  })
+}
+
+const goAdminProfiles = () => {
+  drawerOpen.value = false
+  uni.navigateTo({ url: '/pages/admin-profiles' })
 }
 
 const goProfile = () => {
@@ -1442,7 +1482,14 @@ $ref-sub: var(--text-secondary);
 }
 .drawer__new-ic { font-size: 30rpx; line-height: 1; }
 .drawer__list { flex: 1; padding: 0 16rpx 32rpx; }
-.drawer__item { padding: 20rpx 16rpx; border-radius: 14rpx; margin-bottom: 8rpx; }
+.drawer__item { position: relative; padding: 20rpx 56rpx 20rpx 16rpx; border-radius: 14rpx; margin-bottom: 8rpx; }
+.drawer__item-main { display: flex; flex-direction: column; }
+.drawer__item-del {
+  position: absolute; right: 8rpx; top: 50%; transform: translateY(-50%);
+  width: 44rpx; height: 44rpx; line-height: 44rpx; text-align: center;
+  font-size: 26rpx; color: var(--text-tertiary); border-radius: 50%;
+}
+.drawer__item-del:active { background: var(--bg-gray); }
 .drawer__item--on { background: var(--bg-gray); }
 .drawer__item-t {
   display: block;

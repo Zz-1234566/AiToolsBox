@@ -627,7 +627,29 @@ public class WorkflowServiceImpl implements WorkflowService {
                         run.setMaxDepth(er.depth);
                         run.setDuration(er.duration);
                         run.setFinishedAt(LocalDateTime.now());
+                        // 失败原因落库：列表页要能直接看到「为什么失败」。
+                        // 之前原因只在 node_results 里，顶层 error_msg 恒为空，
+                        // 用户看到「全部失败」却得不到任何解释。
+                        if (er.status != WorkflowRunStatusEnum.COMPLETED.getCode()) {
+                            String reason = firstNodeError(er.nodeResults);
+                            if (reason != null) {
+                                run.setErrorMsg(reason);
+                            }
+                        }
                         workflowRunMapper.updateById(run);
+    }
+
+    /** 取第一个失败节点的错误信息（没有则返回 null） */
+    private String firstNodeError(Map<String, WorkflowNodeResult> nodeResults) {
+        if (nodeResults == null) {
+            return null;
+        }
+        for (WorkflowNodeResult nr : nodeResults.values()) {
+            if (nr != null && nr.getErrorMsg() != null && !nr.getErrorMsg().isBlank()) {
+                return nr.getErrorMsg();
+            }
+        }
+        return null;
     }
 
     /** 发送一帧 SSE；失败只记日志，不中断主流程（客户端可能已断开） */

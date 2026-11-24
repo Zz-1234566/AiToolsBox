@@ -262,6 +262,17 @@
           "animationDuration": 300
         }
       }
+    },
+    {
+      "path": "pages/admin-profiles",
+      "style": {
+        "navigationBarTitleText": "用户画像词条",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "animationType": "slide-in-right",
+          "animationDuration": 300
+        }
+      }
     }
   ],
   "globalStyle": {

@@ -114,27 +114,30 @@ public class AgentServiceImpl implements AgentService {
         // 会话ID：前端据此记录当前会话、刷新侧边栏
         onFrame.accept(frame(FRAME_SESSION, session.getSessionId()));
 
-        // 1) 工具清单（DB 生成）+ system 提示词
-        List<AgentToolCatalog.AgentTool> tools = catalog.listTools();
-        String profileText = agentProfileService.getProfileText(userId);
-        String systemPrompt = promptBuilder.buildSystemPrompt(tools, attachments, profileText);
-
-        // 2) 凭据（BYOK：用户自己的模型 Key 优先）—— 压缩也要用它调模型
-        ResolvedCredential cred = resolveCred(userId, modelCode);
-
-        // 3) 多轮上下文：system +（历史摘要）+ 历史原文 + 本次目标
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(message("system", systemPrompt));
-        maybeCompressContext(userId, session, cred);
-        appendHistoryContext(messages, userId, session, currentGoalSeq);
-        messages.add(message("user", buildUserTurn(goal, attachments)));
-
         java.util.concurrent.atomic.AtomicReference<String> finalAnswer = new java.util.concurrent.atomic.AtomicReference<>("");
         java.util.concurrent.atomic.AtomicReference<List<com.example.aitools.agent.dto.AgentStep>> stepsRef =
                 new java.util.concurrent.atomic.AtomicReference<>(new ArrayList<>());
         // 本轮生成的图片产物（落 meta，供历史回放）
         List<String> runImages = new ArrayList<>();
+        // 前置步骤（拼提示词 / 取凭据 / 压缩上下文）也必须进 try：
+        // 之前放在 try 外，一旦抛异常（如模型凭据失效、压缩调用失败），
+        // 运行记录会永久停在「运行中」，用户既看不到回答也看不到失败原因。
         try {
+            // 1) 工具清单（DB 生成）+ system 提示词
+            List<AgentToolCatalog.AgentTool> tools = catalog.listTools();
+            String profileText = agentProfileService.getProfileText(userId);
+            String systemPrompt = promptBuilder.buildSystemPrompt(tools, attachments, profileText);
+
+            // 2) 凭据（BYOK：用户自己的模型 Key 优先）—— 压缩也要用它调模型
+            ResolvedCredential cred = resolveCred(userId, modelCode);
+
+            // 3) 多轮上下文：system +（历史摘要）+ 历史原文 + 本次目标
+            List<Map<String, String>> messages = new ArrayList<>();
+            messages.add(message("system", systemPrompt));
+            maybeCompressContext(userId, session, cred);
+            appendHistoryContext(messages, userId, session, currentGoalSeq);
+            messages.add(message("user", buildUserTurn(goal, attachments)));
+
             doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, stepsRef, runImages, onFrame);
             String answer = finalAnswer.get();
             // 成功：把最终答案落成一条 assistant 消息（meta 里带运行信息，供回放）
