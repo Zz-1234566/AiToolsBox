@@ -31,6 +31,17 @@
       @change="onAiModelChange"
     />
 
+    <!-- 示例：一键填入一段像样的样例内容（纯转换/抠图类工具不需要） -->
+    <view v-if="toolExamples[toolId]" class="ex-block">
+      <view class="ex-block__head">
+        <text class="ex-block__t">示例</text>
+        <text class="ex-block__use" @click="useExample">填入示例</text>
+      </view>
+      <text class="ex-block__body">{{ toolExamples[toolId] }}</text>
+    </view>
+
+
+
     <!-- ============ 工具特化 UI（按 toolId 分发） ============ -->
 
     <!-- 工作总结 -->
@@ -444,6 +455,23 @@ const goBack = () => safeBack('/pages/index')
 // ===== 各工具特化状态 =====
 const workDate = ref('2025-09-23')
 const chooseDate = () => { uni.showToast({ title: '日期选择开发中', icon: 'none' }) }
+const toolExamples = {
+  'work-summary': '今天完成了登录页改版，联调了接口；遇到短信验证码偶发延迟，已定位到运营商通道；明天继续做个人中心页面。',
+  'weekly-report': '本周完成：1）会议纪要工具上线；2）修复文件上传超时问题；下周计划：优化导出功能。',
+  'doc-keypoint-extract': '本次季度会议确定：1）Q4 重点转向移动端；2）预算增加 15%；3）11 月底前完成灰度发布。',
+  'meeting-minutes': '会议主题：新版本发布计划。参会人：张三、李四。结论：11 月 30 日上线，李四负责测试，张三负责文档。'
+}
+const useExample = () => {
+  const ex = toolExamples[toolId.value]
+  if (!ex) return
+  if (toolId.value === 'meeting-minutes' || toolId.value === 'mm') {
+    if (meetingContent && 'value' in meetingContent) meetingContent.value = ex
+  } else {
+    inputText.value = ex
+  }
+  uni.showToast({ title: '已填入示例', icon: 'none' })
+}
+
 const FORMAT_OPTIONS = [
   { key: 'brief', label: '简洁版', desc: '300 字以内，只讲结论，不铺陈细节', prompt: '请输出简洁版：300 字以内，直接给结论，不展开细节。' },
   { key: 'detail', label: '详细版', desc: '分点展开，每点带具体数据或事例', prompt: '请输出详细版：按要点分条展开，每条补充具体数据或事例。' },
@@ -3091,4 +3119,10 @@ svg {
 .fmt-item__t { display: block; font-size: 27rpx; font-weight: 600; color: var(--text-primary); }
 .fmt-item--on .fmt-item__t { color: var(--brand-primary); }
 .fmt-item__d { display: block; margin-top: 6rpx; font-size: 22rpx; line-height: 1.45; color: var(--text-tertiary); }
+
+.ex-block { margin: 0 32rpx 24rpx; padding: 22rpx 24rpx; border-radius: 18rpx; background: rgba(245,103,29,.05); }
+.ex-block__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10rpx; }
+.ex-block__t { font-size: 24rpx; font-weight: 600; color: var(--brand-primary); }
+.ex-block__use { font-size: 23rpx; color: var(--brand-primary); }
+.ex-block__body { font-size: 23rpx; line-height: 1.6; color: var(--text-secondary); }
 </style>

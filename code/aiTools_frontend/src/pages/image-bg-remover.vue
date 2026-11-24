@@ -2,10 +2,13 @@
   <view class="page page--no-tabbar">
     <!-- ============ 顶栏 ============ -->
     <view class="topbar">
-      <view class="topbar__back" hover-class="topbar__back--hover" @click="goBack">
-        <text class="topbar__back-icon">‹</text>
+      <view class="topbar__row">
+        <view class="topbar__back" hover-class="topbar__back--hover" @click="goBack">
+          <text class="topbar__back-icon">‹</text>
+        </view>
+        <text class="topbar__title">图片背景去除</text>
       </view>
-      <text class="topbar__title">图片背景去除</text>
+      <text class="topbar__desc">上传图片，自动抠出主体并处理背景</text>
     </view>
 
     <scroll-view scroll-y class="page-content" @touchmove.stop.prevent="onNoop">
@@ -2181,5 +2184,19 @@ export default {
       border: 2rpx solid var(--brand-primary);
     }
   }
+}
+
+/* 顶栏与工具页统一：标题行 + 副标题行（同一块白底） */
+.topbar__row { display: flex; align-items: center; gap: 12rpx; }
+.topbar__desc {
+  display: block;
+  margin-top: 8rpx;
+  padding-left: 62rpx;
+  font-size: 23rpx;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
