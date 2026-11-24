@@ -261,10 +261,11 @@ $ref-sub: var(--text-secondary);
 .group__count { margin-left: auto; font-size: 22rpx; color: $ref-sub; }
 
 .cell-grid { display: flex; flex-wrap: wrap; margin-top: 12rpx; }
+/* 三列紧凑宫格：两列时每行只有 2 个工具，留白过大（参考稿是 3 列） */
 .cell {
-  width: 50%;
+  width: 33.3333%;
   box-sizing: border-box;
-  padding: 18rpx 8rpx;
+  padding: 14rpx 6rpx;
   display: flex;
   flex-direction: column;
   align-items: center;

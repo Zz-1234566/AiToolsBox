@@ -3039,7 +3039,9 @@ svg {
 /* 顶栏副标题：独立一行，与标题左对齐（布局参考设计稿，非像素照搬） */
 .topbar__desc {
   display: block;
-  margin: 4rpx 24rpx 26rpx 74rpx;
+  margin: 0;
+  padding: 0 24rpx 22rpx 74rpx;
+  background: var(--bg-card, #fff);
   font-size: 23rpx;
   color: var(--text-tertiary);
   line-height: 1.5;
