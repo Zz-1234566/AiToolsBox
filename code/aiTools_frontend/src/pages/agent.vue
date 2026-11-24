@@ -31,7 +31,7 @@
 
     <!-- 欢迎态 -->
     <view v-if="!started" class="welcome">
-      <image class="welcome__robot" :src="ROBOT_ANIM" mode="aspectFill" />
+      <image class="welcome__robot" :src="isDarkMode ? ROBOT_BASE : ROBOT_ANIM" mode="aspectFill" />
       <text class="welcome__t1">你好，我是智小T</text>
       <text class="welcome__t2">有什么可以帮你？</text>
       <text class="sugs__label">试试这样问我：</text>
@@ -292,7 +292,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
-import { refreshTabBarStyle } from '@/utils/theme'
+import { refreshTabBarStyle, isDarkMode } from '@/utils/theme'
 import MarkdownView from '@/components/MarkdownView.vue'
 import { agentRun, uploadAgentFile, cancelAgentRun, listAgentSessions, createAgentSession, listAgentMessages } from '@/api/agent'
 import { listUserAiModels } from '@/api/aiModel'
@@ -409,8 +409,8 @@ const running = ref(false)
  */
 const ROBOT_HEAD = '/static/ref/robot-head.png'
 const ROBOT_BASE = '/static/ref/robot-base.png'
-/** 动态形象（GIF，180px 压缩版约 220KB） */
-const ROBOT_ANIM = '/static/ref/robot-anim.gif'
+/** 动态形象（背景已映射为页面底色，仅亮色主题使用；深色主题用透明 PNG） */
+const ROBOT_ANIM = '/static/ref/robot-anim-light.webp'
 const STATE_CLASSES = ['is-thinking', 'is-idea']
 const stateIdx = ref(0)
 let stateTimer = null
@@ -889,12 +889,11 @@ $ref-sub: var(--text-secondary);
   padding: 40rpx 56rpx 0;
 }
 .welcome__robot {
-  /* GIF 为 4:3，用同比例圆角卡片展示，避免裁切 */
+  /* 亮色主题：动画背景已映射为页面底色，无需卡片；
+     深色主题：使用透明 PNG 机器人 */
   width: 360rpx;
   height: 270rpx;
-  border-radius: 28rpx;
-  background: var(--bg-card);
-  overflow: hidden;
+  background: transparent;
 }
 .welcome__t1 { margin-top: 16rpx; font-size: 38rpx; font-weight: 700; color: $ref-ink; }
 .welcome__t2 { margin-top: 10rpx; font-size: 28rpx; color: $ref-sub; }
