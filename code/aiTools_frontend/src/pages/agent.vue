@@ -97,15 +97,9 @@
                 <view class="ans-acts">
                   <view class="ans-act" @click="copyHistory(hm)">
                     <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
-                    <text>复制</text>
                   </view>
                   <view v-if="hi === historyMessages.length - 1" class="ans-act" @click="regenerateFrom(hi)">
                     <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
-                    <text>重新生成</text>
-                  </view>
-                  <view class="ans-act" @click="quoteHistory(hm)">
-                    <svg viewBox="0 0 24 24"><path d="M7 7h4v4a4 4 0 01-4 4"/><path d="M14 7h4v4a4 4 0 01-4 4"/></svg>
-                    <text>引用</text>
                   </view>
                 </view>
               </view>
@@ -179,15 +173,9 @@
               <view class="ans-acts">
                 <view class="ans-act" @click="copyAnswer">
                   <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
-                  <text>复制</text>
                 </view>
                 <view class="ans-act" @click="regenerate">
                   <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
-                  <text>重新生成</text>
-                </view>
-                <view class="ans-act" @click="quoteAnswer">
-                  <svg viewBox="0 0 24 24"><path d="M7 7h4v4a4 4 0 01-4 4"/><path d="M14 7h4v4a4 4 0 01-4 4"/></svg>
-                  <text>引用</text>
                 </view>
               </view>
             </view>
@@ -1089,27 +1077,27 @@ $ref-sub: var(--text-secondary);
   line-height: 1.5;
   color: var(--text-tertiary);
 }
-.ans-acts { display: flex; gap: 14rpx; margin-top: 14rpx; }
+.ans-acts { display: flex; gap: 16rpx; margin-top: 16rpx; }
 .ans-act {
+  width: 68rpx;
+  height: 68rpx;
+  border-radius: 18rpx;
+  background: var(--bg-gray);
   display: flex;
   align-items: center;
-  gap: 8rpx;
-  padding: 10rpx 20rpx;
-  border-radius: 999rpx;
-  background: var(--bg-gray);
+  justify-content: center;
 }
-.ans-act:active { opacity: 0.7; }
+.ans-act:active { opacity: 0.65; }
 .ans-act svg {
-  width: 26rpx;
-  height: 26rpx;
+  width: 34rpx;
+  height: 34rpx;
   flex-shrink: 0;
   fill: none;
-  stroke: var(--text-secondary);
+  stroke: var(--brand-primary);
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.ans-act text { font-size: 22rpx; color: var(--text-secondary); }
 
 .tl { display: flex; gap: 16rpx; padding: 12rpx 0; align-items: flex-start; }
 .tl__dot {
