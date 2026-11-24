@@ -21,8 +21,10 @@
       <text class="model-picker__placeholder">加载中…</text>
     </view>
     <view v-else class="model-picker__btn model-picker__btn--readonly">
-      <text class="model-picker__placeholder model-picker__placeholder--warn">
-        暂无可用「{{ capabilityLabel }}」模型
+      <!-- 没有单独配置模型时不报错：后端会自动回落到系统默认模型，
+           文案要说明「仍可用」，否则用户以为工具坏了 -->
+      <text class="model-picker__placeholder">
+        未单独配置，将使用系统默认模型
       </text>
     </view>
     <text v-if="selected && selected.apiKeyPrefix" class="model-picker__prefix">

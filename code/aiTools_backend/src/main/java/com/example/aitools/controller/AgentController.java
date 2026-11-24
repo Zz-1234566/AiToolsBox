@@ -79,9 +79,10 @@ public class AgentController {
         List<AgentAttachment> attachments = toAttachments(req.getFiles());
         log.info("[agent] 用户 {} 发起运行，附件 {} 个", userId, attachments.size());
 
+        boolean regenerate = Boolean.TRUE.equals(req.getRegenerate());
         return StreamHelper.stream(agentExecutor, emitter ->
                 agentService.run(userId, req.getSessionId(), req.getGoal(), attachments, req.getModelCode(),
-                        StreamHelper.asChunkConsumer(emitter)));
+                        regenerate, StreamHelper.asChunkConsumer(emitter)));
     }
 
     /**

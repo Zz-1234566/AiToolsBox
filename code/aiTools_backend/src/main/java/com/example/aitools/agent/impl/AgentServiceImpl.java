@@ -90,6 +90,12 @@ public class AgentServiceImpl implements AgentService {
     @Override
     public String run(Long userId, String sessionId, String goal, List<AgentAttachment> attachments,
                       String modelCode, Consumer<String> onFrame) {
+        return run(userId, sessionId, goal, attachments, modelCode, false, onFrame);
+    }
+
+    @Override
+    public String run(Long userId, String sessionId, String goal, List<AgentAttachment> attachments,
+                      String modelCode, boolean regenerate, Consumer<String> onFrame) {
         if (goal == null || goal.isBlank()) {
             throw ErrorFactory.of(com.example.aitools.common.ResultCode.PARAM_MISSING, "请输入你的目标");
         }
@@ -100,8 +106,22 @@ public class AgentServiceImpl implements AgentService {
                 ? createAndGetSession(userId)
                 : agentSessionService.requireSession(userId, sessionId);
         agentSessionService.autoTitle(session, goal);
-        agentSessionService.appendMessage(session, "user", goal, buildUserMeta(attachments));
-        // 本次目标刚写入的序号：注入历史时要排除它（下面会单独作为本轮 user 消息加入）
+        if (regenerate) {
+            // 重新生成：不新增 user 消息，复用会话里最后一条用户消息及其附件。
+            // 附件本来就挂在消息 meta 里，按对话记录还原即可 —— 不必让前端再传一次。
+            com.example.aitools.vo.AgentMessageVO lastUser = findLastUserMessage(userId, session);
+            if (lastUser != null) {
+                if (attachments == null || attachments.isEmpty()) {
+                    attachments = attachmentsFromMeta(lastUser.getMeta());
+                }
+                if (attachments != null && !attachments.isEmpty()) {
+                    log.info("[agent] 重新生成：从会话恢复 {} 个附件", attachments.size());
+                }
+            }
+        } else {
+            agentSessionService.appendMessage(session, "user", goal, buildUserMeta(attachments));
+        }
+        // 本轮目标的序号：注入历史时把它排除（下面单独作为本轮 user 消息加入）
         int currentGoalSeq = session.getMessageCount() == null ? 0 : session.getMessageCount();
 
         // 0) 先建「运行中」记录：这样即使进程被 kill / 用户关页面，
@@ -225,15 +245,20 @@ public class AgentServiceImpl implements AgentService {
             }
 
             if (action.getThought() != null && !action.getThought().isBlank()) {
-                onFrame.accept(frame(FRAME_THOUGHT, action.getThought()));
-                // 思考步骤也落库：不调工具的轮次（如纯对话）只有这一条，
-                // 否则历史里会完全没有「任务规划」可回放
-                com.example.aitools.agent.dto.AgentStep thoughtStep =
-                        new com.example.aitools.agent.dto.AgentStep();
-                thoughtStep.setSeq(steps.size() + 1);
-                thoughtStep.setThought(action.getThought());
-                thoughtStep.setCostMs(thinkCost);
-                steps.add(thoughtStep);
+                // file_1 这种内部 ID 不该露给用户：展示/落库前换回真实文件名
+                String thoughtText = humanizeFileRefs(action.getThought(), attachments);
+                onFrame.accept(frame(FRAME_THOUGHT, thoughtText));
+                // 思考步骤只在「收尾轮」单独落库（纯对话就只有这一条）。
+                // 调工具的那一轮，思考会随工具步一起记录 —— 否则同一句思考
+                // 会在历史里出现两次（一条思考步 + 一条工具步各带一遍）。
+                if (AgentAction.ACTION_FINAL.equals(action.getAction())) {
+                    com.example.aitools.agent.dto.AgentStep thoughtStep =
+                            new com.example.aitools.agent.dto.AgentStep();
+                    thoughtStep.setSeq(steps.size() + 1);
+                    thoughtStep.setThought(thoughtText);
+                    thoughtStep.setCostMs(thinkCost);
+                    steps.add(thoughtStep);
+                }
             }
             // 收尾：把本步耗时告诉前端（空思考也要发，保证步骤能结束计时）
             onFrame.accept(frame(FRAME_THOUGHT_COST, String.valueOf(thinkCost)));
@@ -310,7 +335,7 @@ public class AgentServiceImpl implements AgentService {
             // 记录这一步（落库用）
             AgentStep stepRecord = new AgentStep();
             stepRecord.setSeq(steps.size() + 1);
-            stepRecord.setThought(action.getThought());
+            stepRecord.setThought(humanizeFileRefs(action.getThought(), attachments));
             stepRecord.setTool(tool.getCode());
             stepRecord.setArgs(argsJson(action));
             stepRecord.setCostMs(cost);
@@ -725,6 +750,62 @@ public class AgentServiceImpl implements AgentService {
         }
     }
 
+    /** 会话里最后一条用户消息（重新生成时复用它的目标与附件） */
+    private com.example.aitools.vo.AgentMessageVO findLastUserMessage(
+            Long userId, com.example.aitools.entity.AgentSession session) {
+        List<com.example.aitools.vo.AgentMessageVO> list =
+                agentSessionService.messages(userId, session.getSessionId(), 50);
+        for (int i = list.size() - 1; i >= 0; i--) {
+            if ("user".equals(list.get(i).getRole())) {
+                return list.get(i);
+            }
+        }
+        return null;
+    }
+
+    /** 从 user 消息的 meta.files 还原附件（file_1 / file_2 … 顺序与当初一致） */
+    private List<AgentAttachment> attachmentsFromMeta(String meta) {
+        List<AgentAttachment> out = new ArrayList<>();
+        if (meta == null || meta.isBlank()) {
+            return out;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode files =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(meta).path("files");
+            if (!files.isArray()) {
+                return out;
+            }
+            int i = 0;
+            for (com.fasterxml.jackson.databind.JsonNode f : files) {
+                String url = f.path("url").asText("");
+                if (url.isBlank()) {
+                    continue;
+                }
+                String name = f.path("name").asText("附件" + (i + 1));
+                out.add(new AgentAttachment("file_" + (i + 1), name, url, null));
+                i++;
+            }
+        } catch (Exception e) {
+            log.warn("[agent] 从消息 meta 还原附件失败: {}", e.getMessage());
+        }
+        return out;
+    }
+
+    /** 把 file_1 这类内部 ID 换成真实文件名（仅用于展示给用户看） */
+    private String humanizeFileRefs(String text, List<AgentAttachment> attachments) {
+        if (text == null || attachments == null || attachments.isEmpty()) {
+            return text;
+        }
+        String out = text;
+        for (AgentAttachment a : attachments) {
+            if (a.getId() == null || a.getFileName() == null) {
+                continue;
+            }
+            out = out.replaceAll("\\b" + java.util.regex.Pattern.quote(a.getId()) + "\\b",
+                    java.util.regex.Matcher.quoteReplacement(a.getFileName()));
+        }
+        return out;
+    }
     /** user 消息的 meta：记录本次附件，供历史回放展示 */
     /**
      * 本轮 user 消息：把附件清单**贴在用户原话后面**。

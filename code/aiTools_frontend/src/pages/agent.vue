@@ -129,8 +129,8 @@
         <view class="me-col">
           <view class="bubble bubble--me">{{ sentGoal }}</view>
 
-          <view v-if="attachments.length" class="files">
-            <view v-for="(a,i) in attachments" :key="a.url" class="file">
+          <view v-if="turnFiles.length" class="files">
+            <view v-for="(a,i) in turnFiles" :key="a.url" class="file">
               <view class="file__ico">
             <template v-if="fileKind(a.name) === 'doc'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg></template>
             <template v-else-if="fileKind(a.name) === 'image'"><svg class="attach-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.4"/><path d="M21 16l-5-5-9 9"/></svg></template>
@@ -432,14 +432,22 @@ const quoteHistory = (hm) => {
 const regenerateFrom = (idx) => {
   if (running.value) return
   let question = ''
+  let userMsg = null
   for (let i = idx - 1; i >= 0; i--) {
-    if (historyMessages.value[i].role === 'user') { question = historyMessages.value[i].content || ''; break }
+    if (historyMessages.value[i].role === 'user') {
+      userMsg = historyMessages.value[i]
+      question = userMsg.content || ''
+      break
+    }
   }
   if (!question) {
     uni.showToast({ title: '找不到对应的问题', icon: 'none' })
     return
   }
   sentGoal.value = question
+  // 恢复这条消息当时挂的附件（展示用；发送时后端按会话记录还原）
+  turnFiles.value = histFiles(userMsg || {})
+  regenMode.value = true
   historyMessages.value = []
   histOpen.value = {}
   runAgent()
@@ -472,6 +480,10 @@ const ctxWindowLabel = computed(() => {
   return String(w)
 })
 const attachments = ref([])
+/** 本轮已发送的附件：用户气泡按它渲染（发送后 attachments 会被清空） */
+const turnFiles = ref([])
+/** 本次是否为「重新生成」：后端据此复用上一条用户消息及其附件 */
+const regenMode = ref(false)
 
 /** 附件类型（决定图标）：doc / image / audio / file */
 const fileKind = (name) => {
@@ -789,7 +801,9 @@ const openSession = async (s) => {
   goal.value = ''
   quotedText.value = ''
   attachments.value = []
+  turnFiles.value = []
   turnImages.value = []
+  regenMode.value = false
   answer.value = ''
   steps.value = []
   errorMsg.value = ''
@@ -803,6 +817,9 @@ const onStart = async () => {
   sentGoal.value = quotedText.value
     ? (quotedText.value + (typed ? '\n\n' + typed : ''))
     : typed
+  // 记下本轮附件：气泡要展示，重新生成也要用
+  turnFiles.value = attachments.value.slice()
+  regenMode.value = false
   goal.value = ''
   quotedText.value = ''
   return runAgent()
@@ -811,6 +828,8 @@ const onStart = async () => {
 /** 用同一条用户消息重跑（重新生成） */
 const regenerate = async () => {
   if (running.value || !sentGoal.value) return
+  // 重新生成：附件由后端按会话最后一条用户消息还原，这里只需声明意图
+  regenMode.value = true
   return runAgent()
 }
 
@@ -847,7 +866,8 @@ const runAgent = async () => {
         sessionId: sessionId.value || undefined,
         goal: sentGoal.value,
         modelCode: modelCodes[modelIndex.value] || '',
-        files: attachments.value.map(a => ({ name: a.name, url: a.url }))
+        regenerate: regenMode.value,
+        files: regenMode.value ? [] : attachments.value.map(a => ({ name: a.name, url: a.url }))
       },
       {
         onMarker: (marker) => {

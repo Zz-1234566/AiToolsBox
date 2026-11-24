@@ -34,6 +34,14 @@ public interface AgentService {
                String modelCode, Consumer<String> onFrame);
 
     /**
+     * 跑一次智能体（支持重新生成）。
+     *
+     * @param regenerate true=重新生成：不新增 user 消息，复用会话最后一条用户消息及其附件
+     */
+    String run(Long userId, String sessionId, String goal, List<AgentAttachment> attachments,
+               String modelCode, boolean regenerate, Consumer<String> onFrame);
+
+    /**
      * 取消一次正在运行的智能体。
      *
      * @param userId 用户 ID（只能取消自己的）

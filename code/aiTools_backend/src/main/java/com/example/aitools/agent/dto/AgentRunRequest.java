@@ -29,6 +29,14 @@ public class AgentRunRequest {
     private List<Attachment> files;
 
     /**
+     * 是否为「重新生成」上一次回答。
+     * <p>
+     * true 时后端不再插入新的 user 消息，而是复用会话里最后一条 user 消息
+     * （含它挂载的附件），保证重新生成和原轮次完全一致。
+     */
+    private Boolean regenerate;
+
+    /**
      * 一个附件。
      */
     @Data

@@ -376,8 +376,8 @@ const TOOL_META = {
   'doc-keypoint-extract':{ iconType: 'image',  emoji: '📄', action: '开始处理', steps: ['上传文件', 'AI 提取', '查看结果'] },
   'ai-file-reader':      { iconType: 'image',  emoji: '📄', action: '开始解读', steps: ['上传文件', '提问', '获取答案'] },
   'weekly-report':       { iconType: 'image',  emoji: '📝', action: '生成周报', steps: ['填写内容', 'AI 生成', '预览下载'] },
-  'meeting-minutes':     { iconType: 'meeting',emoji: '🎯', action: '生成周报', steps: ['上传会议内容', 'AI 整理', '生成纪要'] },
-  'mm':                  { iconType: 'meeting',emoji: '🎯', action: '生成周报', steps: ['上传会议内容', 'AI 整理', '生成纪要'] },
+  'meeting-minutes':     { iconType: 'meeting',emoji: '🎯', action: '生成纪要', steps: ['上传会议内容', 'AI 整理', '生成纪要'] },
+  'mm':                  { iconType: 'meeting',emoji: '🎯', action: '生成纪要', steps: ['上传会议内容', 'AI 整理', '生成纪要'] },
 }
 
 const toolInfo = computed(() => {
@@ -2047,7 +2047,9 @@ svg {
 
 .page-content {
   flex: 1;
-  padding: 0 $spacing-md 160rpx; /* 底部 160rpx 给 .bottom-action 留空间，避免遮挡滚动内容 */
+  /* 左右不再留白：页内每个区块自己带 32rpx 外边距，
+     这里再留 32rpx 会形成「双重留白」（卡片比底部按钮窄一圈，两侧空一大条）。 */
+  padding: 0 0 160rpx; /* 底部 160rpx 给 .bottom-action 留空间，避免遮挡滚动内容 */
 }
 
 .tool-desc {
@@ -2212,6 +2214,8 @@ svg {
   color: var(--text-primary, #111827);
 }
 /* 带右侧操作按钮的 section title 行（用于结果区复制按钮） */
+.section-title-row .section-title { margin: 0; }
+
 .section-title-row {
   display: flex;
   align-items: center;

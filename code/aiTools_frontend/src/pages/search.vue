@@ -207,7 +207,9 @@ const goToTool = (tool) => {
   align-items: center;
   gap: 20rpx;
   padding: 24rpx;
-  margin: 0 32rpx 16rpx;
+  /* 外层 .hot-list 已有 padding，这里再留 32rpx 会形成「双重留白」，
+     卡片看起来被挤在中间、两侧一大片空白 —— 去掉左右外边距 */
+  margin: 0 0 16rpx;
   background: var(--bg-card);
   border-radius: 28rpx;
 }
