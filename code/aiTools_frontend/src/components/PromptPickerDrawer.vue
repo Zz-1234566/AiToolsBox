@@ -503,4 +503,45 @@ watch(() => props.show, (val) => {
 .prompt-drawer__confirm-btn[disabled] {
   opacity: 0.4;
 }
+
+/* ===== 右侧详情区重做：卡片化 + 清晰的标题/标签/正文层级 ===== */
+.prompt-preview {
+  margin: 16rpx 20rpx 16rpx 12rpx;
+  padding: 28rpx;
+  border-radius: 20rpx;
+  background: var(--bg-card, #fff);
+  border: 1rpx solid rgba(245, 103, 29, .18);
+  box-shadow: 0 4rpx 16rpx rgba(60, 55, 100, .05);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.prompt-preview__header { display: flex; align-items: center; gap: 16rpx; padding-bottom: 20rpx; border-bottom: 1rpx solid var(--border-color); }
+.prompt-preview__icon {
+  width: 64rpx; height: 64rpx; border-radius: 18rpx; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(245, 103, 29, .12); color: var(--brand-primary);
+}
+.prompt-preview__title-block { flex: 1; min-width: 0; }
+.prompt-preview__name {
+  display: block; font-size: 30rpx; font-weight: 700;
+  color: var(--text-primary); line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.prompt-preview__tag-row { margin-top: 8rpx; display: flex; gap: 8rpx; }
+.prompt-preview__tag {
+  font-size: 19rpx; padding: 2rpx 12rpx; border-radius: 8rpx;
+  background: rgba(245, 103, 29, .12); color: var(--brand-primary);
+}
+.prompt-preview__desc { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-top: 20rpx; }
+.prompt-preview__desc-title {
+  display: block; font-size: 22rpx; font-weight: 600; letter-spacing: .5rpx;
+  color: var(--text-tertiary); margin-bottom: 10rpx;
+}
+.prompt-preview__desc-scroll { flex: 1; min-height: 0; }
+.prompt-preview__desc-text {
+  font-size: 25rpx; line-height: 1.75; color: var(--text-secondary);
+  white-space: pre-wrap; word-break: break-word;
+}
+.prompt-preview--empty { align-items: center; justify-content: center; border-style: dashed; border-color: var(--border-color); box-shadow: none; }
 </style>
