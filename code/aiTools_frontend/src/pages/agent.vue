@@ -112,6 +112,9 @@
                   <view class="ans-act" @click="copyHistory(hm)">
                     <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
                   </view>
+                  <view class="ans-act" @click="quoteHistory(hm)">
+                    <svg viewBox="0 0 24 24"><path d="M7 7h4v4a4 4 0 01-4 4"/><path d="M14 7h4v4a4 4 0 01-4 4"/></svg>
+                  </view>
                   <view v-if="hi === historyMessages.length - 1" class="ans-act ans-act--right" @click="regenerateFrom(hi)">
                     <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
                   </view>
@@ -187,6 +190,9 @@
               <view class="ans-acts">
                 <view class="ans-act" @click="copyAnswer">
                   <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h8"/></svg>
+                </view>
+                <view class="ans-act" @click="quoteAnswer">
+                  <svg viewBox="0 0 24 24"><path d="M7 7h4v4a4 4 0 01-4 4"/><path d="M14 7h4v4a4 4 0 01-4 4"/></svg>
                 </view>
                 <view class="ans-act ans-act--right" @click="regenerate">
                   <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
@@ -348,6 +354,30 @@ const sessions = ref([])
 const drawerOpen = ref(false)
 /** 历史消息（切换会话时回放） */
 const historyMessages = ref([])
+/** 最近一次有效选区（H5 专有；点按钮会清空选区，故需缓存） */
+let lastSelText = ''
+let lastSelTs = 0
+// #ifdef H5
+if (typeof document !== 'undefined') {
+  document.addEventListener('selectionchange', () => {
+    try {
+      const t = String(window.getSelection() || '').trim()
+      if (t.length >= 2) {
+        lastSelText = t
+        lastSelTs = Date.now()
+      }
+    } catch (e) { /* ignore */ }
+  })
+}
+// #endif
+
+/** 取引用文本：优先最近 8 秒内的选中片段，否则回退整段 */
+const pickQuoteText = (fallback) => {
+  const fresh = lastSelText && (Date.now() - lastSelTs < 8000)
+  const t = fresh ? lastSelText : fallback
+  return t.length > 300 ? t.slice(0, 300) + '…' : t
+}
+
 /** 本轮工具生成的图片（[图片:url] 帧收集） */
 const turnImages = ref([])
 
@@ -415,7 +445,7 @@ const copyHistory = (hm) => copyRaw(hm.content || '', '回答')
 const quoteHistory = (hm) => {
   const text = String(hm.content || '').replace(/\s+/g, ' ').trim()
   if (!text) return
-  quotedText.value = text.length > 300 ? text.slice(0, 300) + '…' : text
+  quotedText.value = pickQuoteText(text)
 }
 
 /** 用历史里对应的问题重跑（仅最后一条回答可用） */
@@ -777,7 +807,7 @@ const copyAnswer = () => {
 const quoteAnswer = () => {
   const text = String(answer.value || '').replace(/\s+/g, ' ').trim()
   if (!text) return
-  quotedText.value = text.length > 300 ? text.slice(0, 300) + '…' : text
+  quotedText.value = pickQuoteText(text)
 }
 
 /** 真正发起一次运行（首次发送与重新生成共用） */

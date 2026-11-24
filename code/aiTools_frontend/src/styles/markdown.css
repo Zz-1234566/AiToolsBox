@@ -248,3 +248,11 @@
 .markdown-view--dark .markdown-body tbody tr:nth-child(even) td {
   background: rgba(31, 41, 55, 0.6);
 }
+
+/* 允许选中正文文本：uni-app H5 默认给页面容器加了 user-select:none，
+   导致 window.getSelection() 永远为空，无法实现「引用选中片段」。 */
+.markdown-body,
+.markdown-body * {
+  -webkit-user-select: text;
+  user-select: text;
+}
