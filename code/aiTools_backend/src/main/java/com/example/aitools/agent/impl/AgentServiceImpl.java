@@ -27,6 +27,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -139,6 +140,8 @@ public class AgentServiceImpl implements AgentService {
                 new java.util.concurrent.atomic.AtomicReference<>(new ArrayList<>());
         // 本轮生成的图片产物（落 meta，供历史回放）
         List<String> runImages = new ArrayList<>();
+        // 本轮生成的文件产物（docx/pdf 等，供下载卡与历史回放）
+        List<Map<String, Object>> runFiles = new ArrayList<>();
         // 前置步骤（拼提示词 / 取凭据 / 压缩上下文）也必须进 try：
         // 之前放在 try 外，一旦抛异常（如模型凭据失效、压缩调用失败），
         // 运行记录会永久停在「运行中」，用户既看不到回答也看不到失败原因。
@@ -158,11 +161,11 @@ public class AgentServiceImpl implements AgentService {
             appendHistoryContext(messages, userId, session, currentGoalSeq);
             messages.add(message("user", buildUserTurn(goal, attachments)));
 
-            doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, stepsRef, runImages, onFrame);
+            doRun(userId, runId, messages, attachments, cred, cancelFlag, finalAnswer, stepsRef, runImages, runFiles, onFrame);
             String answer = finalAnswer.get();
             // 成功：把最终答案落成一条 assistant 消息（meta 里带运行信息，供回放）
             agentSessionService.appendMessage(session, "assistant", answer,
-                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get(), runImages));
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get(), runImages, runFiles));
             // 画像抽取：异步，不阻塞本次回答
             agentProfileService.updateAsync(userId, session.getSessionId(),
                     agentSessionService.messages(userId, session.getSessionId(), 12), cred);
@@ -175,7 +178,7 @@ public class AgentServiceImpl implements AgentService {
             failRunRecord(runId, "运行中断：" + reason, new ArrayList<>(), start);
             // 失败也落一条 assistant 消息，保证回放时上下文完整
             agentSessionService.appendMessage(session, "assistant", "[运行中断] " + reason,
-                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get(), runImages));
+                    buildAssistantMeta(runId, System.currentTimeMillis() - start, stepsRef.get(), runImages, runFiles));
             throw e;
         }
     }
@@ -190,6 +193,7 @@ public class AgentServiceImpl implements AgentService {
                          java.util.concurrent.atomic.AtomicReference<String> finalAnswer,
                          java.util.concurrent.atomic.AtomicReference<List<com.example.aitools.agent.dto.AgentStep>> stepsRef,
                          List<String> runImages,
+                         List<Map<String, Object>> runFiles,
                          Consumer<String> onFrame) {
         long start = System.currentTimeMillis();
         List<AgentStep> steps = new ArrayList<>();
@@ -312,6 +316,11 @@ public class AgentServiceImpl implements AgentService {
                 if (q != null && !String.valueOf(q).isBlank()) {
                     toolParams.put("question", String.valueOf(q));
                 }
+                // 文件格式转换需要目标格式
+                Object tf = action.getArgs() == null ? null : action.getArgs().get("targetFormat");
+                if (tf != null && !String.valueOf(tf).isBlank()) {
+                    toolParams.put("targetFormat", String.valueOf(tf));
+                }
                 com.example.aitools.agent.ToolResult toolResult =
                         catalog.invoke(tool, input, toolParams, userId, runId);
                 toolOutput = toolResult.getText();
@@ -320,6 +329,19 @@ public class AgentServiceImpl implements AgentService {
                     for (String imgUrl : toolResult.getImageUrls()) {
                         onFrame.accept(frame(FRAME_IMAGE, imgUrl));
                         if (runImages != null) runImages.add(imgUrl);
+                    }
+                }
+                // 文件产物：追加 [文件:url|文件名] 帧，前端渲染下载卡
+                if (toolResult.hasFiles()) {
+                    for (com.example.aitools.agent.ToolResult.FileArtifact f : toolResult.getFiles()) {
+                        onFrame.accept(frame(FRAME_FILE, f.getUrl() + "|" + f.getName()));
+                        if (runFiles != null) {
+                            Map<String, Object> item = new LinkedHashMap<>();
+                            item.put("url", f.getUrl());
+                            item.put("name", f.getName());
+                            item.put("size", f.getSize());
+                            runFiles.add(item);
+                        }
                     }
                 }
                 consecutiveFailures = 0;
@@ -885,10 +907,18 @@ public class AgentServiceImpl implements AgentService {
     private String buildAssistantMeta(String runId, long durationMs,
                                       List<com.example.aitools.agent.dto.AgentStep> steps,
                                       List<String> images) {
+        return buildAssistantMeta(runId, durationMs, steps, images, null);
+    }
+
+    private String buildAssistantMeta(String runId, long durationMs,
+                                      List<com.example.aitools.agent.dto.AgentStep> steps,
+                                      List<String> images,
+                                      List<Map<String, Object>> files) {
         Map<String, Object> meta = new HashMap<>();
         meta.put("runId", runId);
         meta.put("duration", durationMs);
         if (images != null && !images.isEmpty()) meta.put("images", images);
+        if (files != null && !files.isEmpty()) meta.put("files", files);
         // 步骤落库：重新打开会话时据此回放任务规划
         if (steps != null) meta.put("steps", steps);
         try {

@@ -210,6 +210,25 @@
             </view>
 
             <!-- 图片产物：预览 + 下载 -->
+            <view v-if="outFiles.length" class="file-cards">
+              <view v-for="(f, fi) in outFiles" :key="'f' + fi" class="file-card-out">
+                <view class="file-card-out__ico">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+                    <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z"/><path d="M14 3v5h5"/>
+                  </svg>
+                </view>
+                <view class="file-card-out__body">
+                  <text class="file-card-out__name">{{ f.name }}</text>
+                  <text class="file-card-out__tip">点击下载</text>
+                </view>
+                <view class="file-card-out__dl" @click="downloadTurnFile(f)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>
+                  </svg>
+                </view>
+              </view>
+            </view>
+
             <view v-if="turnImages.length" class="img-cards">
               <view v-for="(u, ii) in turnImages" :key="'img' + ii" class="img-card">
                 <image class="img-card__img" :src="u" mode="widthFix" @click="previewImage(u)" />
@@ -348,6 +367,7 @@ import { STORAGE_KEYS } from '@/utils/auth'
 import { listUserAiModels } from '@/api/aiModel'
 import { pickFiles } from '@/utils/filePicker'
 import { copyRaw } from '@/utils/clipboard'
+import { downloadOutput, outputKindOf } from '@/utils/fileAction'
 import SseRenderjs from '@/components/sse-renderjs/sse-renderjs.vue'
 
 // 主题是在设置页（非 tabBar 页）切换的，回到本页时同步一次底栏配色
@@ -372,6 +392,8 @@ const drawerOpen = ref(false)
 const historyMessages = ref([])
 /** 本轮工具生成的图片（[图片:url] 帧收集） */
 const turnImages = ref([])
+/** 本轮工具产出的文件（docx/pdf 等），渲染下载卡 */
+const outFiles = ref([])
 
 /** 历史任务规划展开状态（按消息 seq 记录） */
 const histOpen = ref({})
@@ -397,6 +419,10 @@ const previewImage = (url) => {
 }
 
 /** 下载图片（H5 走浏览器下载，App 存相册） */
+const downloadTurnFile = (f) => {
+  downloadOutput({ url: f.url, name: f.name, kind: outputKindOf(f.name) })
+}
+
 const downloadImage = (url) => {
   // #ifdef H5
   const a = document.createElement('a')
@@ -873,6 +899,7 @@ const runAgent = async () => {
   answer.value = ''
   steps.value = []
   turnImages.value = []
+  outFiles.value = []
   interrupted.value = false
   cancelled.value = false
   sawDone = false
@@ -909,6 +936,14 @@ const runAgent = async () => {
             loadSessions()
           } else if (kind === '图片') {
             if (body) turnImages.value.push(body)
+          } else if (kind === '文件') {
+            // 格式：url|文件名
+            if (body) {
+              const idxBar = body.indexOf('|')
+              const url = idxBar >= 0 ? body.slice(0, idxBar) : body
+              const name = idxBar >= 0 ? body.slice(idxBar + 1) : '文件'
+              outFiles.value.push({ url, name })
+            }
           } else if (kind === '上下文') {
             const parts = String(body).split(':')
             const tokens = Number(parts[0]) || 0
@@ -1624,4 +1659,19 @@ $ref-sub: var(--text-secondary);
   color: var(--text-primary);
 }
 .drawer__foot-chev { color: var(--text-tertiary); }
+
+/* 工具产出的文件卡（docx/pdf 等） */
+.file-cards { display: flex; flex-direction: column; gap: 12rpx; margin-top: 16rpx; }
+.file-card-out {
+  display: flex; align-items: center; gap: 16rpx;
+  padding: 20rpx 24rpx; border-radius: 18rpx;
+  background: var(--bg-gray);
+}
+.file-card-out__ico { width: 56rpx; height: 56rpx; color: var(--brand-primary); flex-shrink: 0; }
+.file-card-out__ico svg { width: 100%; height: 100%; }
+.file-card-out__body { flex: 1; min-width: 0; }
+.file-card-out__name { display: block; font-size: 26rpx; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-card-out__tip { display: block; margin-top: 4rpx; font-size: 21rpx; color: var(--text-tertiary); }
+.file-card-out__dl { width: 56rpx; height: 56rpx; color: var(--brand-primary); flex-shrink: 0; }
+.file-card-out__dl svg { width: 100%; height: 100%; }
 </style>

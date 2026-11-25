@@ -94,4 +94,6 @@ public interface AgentService {
     String FRAME_CONTEXT = "上下文";
     /** 帧前缀：图片产物（值为可访问 URL，前端渲染预览与下载） */
     String FRAME_IMAGE = "图片";
+    /** 文件产物帧：url|文件名 */
+    String FRAME_FILE = "文件";
 }

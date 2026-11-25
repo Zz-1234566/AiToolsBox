@@ -20,6 +20,9 @@ public class ToolResult {
     /** 图片产物 URL（可为空） */
     private List<String> imageUrls;
 
+    /** 文件产物（可为空）：智能体改完/生成的文件，前端给下载卡 */
+    private List<FileArtifact> files;
+
     public static ToolResult text(String text) {
         ToolResult r = new ToolResult();
         r.setText(text);
@@ -32,6 +35,35 @@ public class ToolResult {
         r.setText(text);
         r.setImageUrls(urls == null ? List.of() : urls);
         return r;
+    }
+
+    public static ToolResult files(String text, List<FileArtifact> files) {
+        ToolResult r = new ToolResult();
+        r.setText(text);
+        r.setImageUrls(List.of());
+        r.setFiles(files == null ? List.of() : files);
+        return r;
+    }
+
+    /** 是否带文件产物 */
+    public boolean hasFiles() {
+        return files != null && !files.isEmpty();
+    }
+
+    /** 文件产物 */
+    @Data
+    public static class FileArtifact {
+        private String url;
+        private String name;
+        private long size;
+
+        public FileArtifact() {}
+
+        public FileArtifact(String url, String name, long size) {
+            this.url = url;
+            this.name = name;
+            this.size = size;
+        }
     }
 
     /** 是否带图片产物 */

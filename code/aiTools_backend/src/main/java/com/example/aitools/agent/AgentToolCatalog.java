@@ -64,6 +64,8 @@ public class AgentToolCatalog {
     public static final String TOOL_IMAGE_UNDERSTAND = "image-understand";
     /** 内置工具编码：图片背景去除（DB 里该工具 input_type 为空，不会自动进目录） */
     public static final String TOOL_BG_REMOVER = "image-bg-remover";
+    /** 内置工具：文件格式转换（本地转换服务） */
+    public static final String TOOL_FILE_CONVERT = "file-convert";
 
     private final AiToolMapper aiToolMapper;
     private final AiPromptTemplateService promptTemplateService;
@@ -75,6 +77,7 @@ public class AgentToolCatalog {
     private final com.example.aitools.ai.AiVisionClient aiVisionClient;
     private final com.example.aitools.service.SegmentationService segmentationService;
     private final com.example.aitools.service.FileStorageService fileStorageService;
+    private final com.example.aitools.service.convert.FileConvertService fileConvertService;
 
     /**
      * 智能体可用工具。
@@ -161,6 +164,7 @@ public class AgentToolCatalog {
         // 内置工具：图片理解（走多模态模型）。不写 DB，避免出现在工具页/工作流里
         tools.add(builtinVisionTool());
         tools.add(builtinBgRemoverTool());
+        tools.add(builtinFileConvertTool());
         log.info("[agent] 可用工具 {} 个：{}", tools.size(),
                 tools.stream().map(AgentTool::getCode).toList());
         return tools;
@@ -178,6 +182,9 @@ public class AgentToolCatalog {
         }
         if (TOOL_BG_REMOVER.equals(code.trim())) {
             return builtinBgRemoverTool();
+        }
+        if (TOOL_FILE_CONVERT.equals(code.trim())) {
+            return builtinFileConvertTool();
         }
         AiTool t = aiToolMapper.selectOne(new LambdaQueryWrapper<AiTool>()
                 .eq(AiTool::getToolCode, code.trim())
@@ -263,6 +270,15 @@ public class AgentToolCatalog {
         }
         long start = System.currentTimeMillis();
         try {
+            // 文件转换工具：附件字节 → 转换服务 → 新文件落 COS
+            if (TOOL_FILE_CONVERT.equals(tool.getCode())) {
+                ToolResult fileResult = runFileConvertTool(tool, input, params);
+                if (historyId != null) {
+                    historyService.completeHistory(historyId, fileResult.getText(),
+                            (int) (System.currentTimeMillis() - start));
+                }
+                return fileResult;
+            }
             // 图片产物工具：走独立管线（分割 → 落 COS），返回带 URL 的结果
             if (isImageOutput(tool)) {
                 ToolResult imageResult = runImageTool(tool, input, params);
@@ -335,6 +351,50 @@ public class AgentToolCatalog {
         return new AgentTool(null, TOOL_BG_REMOVER, "图片背景去除",
                 "去掉图片背景并输出透明底 PNG（不要用于换底色，换底色用 id-photo-bg-change）",
                 "image", "image", List.of());
+    }
+
+    /** 内置的格式转换工具（走本地 FastAPI 转换服务；输出文件） */
+    private AgentTool builtinFileConvertTool() {
+        return new AgentTool(null, TOOL_FILE_CONVERT, "文件格式转换",
+                "把附件换成另一种格式并返回新文件。支持：图片(jpg/png/webp)；PDF→png/jpg/docx/txt；"
+                        + "Word→pdf/txt；PPT→pdf/png；Excel↔CSV。args 用 targetFormat 指定目标格式",
+                "file", "file", List.of());
+    }
+
+    /**
+     * 文件格式转换：附件字节 → 转换服务 → 新文件落 COS。
+     */
+    private ToolResult runFileConvertTool(AgentTool tool, String input, Map<String, String> params) {
+        String target = params == null ? null : params.get("targetFormat");
+        if (target == null || target.isBlank()) {
+            throw new IllegalStateException("缺少 targetFormat（目标格式），例如 docx / txt / png");
+        }
+        try {
+            byte[] src = nodeExecutor.toMultipartFile(input, "input.bin").getBytes();
+            // 附件地址带签名参数（xxx.docx?sign=...），必须去掉查询串再取文件名，
+            // 否则转换服务会拿「带 ?sign=」的名字去落盘，后续找不到文件。
+            String clean = input;
+            int q = clean.indexOf('?');
+            if (q > 0) {
+                clean = clean.substring(0, q);
+            }
+            String srcName = clean.contains("/") ? clean.substring(clean.lastIndexOf('/') + 1) : clean;
+            if (srcName.isBlank() || !srcName.contains(".")) {
+                srcName = "input.bin";
+            }
+            String token = fileConvertService.uploadBytes(src, srcName);
+            com.example.aitools.service.convert.FileConvertService.Converted conv =
+                    fileConvertService.convert(token, target);
+            com.example.aitools.dto.FileUploadResponse up = fileStorageService.store(
+                    conv.getBytes(), conv.getFileName(), null, "file");
+            String url = up.getFileUrl();
+            String text = "转换完成，新文件：" + conv.getFileName() + "（" + conv.getBytes().length
+                    + " 字节），可直接下载：" + url;
+            return ToolResult.files(text,
+                    List.of(new ToolResult.FileArtifact(url, conv.getFileName(), conv.getBytes().length)));
+        } catch (Exception e) {
+            throw new IllegalStateException("文件转换失败：" + e.getMessage(), e);
+        }
     }
 
     /** 是否为图片产物工具 */

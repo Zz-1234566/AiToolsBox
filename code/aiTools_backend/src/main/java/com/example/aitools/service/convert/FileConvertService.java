@@ -81,6 +81,30 @@ public class FileConvertService {
     /**
      * 上传到转换服务，返回其内部文件名（作为 token 使用）。
      */
+    /** 直接用字节上传（智能体拿不到 MultipartFile，只有附件字节） */
+    public String uploadBytes(byte[] bytes, String filename) {
+        try {
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("file", new ByteArrayResource(bytes) {
+                @Override
+                public String getFilename() {
+                    return filename == null || filename.isBlank() ? "upload.bin" : filename;
+                }
+            });
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            ResponseEntity<Map> resp = rest.postForEntity(serviceUrl + "/api/upload",
+                    new HttpEntity<>(body, headers), Map.class);
+            Object name = resp.getBody() == null ? null : resp.getBody().get("filename");
+            if (name == null) {
+                throw new IllegalStateException("转换服务未返回文件名");
+            }
+            return String.valueOf(name);
+        } catch (Exception e) {
+            throw new IllegalStateException("转换服务不可用：" + e.getMessage(), e);
+        }
+    }
+
     public String upload(MultipartFile file) {
         try {
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
