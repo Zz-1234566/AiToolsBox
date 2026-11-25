@@ -841,3 +841,23 @@ Tomcat 请求结束就清理 multipart 临时文件
 
 ### 管理端
 - 用户画像管理：管理员可查看并调整所有用户的偏好词条，用于优化 AI 回答风格
+
+### 启动方式
+
+项目依赖一个本地文件转换服务（FastAPI，端口 1453），用于「文件格式转换」工具。
+
+```bash
+# 一键启动：转换服务 + 后端
+scripts\start-all.bat
+
+# 只启动转换服务（已在运行会自动跳过）
+scripts\start-converter.bat
+
+# 加入开机自启（转换服务常驻）
+scripts\install-autostart.bat
+scripts\uninstall-autostart.bat   # 取消
+```
+
+> 脚本里的路径默认指向 `%USERPROFILE%\.minimax-agent-cn\projects\...`，
+> 换机器部署时改 `start-converter.bat` 顶部两行即可。
+> 服务未启动时，文件转换会提示「转换服务不可用」，其它工具不受影响。
