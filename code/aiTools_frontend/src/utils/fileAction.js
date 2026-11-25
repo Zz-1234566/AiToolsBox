@@ -128,8 +128,47 @@ export const downloadOutput = (target, opts = {}) => {
     toastShown = true
     uni.showToast({ title, icon })
   }
+
+  // App 端优先用 plus.downloader：可以指定保存文件名，
+  // uni.downloadFile 只会落在临时目录且文件名是随机串，用户另存时看到的就是乱码名。
+  // #ifdef APP-PLUS
+  if (typeof plus !== 'undefined' && plus.downloader && opts.saveToDownloads !== false) {
+    try {
+      const task = plus.downloader.createDownload(url, {
+        filename: '_downloads/' + name,
+        headers: opts.headers || {}
+      }, (d, status) => {
+        if (status !== 200 || !d || !d.filename) {
+          showToast('下载失败（链接可能已过期）')
+          if (!toastShown) uni.hideLoading()
+          return
+        }
+        if (kind === 'image') {
+          uni.saveImageToPhotosAlbum({
+            filePath: d.filename,
+            success: () => showToast('已保存到相册', 'success'),
+            fail: () => showToast('已保存到下载目录')
+          })
+        } else {
+          uni.openDocument({
+            filePath: d.filename,
+            showMenu: true,
+            fail: () => showToast('已保存到下载目录：' + name)
+          })
+        }
+        if (!toastShown) uni.hideLoading()
+      })
+      task.start()
+      return
+    } catch (e) {
+      // 落到下面的 uni.downloadFile 兜底
+    }
+  }
+  // #endif
+
   uni.downloadFile({
     url,
+    header: opts.headers || {},
     success: (res) => {
       if (res.statusCode !== 200) {
         showToast('下载失败（链接可能已过期）')

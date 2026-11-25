@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.LinkedHashMap;
@@ -28,6 +29,10 @@ import java.util.Map;
 @RequestMapping("/api/file-convert")
 @RequiredArgsConstructor
 public class FileConvertController {
+
+    /** 转换结果短期缓存：token -> {文件名, 字节}，10 分钟过期 */
+    private static final java.util.Map<String, Object[]> CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long CACHE_TTL_MS = 10 * 60 * 1000L;
 
     private final FileConvertService convertService;
     private final FileStorageService fileStorageService;
@@ -74,6 +79,31 @@ public class FileConvertController {
         return Result.success(out);
     }
 
+    /**
+     * 下载转换结果：由服务端控制文件名。
+     * <p>
+     * 直接给 COS 链接时，浏览器只能拿对象名（UUID）当文件名；
+     * 这里从内存缓存读出字节并带上 Content-Disposition，用户得到的才是「原名.jpg」。
+     */
+    @GetMapping("/download")
+    public void download(@RequestParam("token") String token,
+                         HttpServletRequest request,
+                         jakarta.servlet.http.HttpServletResponse response) throws java.io.IOException {
+        authUtil.getUserIdFromRequest(request);
+        Object[] cached = token == null ? null : CACHE.get(token);
+        if (cached == null) {
+            throw new BusinessException(ResultCode.PARAM_ERROR.getCode(), "文件已过期，请重新转换");
+        }
+        String fileName = String.valueOf(cached[0]);
+        byte[] bytes = (byte[]) cached[1];
+        response.setContentType("application/octet-stream");
+        response.setHeader("Content-Disposition",
+                "attachment; filename*=UTF-8''" + java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20"));
+        response.setContentLength(bytes.length);
+        response.getOutputStream().write(bytes);
+        response.flushBuffer();
+    }
+
     /** 第二步：转换 + 转存，返回可下载地址 */
     @PostMapping("/do")
     public Result<Map<String, Object>> convert(@RequestBody Map<String, String> body,
@@ -97,9 +127,16 @@ public class FileConvertController {
                 converted.getBytes(), converted.getFileName(), null, "file");
         stored.setFileUrl(FileStorageService.resolveFullUrl(stored.getFileUrl(), request));
 
+        // 缓存字节供下载（文件名由服务端控制，避免浏览器用 COS 的 UUID 命名）
+        String downloadToken = java.util.UUID.randomUUID().toString().replace("-", "");
+        CACHE.put(downloadToken, new Object[]{converted.getFileName(), converted.getBytes(), System.currentTimeMillis()});
+        long now = System.currentTimeMillis();
+        CACHE.entrySet().removeIf(e -> now - (long) e.getValue()[2] > CACHE_TTL_MS);
+
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("fileName", converted.getFileName());
         out.put("fileUrl", stored.getFileUrl());
+        out.put("downloadToken", downloadToken);
         out.put("size", converted.getBytes().length);
         log.info("[file-convert] user={} {} -> {} size={}B", userId, token, target, converted.getBytes().length);
         return Result.success(out);

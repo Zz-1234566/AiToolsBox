@@ -102,6 +102,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/api/request'
 import { STORAGE_KEYS } from '@/utils/auth'
 import { BASE_URL } from '@/config/env'
+import { downloadOutput } from '@/utils/fileAction'
 
 
 const file = ref(null)
@@ -198,15 +199,38 @@ const doConvert = async () => {
   }
 }
 
-const download = () => {
+const download = async () => {
   // #ifdef H5
-  window.open(result.value.fileUrl, '_blank')
+  // 走自己的下载接口：COS 对象名是 UUID，直接打开会用 UUID 当文件名。
+  // 这里用 fetch + blob，download 属性才生效（同源 blob URL）。
+  const token = uni.getStorageSync(STORAGE_KEYS.TOKEN)
+  const name = result.value.fileName || 'converted'
+  const url = BASE_URL() + '/api/file-convert/download?token=' + encodeURIComponent(result.value.downloadToken)
+  try {
+    uni.showLoading({ title: '下载中' })
+    const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } })
+    if (!res.ok) throw new Error('下载失败')
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove() }, 1000)
+  } catch (e) {
+    uni.showToast({ title: '下载失败，请重试', icon: 'none' })
+  } finally {
+    uni.hideLoading()
+  }
   // #endif
   // #ifndef H5
-  uni.downloadFile({
-    url: result.value.fileUrl,
-    success: (r) => uni.openDocument({ filePath: r.tempFilePath, showMenu: true })
-  })
+  // App 端：交给统一的下载出口，它会用 plus.downloader 存成「原名.后缀」再打开
+  const token2 = uni.getStorageSync(STORAGE_KEYS.TOKEN)
+  const name2 = result.value.fileName || 'converted'
+  downloadOutput(
+    { url: BASE_URL() + '/api/file-convert/download?token=' + encodeURIComponent(result.value.downloadToken), name: name2, kind: 'file' },
+    { headers: { Authorization: 'Bearer ' + token2 } }
+  )
   // #endif
 }
 
