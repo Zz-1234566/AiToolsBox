@@ -49,6 +49,9 @@
  */
 
 /** 取文件扩展名（小写，不含点） */
+// #ifdef APP-PLUS
+import { chooseFileFromModule } from '@/uni_modules/sr-file-choose'
+// #endif
 export const extOf = (name) => {
   if (!name) return ''
   const i = name.lastIndexOf('.')
@@ -74,25 +77,6 @@ export const nameFromPath = (p, fallback = '文件') => {
  * @param {string} [opts.fileLabel='文件'] 文案里的文件名（如「录音文件」），用于拼提示
  * @returns {Promise<PickResult>} 选择结果（永不 reject）
  */
-/**
- * 尝试加载「文件选择」原生插件（App 端）。
- * 接入方式：插件市场导入 uni_modules 后，把插件名加到下面的候选列表里。
- * 没装插件时返回 null，调用方走 notSupported() 兜底。
- */
-function tryNativeFilePicker() {
-  // #ifdef APP-PLUS
-  const candidates = ['FilePicker', 'XL-FilePicker', 'tian-FilePicker']
-  for (const name of candidates) {
-    try {
-      // eslint-disable-next-line no-undef
-      const mod = uni.requireNativePlugin ? uni.requireNativePlugin(name) : null
-      if (mod && typeof mod.pick === 'function') return mod
-    } catch (e) { /* 忽略：插件未安装 */ }
-  }
-  // #endif
-  return null
-}
-
 export const pickFiles = (opts = {}) => {
   const count = Math.max(1, opts.count || 1)
   const accept = opts.accept || ''
@@ -255,32 +239,35 @@ export const pickFiles = (opts = {}) => {
   }
 
   // #ifdef APP-PLUS
-  // App 端：uni 没有文档选择 API，尝试原生插件「文件选择」。
-  // 插件市场常见插件名：FilePicker / XL-FilePicker / tian-FilePicker，
-  // 接入后在 manifest.json → App原生插件配置 里勾选，离线打包需集成到原生工程。
-  const nativePicker = tryNativeFilePicker()
-  if (nativePicker) {
-    return new Promise((resolve) => {
-      nativePicker.pick(
-        { count, extensions: exts },
-        (res) => {
-          const list = (res && res.files ? res.files : []).map((f) => ({
-            fileName: f.name || nameFromPath(f.path || ''),
-            file: null,
-            path: f.path || '',
-            size: f.size || 0
-          }))
-          const valid = list.filter((f) => allowed(f.fileName))
-          if (!valid.length) {
-            resolve({ ok: false, files: [], reason: 'empty' })
-            return
-          }
-          resolve({ ok: true, files: valid.slice(0, count) })
-        },
-        (err) => resolve(failed(err))
-      )
+  // App 端：uni 没有文档选择 API，改用 UTS 插件 sr-file-choose 调系统文件选择器。
+  // 注意：插件每次只能选一个文件，count > 1 时需要用户重复选择。
+  return new Promise((resolve) => {
+    chooseFileFromModule({
+      success: (res) => {
+        const path = res && res.path ? res.path : ''
+        if (!path) {
+          resolve({ ok: false, files: [], reason: 'cancelled' })
+          return
+        }
+        const fileName = (res && res.name) || nameFromPath(path)
+        if (!allowed(fileName)) {
+          resolve({
+            ok: false, files: [], reason: 'empty',
+            message: exts.length
+              ? `不支持的${fileLabel}类型，仅支持 ${exts.map(e => e.toUpperCase()).join('/')}`
+              : undefined
+          })
+          return
+        }
+        resolve({
+          ok: true,
+          files: [{ fileName, file: null, path, size: (res && res.size) || 0 }]
+        })
+      },
+      fail: (err) => resolve(failed(err)),
+      complete: () => {}
     })
-  }
+  })
   // #endif
 
   // 走到这里 = 当前平台没有可用的文件选择器

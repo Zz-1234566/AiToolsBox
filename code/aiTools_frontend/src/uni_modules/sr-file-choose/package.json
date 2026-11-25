@@ -1,0 +1,87 @@
+{
+  "id": "sr-file-choose",
+  "displayName": "文件选择App端通用插件，支持Android、iOS和鸿蒙（Harmony）",
+  "version": "1.0.1",
+  "description": "一个插件实现安卓、苹果和鸿蒙的文件选择功能。uniapp编译到App时，选择文件的方法不够全面，只支持图片和视频。  通过uts插件，实现了uniapp编译到安卓、苹果和鸿蒙App之后的文件选择功能。",
+  "keywords": [
+    "文件选择",
+    "File",
+    "Android",
+    "iOS",
+    "Harmony"
+],
+  "repository": "",
+  "engines": {
+    "HBuilderX": "^4.08"
+  },
+  "dcloudext": {
+    "type": "uts",
+    "sale": {
+      "regular": {
+        "price": "0.00"
+      },
+      "sourcecode": {
+        "price": "0.00"
+      }
+    },
+    "contact": {
+      "qq": "2294810367"
+    },
+    "declaration": {
+      "ads": "无",
+      "data": "无",
+      "permissions": "文件读取权限"
+    },
+    "npmurl": ""
+  },
+  "uni_modules": {
+    "dependencies": [],
+    "encrypt": [],
+    "platforms": {
+      "cloud": {
+        "tcb": "y",
+        "aliyun": "y",
+        "alipay": "y"
+      },
+      "client": {
+        "Vue": {
+          "vue2": "y",
+          "vue3": "y"
+        },
+        "App": {
+            "app-android": "y",
+            "app-ios": "y",
+            "app-harmony": "y"
+        },
+        "H5-mobile": {
+          "Safari": "u",
+          "Android Browser": "u",
+          "微信浏览器(Android)": "u",
+          "QQ浏览器(Android)": "u"
+        },
+        "H5-pc": {
+          "Chrome": "u",
+          "IE": "u",
+          "Edge": "u",
+          "Firefox": "u",
+          "Safari": "u"
+        },
+        "小程序": {
+          "微信": "u",
+          "阿里": "u",
+          "百度": "u",
+          "字节跳动": "u",
+          "QQ": "u",
+          "钉钉": "u",
+          "快手": "u",
+          "飞书": "u",
+          "京东": "u"
+        },
+        "快应用": {
+          "华为": "u",
+          "联盟": "u"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>申请使用相册权限,用于选择照片</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>申请使用文件选择权限,用于选择文件</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>App需要访问下载文件夹以获取文件</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+  </dict>
+</plist>

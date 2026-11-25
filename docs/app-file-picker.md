@@ -1,5 +1,30 @@
 # App 端文件选择接入说明（离线打包 / iOS / Android）
 
+## 已接入的插件
+
+**sr-file-choose**（UTS 插件，`src/uni_modules/sr-file-choose`）
+
+- 支持 Android / iOS / 鸿蒙
+- UTS 插件的特点：**无需 Android Studio、无需编译 aar/framework**，HBuilderX 打包时自动编译进 App
+- 调用方式（已封装在 `src/utils/filePicker.js`）：
+
+```js
+chooseFileFromModule({
+  success: (res) => { /* res.path / res.name / res.size */ },
+  fail: (err) => {},
+  complete: () => {}
+})
+```
+
+- 限制：**一次只能选一个文件**（多选需要用户重复选择）
+
+## 使用效果
+
+| 场景 | H5 | App（Android） | App（iOS） |
+|---|---|---|---|
+| 图片选择 | ✅ | ✅ chooseImage | ✅ chooseImage |
+| 文档选择（PDF/Word/PPT） | ✅ | ✅ 插件 | ✅ 插件（须 Mac 打包） |
+
 ## 现状
 
 | 能力 | H5 | App |

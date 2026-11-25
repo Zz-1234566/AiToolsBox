@@ -1,0 +1,72 @@
+/* 引入 interface.uts 文件中定义的变量 */
+import { ChooseFileOptions, ChooseFileResult, ChooseFile, ChooseFileSync } from '../interface.uts';
+
+/* 引入 unierror.uts 文件中定义的变量 */
+import { ChooseFileFailImpl } from '../unierror.uts';
+
+import picker from '@ohos.file.picker'
+import { fileIo as fs } from '@kit.CoreFileKit';
+import uri from '@ohos.uri'
+import { common } from '@kit.AbilityKit';
+import { BusinessError } from '@ohos.base'
+
+
+export const chooseFileFromModule : ChooseFile = function (options : ChooseFileOptions) {
+	const documentSelectOptions = new picker.DocumentSelectOptions();
+	// 选择文档的最大数目 暂时只选一个。
+	documentSelectOptions.maxSelectNumber = 1;
+	let uris: Array<string> = [];
+	let context = getContext() as common.Context; // 请确保 getContext(this) 返回结果为 UIAbilityContext
+	// 创建文件选择器实例
+	const documentViewPicker = new picker.DocumentViewPicker(context);
+	documentViewPicker.select(documentSelectOptions).then((documentSelectResult: Array<string>) => {
+	  //文件选择成功后，返回被选中文档的URI结果集。
+	  uris = documentSelectResult;
+	  let uri: string = '';
+	  let filePath: string = '';
+	  let totalSize = 0;
+	  const BUFFER_SIZE = 4096; // 可调整的常量
+	  if(uris.length > 0) {
+		  uri = uris[0]
+		  // 解码中文路径
+		  filePath = decodeURIComponent(uri);
+		  console.info('filePath are:' + filePath);
+		  
+		  // 获取描述符 这里需要注意接口权限参数是fs.OpenMode.READ_ONLY。
+		  let file = fs.openSync(uri, fs.OpenMode.READ_ONLY);		  
+		  // 获取文件大小 更完整的读取示例（循环读取直到文件结束）		  
+		  let buffer = new ArrayBuffer(BUFFER_SIZE);		  
+		  while (true) {
+		    let readLen = fs.readSync(file.fd, buffer);
+		    if (readLen <= 0) break; // 读取结束
+		    totalSize += readLen;
+		    // 处理buffer中的数据...
+		  }
+		  
+		  fs.closeSync(file);
+		  console.log(`文件总大小: ${totalSize}字节`);
+	  }
+	  console.info('documentViewPicker.select to file succeed and uris are:' + uris);	  
+	  // 返回数据
+	  const res : ChooseFileResult = {
+	    size: totalSize,
+	    path: filePath,
+		name: ''
+	  };
+	  options.success?.(res);
+	  options.complete?.(res);  
+	}).catch((err: BusinessError) => {
+	  console.error(`Invoke documentViewPicker.select failed, code is ${err.code}, message is ${err.message}`);
+	})
+	
+}
+
+async function getFileSize(filePath: string): Promise<number> {
+    try {
+        const stat = await fileio.stat(filePath)
+        return stat.size  // 返回文件大小(字节)
+    } catch (err) {
+        console.error('获取文件大小失败:', err)
+        return -1
+    }
+}

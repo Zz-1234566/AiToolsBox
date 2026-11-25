@@ -1,0 +1,212 @@
+/**
+ * 引用 Android 系统库，示例如下：
+ * import { Context } from "android.content.Context";
+ * [可选实现，按需引入]
+ */
+
+/* 引入 interface.uts 文件中定义的变量 */
+import { ChooseFileOptions, ChooseFileResult, ChooseFile, ChooseFileSync } from '../interface.uts';
+
+/* 引入 unierror.uts 文件中定义的变量 */
+import { ChooseFileFailImpl } from '../unierror';
+
+import Context from "android.content.Context";
+import Intent from 'android.content.Intent'
+
+import Activity from 'android.app.Activity'
+import Cursor from 'android.database.Cursor';
+import Uri from 'android.net.Uri'
+import InputStream from 'java.io.InputStream'
+  
+/**
+ * 引入三方库
+ * [可选实现，按需引入]
+ *
+ * 在 Android 平台引入三方库有以下两种方式：
+ * 1、[推荐] 通过 仓储 方式引入，将 三方库的依赖信息 配置到 config.json 文件下的 dependencies 字段下。详细配置方式[详见](https://uniapp.dcloud.net.cn/plugin/uts-plugin.html#dependencies)
+ * 2、直接引入，将 三方库的aar或jar文件 放到libs目录下。更多信息[详见](https://uniapp.dcloud.net.cn/plugin/uts-plugin.html#android%E5%B9%B3%E5%8F%B0%E5%8E%9F%E7%94%9F%E9%85%8D%E7%BD%AE)
+ *
+ * 在通过上述任意方式依赖三方库后，使用时需要在文件中 import，如下示例：
+ * import { LottieAnimationView } from 'com.airbnb.lottie.LottieAnimationView'
+ */
+
+/**
+ * UTSAndroid 为平台内置对象，不需要 import 可直接调用其API，[详见](https://uniapp.dcloud.net.cn/uts/utsandroid.html#utsandroid)
+ */
+
+
+/**
+ * 异步方法
+ *
+ * uni-app项目中（vue/nvue）调用示例：
+ * 1、引入方法声明 import { ChooseFile } from "@/uni_modules/uts-api"
+ * 2、方法调用
+ * ChooseFile({
+ *   paramA: false,
+ *   complete: (res) => {
+ *      console.log(res)
+ *   }
+ * });
+ * uni-app x项目（uvue）中调用示例：
+ * 1、引入方法及参数声明 import { ChooseFile, ChooseFileOptions } from "@/uni_modules/uts-api";
+ * 2、方法调用
+ * let options = {
+ *   paramA: false,
+ *   complete: (res : any) => {
+ *     console.log(res)
+ *   }
+ * } as ChooseFileOptions;
+ * ChooseFile(options);
+ *
+ */
+
+// 全局保存回调的Map，键为请求码
+const callbackMap = new Map<number, ChooseFileOptions>();
+
+export const chooseFileFromModule : ChooseFile = function (options : ChooseFileOptions) {
+	
+	// 获取当前Activity实例
+	    const activity: Activity = UTSAndroid.getUniActivity() as Activity
+	    
+	    // 创建Intent
+	    const intent = new Intent(Intent.ACTION_GET_CONTENT)
+	    
+	    // 设置类型为所有文件类型
+	    intent.setType("*/*")
+	    
+	    // 添加类别，可选
+	    intent.addCategory(Intent.CATEGORY_OPENABLE)
+	    
+	    // 启动文件选择器
+	    activity.startActivityForResult(intent, 100) // 100是请求码，可以自定义
+		
+		UTSAndroid.onAppActivityResult((requestCode: Int, resultCode: Int, data?: Intent) => {
+			if(requestCode == 100){
+				// 我们发起的请求
+				// let eventName = "onAppActivityResult  -  requestCode:" + requestCode + " -resultCode:"+resultCode + " -data:"+JSON.stringify(data);
+		    	// console.log(eventName);
+				
+				// 必须检查结果是否成功
+				if (resultCode == Activity.RESULT_OK) { // RESULT_OK = -1
+					// 1. 获取URI
+					const uri = data?.getData();
+					let fileSize = 0;
+					let fileName = '';
+					if (uri != null) {
+						const fileUri = uri.toString();
+						console.log("Selected File URI:" + fileUri);
+						// console.log("Selected File Path:" + data?.getPath());
+						// 2. 通过URI获取文件信息（需要处理权限）
+						try {
+							const activity: Activity = UTSAndroid.getUniActivity()!!  // 强制断言非空
+							// 获取ContentResolver
+							const contentResolver = activity.getContentResolver()!!;
+							// 修复：显式声明 projection 类型
+							const projection = [android.provider.OpenableColumns.DISPLAY_NAME].toTypedArray()
+							// 查询文件名
+							const cursor = contentResolver.query(
+								uri,
+								projection,
+								null,
+								null,
+								null
+							);
+							if (cursor != null && cursor.moveToFirst()) {
+								const nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+								const sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE);
+								fileName = cursor.getString(nameIndex);
+								if (sizeIndex != -1) {  // 确保列存在
+									fileSize = cursor.getLong(sizeIndex)
+								} else {
+									let inputStream: InputStream | null = null;
+									try {
+										inputStream = contentResolver.openInputStream(uri)!!;
+										let totalBytes = 0;
+										// const buffer = new Array<Byte>(1024); // 1KB 缓冲区
+										const buffer = ByteArray(1024)
+										while (true) {
+											const bytesRead = inputStream.read(buffer);
+											if (bytesRead == -1) break; // 读取结束
+											totalBytes += bytesRead;
+										}
+										fileSize = totalBytes;
+									} catch (e) {
+										console.error("Failed to calculate file size via InputStream:", e);
+										
+									} finally {
+										inputStream?.close();
+									}
+								}
+								console.log("File Size:" + fileSize + " bytes");
+								console.log("File Name:" + fileName);
+								cursor.close();
+							}
+							
+							// 返回数据
+							const res : ChooseFileResult = {
+							  size: fileSize,
+							  path: fileUri,
+							  name: fileName
+							};
+							options.success?.(res);
+							options.complete?.(res); 
+							// 读取文件内容（示例） ...这里可以处理文件流...
+							// const inputStream = contentResolver.openInputStream(uri);
+
+						} catch (e: Throwable) {
+							console.error("File Read Error:" + e);
+						}
+					}
+				} else {
+					console.log("User canceled or failed")
+				}
+		  
+			}else{
+				// 别的代码发起的请求，不要处理
+			}
+			// 移除全部监听
+			UTSAndroid.offAppActivityResult();
+		});
+		
+	
+  // if (options.paramA == true) {
+  //   // 返回数据
+  //   const res : ChooseFileResult = {
+  //     fieldA: 85,
+  //     fieldB: true,
+  //     fieldC: 'some message'
+  //   };
+  //   options.success?.(res);
+  //   options.complete?.(res);
+  // } else {
+  //   // 返回错误
+  //   const err = new ChooseFileFailImpl(9010001);
+  //   options.fail?.(err)
+  //   options.complete?.(err)
+  // }
+}
+
+/**
+ * 同步方法
+ *
+ * uni-app项目中（vue/nvue）调用示例：
+ * 1、引入方法声明 import { ChooseFileSync } from "@/uni_modules/uts-api"
+ * 2、方法调用 ChooseFileSync(true)
+ *
+ * uni-app x项目（uvue）中调用示例：
+ * 1、引入方法及参数声明 import { ChooseFileSync } from "@/uni_modules/uts-api";
+ * 2、方法调用 ChooseFileSync(true)
+ */
+export const ChooseFileSync : ChooseFileSync = function (paramA : boolean) : ChooseFileResult {
+  // 返回数据，根据插件功能获取实际的返回值
+  const res : ChooseFileResult = {
+    fieldA: 85,
+    fieldB: paramA,
+    fieldC: 'some message'
+  };
+  return res;
+}
+
+/**
+ * 更多插件开发的信息详见：https://uniapp.dcloud.net.cn/plugin/uts-plugin.html
+ */
