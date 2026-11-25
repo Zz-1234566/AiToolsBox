@@ -7,7 +7,7 @@
 export const CATEGORIES = [
   {
     code: 'AI办公助手',
-    tools: ['doc-to-text', 'audio-transcribe', 'meeting-minutes', 'doc-keypoint-extract', 'work-summary', 'weekly-report']
+    tools: ['doc-to-text', 'audio-transcribe', 'meeting-minutes', 'doc-keypoint-extract', 'work-summary', 'weekly-report', 'file-convert']
   },
   {
     code: '图片创意工具',
@@ -74,7 +74,8 @@ const TOOL_GRADIENT_BY_ID = {
   'doc-to-text': 'ocr',
   'audio-transcribe': 'audio',
   'image-bg-remover': 'image',
-  'id-photo-bg-change': 'image'
+  'id-photo-bg-change': 'image',
+  'file-convert': 'doc'
 }
 
 /**
@@ -98,7 +99,8 @@ export const TOOL_SHORT_DESC = {
   'doc-to-text': '多格式解析',
   'audio-transcribe': '音频转文字',
   'image-bg-remover': '一键抠图换背景',
-  'id-photo-bg-change': '红蓝白底一键换'
+  'id-photo-bg-change': '红蓝白底一键换',
+  'file-convert': '多格式互转'
 }
 
 /**
@@ -287,7 +289,9 @@ export const REALIZED_TOOLS = Object.entries(TOOLS).filter(([, v]) => v.realized
 export const TOOL_DETAIL_PAGES = {
   'image-bg-remover': '/pages/image-bg-remover',
   // 证件照换底色复用去背景页：进入后默认白色底
-  'id-photo-bg-change': '/pages/image-bg-remover?preset=id-photo'
+  'id-photo-bg-change': '/pages/image-bg-remover?preset=id-photo',
+  // 文件互转：独立页面（上传→选目标格式→转换→下载）
+  'file-convert': '/pages/file-convert'
 }
 
 /**

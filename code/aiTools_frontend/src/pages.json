@@ -273,6 +273,17 @@
           "animationDuration": 300
         }
       }
+    },
+    {
+      "path": "pages/file-convert",
+      "style": {
+        "navigationBarTitleText": "文件格式转换",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "animationType": "slide-in-right",
+          "animationDuration": 300
+        }
+      }
     }
   ],
   "globalStyle": {
