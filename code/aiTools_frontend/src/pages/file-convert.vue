@@ -102,7 +102,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { request } from '@/api/request'
 import { STORAGE_KEYS } from '@/utils/auth'
 import { BASE_URL } from '@/config/env'
-import { downloadOutput } from '@/utils/fileAction'
+import { downloadOutput, outputKindOf } from '@/utils/fileAction'
 
 
 const file = ref(null)
@@ -228,7 +228,12 @@ const download = async () => {
   const token2 = uni.getStorageSync(STORAGE_KEYS.TOKEN)
   const name2 = result.value.fileName || 'converted'
   downloadOutput(
-    { url: BASE_URL() + '/api/file-convert/download?token=' + encodeURIComponent(result.value.downloadToken), name: name2, kind: 'file' },
+    {
+      url: BASE_URL() + '/api/file-convert/download?token=' + encodeURIComponent(result.value.downloadToken),
+      name: name2,
+      // 图片产物存相册，其余存下载目录并尝试打开
+      kind: outputKindOf(name2)
+    },
     { headers: { Authorization: 'Bearer ' + token2 } }
   )
   // #endif
