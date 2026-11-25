@@ -185,6 +185,17 @@ export const TOOLS = {
       audio:  { unsupported: true, error: '该工具请使用文字输入（录音请先用【录音转写】）' }
     }
   },
+  'file-convert': {
+    name: '文件格式转换', icon: 'summary', category: 'AI办公助手', realized: true,
+    inputLabel: '待转换文件',
+    pureConvert: true,                     // 不走提示词，只有文件进出
+    desc: '图片 / PDF / Word / PPT / 表格 格式互转，本地处理不走云端。',
+    inputTypes: ['file'], defaultInput: 'file', fileType: 'file',
+    fileRule: {
+      accept: '.png,.jpg,.jpeg,.webp,.bmp,.tiff,.gif,.pdf,.docx,.pptx,.csv,.xlsx,.json,.txt',
+      maxCount: 1
+    }
+  },
   'doc-to-text': {
     name: '文档提取', icon: 'summary', category: 'AI办公助手', realized: true,
     inputLabel: '文件内容',

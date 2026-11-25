@@ -80,6 +80,8 @@
         </view>
         <text class="upload-card__title">{{ toolInfo.uploadTitle || '点击上传文件' }}</text>
         <text class="upload-card__desc">{{ toolInfo.uploadDesc || '' }}</text>
+        <!-- 选文件前就把支持的格式列清楚，避免选完才被拒 -->
+        <text class="upload-card__formats">{{ uploadFormatsText }}</text>
       </view>
       <view v-if="pureConvertFiles.length > 0" class="section-title">
         <text>已选 {{ pureConvertFiles.length }} 个文件</text>
@@ -690,6 +692,15 @@ const aiRequirementPlaceholder = computed(() => {
 const isBatchTool = computed(() => !!toolInfo.value.fileRule)
 
 // 纯转换工具（文档转文本 / 录音转写）：单文件上传，无提示词（提示词后端内置或纯解析）
+/** 上传前展示的支持格式（与 pickFiles 的 accept 保持同一份定义） */
+const uploadFormatsText = computed(() => {
+  if (!isPureConvert.value) return ''
+  if (toolId.value === 'audio-transcribe') {
+    return '支持格式：MP3 / WAV / M4A / AAC / FLAC / OGG / AMR'
+  }
+  return '支持格式：PDF / DOCX / TXT / JPG / PNG / BMP / WEBP / GIF'
+})
+
 const isPureConvert = computed(() => !!toolInfo.value.pureConvert)
 
 /**
@@ -3268,4 +3279,16 @@ svg {
 .fp-entry__name { font-size: 26rpx; font-weight: 600; color: var(--brand-primary); }
 .fp-entry__name--empty { color: var(--text-tertiary); font-weight: 400; }
 .fp-entry__chev { font-size: 30rpx; color: var(--brand-primary); }
+
+/* 上传卡：支持格式提示（选文件前可见） */
+.upload-card__formats {
+  display: block;
+  margin-top: 14rpx;
+  padding: 10rpx 20rpx;
+  border-radius: 12rpx;
+  background: var(--bg-gray);
+  font-size: 21rpx;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
 </style>

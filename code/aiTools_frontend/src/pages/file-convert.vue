@@ -36,19 +36,23 @@
 
       <!-- 3. 目标格式 -->
       <block v-if="file && state === 'pick'">
-        <text class="sec-title">目标格式</text>
-        <view class="groups">
-          <view v-for="g in groupList" :key="g.key" class="group" :class="{ 'group--off': g.off }">
-            <view class="group__head">
-              <text class="group__name">{{ g.label }}</text>
-              <text v-if="g.off" class="group__off">未启用</text>
-            </view>
-            <view class="pills">
-              <view v-for="t in g.items" :key="t" class="pill"
-                    :class="{ 'pill--on': target === t, 'pill--off': g.off || !allowed.includes(t) }"
-                    @click="pickTarget(g, t)">{{ t.toUpperCase() }}</view>
-            </view>
+        <view class="group">
+          <view class="group__head">
+            <text class="group__name">目标格式</text>
+            <text class="group__off">共 {{ allowed.length }} 种</text>
           </view>
+          <view class="pills">
+            <view v-for="t in allowed" :key="t" class="pill"
+                  :class="{ 'pill--on': target === t }"
+                  @click="pickTarget(t)">{{ t.toUpperCase() }}</view>
+          </view>
+        </view>
+        <view class="group group--off">
+          <view class="group__head">
+            <text class="group__name">音视频</text>
+            <text class="group__off">未启用</text>
+          </view>
+          <text class="group__tip">当前版本不支持音视频转换（需 FFmpeg 环境）</text>
         </view>
       </block>
 
@@ -105,14 +109,6 @@ import { request } from '@/api/request'
 import { STORAGE_KEYS } from '@/utils/auth'
 import { BASE_URL } from '@/config/env'
 
-const GROUPS = [
-  { key: 'image', label: '图片', items: ['jpg', 'png', 'webp', 'bmp', 'tiff'] },
-  { key: 'pdf', label: 'PDF', items: ['png', 'jpg', 'docx', 'txt', 'md'] },
-  { key: 'docx', label: 'Word', items: ['pdf', 'txt', 'html', 'md'] },
-  { key: 'pptx', label: '演示文稿', items: ['pdf', 'png', 'jpg'] },
-  { key: 'data', label: '表格 / 数据', items: ['csv', 'xlsx', 'json', 'txt'] },
-  { key: 'av', label: '音视频', items: ['mp4', 'mp3'], off: true }
-]
 
 const file = ref(null)
 const target = ref('')
@@ -121,15 +117,15 @@ const state = ref('pick')
 const result = ref({ fileName: '', fileUrl: '', size: 0 })
 const errorMsg = ref('')
 
-const groupList = computed(() => GROUPS)
-
 const goBack = () => uni.navigateBack()
 const clearFile = () => { file.value = null; target.value = ''; state.value = 'pick' }
 const restart = () => { file.value = null; target.value = ''; state.value = 'pick'; errorMsg.value = '' }
 
-const pickTarget = (g, t) => {
-  if (g.off) { uni.showToast({ title: '音视频转换未启用', icon: 'none' }); return }
-  if (!allowed.value.includes(t)) { uni.showToast({ title: '该格式不支持此转换', icon: 'none' }); return }
+const pickTarget = (t) => {
+  if (!allowed.value.includes(t)) {
+    uni.showToast({ title: '该格式不支持此转换', icon: 'none' })
+    return
+  }
   target.value = target.value === t ? '' : t
 }
 
