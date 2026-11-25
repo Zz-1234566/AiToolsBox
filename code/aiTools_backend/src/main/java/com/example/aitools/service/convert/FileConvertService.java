@@ -36,7 +36,8 @@ public class FileConvertService {
     private static final Map<String, List<String>> TARGETS = new LinkedHashMap<>();
     static {
         TARGETS.put("image", List.of("jpg", "png", "webp", "bmp", "tiff", "gif"));
-        TARGETS.put("pdf", List.of("png", "jpg", "docx", "txt", "md", "html", "pptx", "xlsx"));
+        // 实测：PDF 转 PPTX 转换服务不支持，已移除，避免用户选了才失败
+        TARGETS.put("pdf", List.of("png", "jpg", "docx", "txt", "md", "html", "xlsx"));
         TARGETS.put("docx", List.of("pdf", "txt", "html", "md"));
         TARGETS.put("pptx", List.of("pdf", "png", "jpg"));
         TARGETS.put("data", List.of("csv", "xlsx", "json", "xml", "html", "txt"));
@@ -53,10 +54,28 @@ public class FileConvertService {
         return null;
     }
 
-    /** 可转目标（已排除音视频） */
+    /** 可转目标（已排除音视频；同时剔除与源相同的格式，避免「自己转自己」） */
     public List<String> targetsFor(String ext) {
         String c = categoryOf(ext);
-        return c == null ? List.of() : TARGETS.getOrDefault(c, List.of());
+        if (c == null) {
+            return List.of();
+        }
+        String e = ext == null ? "" : ext.toLowerCase().replaceFirst("^\\.", "");
+        if ("jpg".equals(e)) {
+            e = "jpg";
+        }
+        String self = e;
+        List<String> out = new java.util.ArrayList<>();
+        for (String t : TARGETS.getOrDefault(c, List.of())) {
+            // jpeg 与 jpg 视为同一格式
+            boolean same = t.equals(self)
+                    || ("jpeg".equals(self) && "jpg".equals(t))
+                    || ("jpg".equals(self) && "jpeg".equals(t));
+            if (!same) {
+                out.add(t);
+            }
+        }
+        return out;
     }
 
     /**
