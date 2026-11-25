@@ -378,7 +378,11 @@ public class AgentToolCatalog {
             if (q > 0) {
                 clean = clean.substring(0, q);
             }
-            String srcName = clean.contains("/") ? clean.substring(clean.lastIndexOf('/') + 1) : clean;
+            String srcName = params == null ? null : params.get("fileName");
+            if (srcName == null || srcName.isBlank()) {
+                // 兜底：用 URL 末段（COS 对象名是 UUID，扩展名仍可用）
+                srcName = clean.contains("/") ? clean.substring(clean.lastIndexOf('/') + 1) : clean;
+            }
             if (srcName.isBlank() || !srcName.contains(".")) {
                 srcName = "input.bin";
             }

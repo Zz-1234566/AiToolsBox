@@ -321,6 +321,15 @@ public class AgentServiceImpl implements AgentService {
                 if (tf != null && !String.valueOf(tf).isBlank()) {
                     toolParams.put("targetFormat", String.valueOf(tf));
                 }
+                // 附件的真实文件名（COS 对象名是 UUID，转换产物会跟着变成 UUID）
+                if (attachments != null) {
+                    for (AgentAttachment att : attachments) {
+                        if (att.getFileRef() != null && att.getFileRef().equals(input)) {
+                            toolParams.put("fileName", att.getFileName());
+                            break;
+                        }
+                    }
+                }
                 com.example.aitools.agent.ToolResult toolResult =
                         catalog.invoke(tool, input, toolParams, userId, runId);
                 toolOutput = toolResult.getText();
