@@ -436,7 +436,8 @@ $ref-bg: var(--bg-page);
 /* 图片去背景 宽卡 */
 .wide {
   margin: 10rpx 40rpx 0;
-  background: var(--bg-gray);
+  /* 与下方「最近使用」列表统一白底：色差原本是设计稿遗留，观感上像两块不同层级的残片 */
+  background: var(--bg-card);
   border-radius: 32rpx;
   padding: 22rpx 24rpx;
   display: flex;

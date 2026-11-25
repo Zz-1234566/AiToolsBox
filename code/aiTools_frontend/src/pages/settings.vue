@@ -3,28 +3,7 @@
     <page-header :title="$t('settings.title')" showBack></page-header>
 
     <scroll-view scroll-y class="page-content">
-      <!-- 外观设置 -->
-      <view class="settings-group">
-        <view class="group-title">{{ $t('settings.appearance') }}</view>
-        <view class="group-card">
-          <view class="setting-item">
-            <view class="item-left">
-              <view class="item-icon dark-icon">
-                <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </view>
-              <text class="item-text">{{ $t('settings.darkTheme') }}</text>
-            </view>
-            <view class="theme-switch" @click="toggleTheme">
-              <view class="switch-track" :class="{ active: isDarkTheme }">
-                <view class="switch-thumb"></view>
-              </view>
-            </view>
-          </view>
-        </view>
-      </view>
-
+      <!-- 外观：深浅色主题已下线，下一步接入「界面风格」切换 -->
       <!-- 语言设置 -->
       <view class="settings-group">
         <view class="group-title">{{ $t('settings.language') }}</view>
@@ -177,7 +156,6 @@ import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { useI18n } from 'vue-i18n'
 import PageHeader from '@/components/PageHeader.vue'
-import { initTheme, toggleTheme as doToggleTheme } from '@/utils/theme'
 import { requireLogin, STORAGE_KEYS } from '@/utils/auth'
 import { logoutApi } from '@/api/user'
 import { getBaseUrl, setBaseUrl, resetBaseUrl } from '@/config/env'
@@ -185,7 +163,6 @@ import { getBaseUrl, setBaseUrl, resetBaseUrl } from '@/config/env'
 const { t, locale } = useI18n()
 
 const isLoggedIn = ref(false)
-const isDarkTheme = ref(initTheme())
 const isEnglish = ref(locale.value === 'en')
 const appVersion = ref('1.0.0')
 /** 当前生效的后端地址（App 真机需填电脑局域网 IP） */
@@ -228,14 +205,6 @@ const onEditServer = () => {
   })
 }
 
-const toggleTheme = () => {
-  isDarkTheme.value = !isDarkTheme.value
-  doToggleTheme(isDarkTheme.value)
-  uni.showToast({
-    title: isDarkTheme.value ? t('toast.darkEnabled') : t('toast.lightEnabled'),
-    icon: 'none'
-  })
-}
 
 const toggleLanguage = () => {
   isEnglish.value = !isEnglish.value
@@ -266,7 +235,7 @@ const clearCache = () => {
   uni.showModal({
     title: t('modal.clearCacheTitle'),
     content: t('modal.clearCacheContent'),
-    confirmColor: isDarkTheme.value ? '#F0F0F0' : 'var(--text-primary)',
+    confirmColor: 'var(--text-primary)',
     success: (res) => {
       if (res.confirm) {
         uni.showToast({ title: t('toast.cacheCleared'), icon: 'none' })
@@ -441,39 +410,6 @@ const goToAbout = () => {
   }
 }
 
-.theme-switch,
-.lang-switch {
-  flex-shrink: 0;
-
-  .switch-track {
-    width: 96rpx;
-    height: 56rpx;
-    border-radius: $radius-pill;
-    background-color: $bg-gray;
-    position: relative;
-    transition: background-color 0.2s ease;
-
-    &.active {
-      background-color: $text-primary;
-
-      .switch-thumb {
-        transform: translateX(40rpx);
-      }
-    }
-  }
-
-  .switch-thumb {
-    width: 48rpx;
-    height: 48rpx;
-    border-radius: $radius-pill;
-    background-color: var(--bg-card);
-    position: absolute;
-    top: 4rpx;
-    left: 4rpx;
-    box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.15);
-    transition: transform 0.2s ease;
-  }
-}
 
 .version-info {
   display: flex;

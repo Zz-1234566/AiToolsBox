@@ -284,6 +284,17 @@
           "animationDuration": 300
         }
       }
+    },
+    {
+      "path": "pages/skills",
+      "style": {
+        "navigationBarTitleText": "技能管理",
+        "navigationStyle": "custom",
+        "app-plus": {
+          "animationType": "slide-in-right",
+          "animationDuration": 300
+        }
+      }
     }
   ],
   "globalStyle": {
