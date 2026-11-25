@@ -74,6 +74,25 @@ export const nameFromPath = (p, fallback = '文件') => {
  * @param {string} [opts.fileLabel='文件'] 文案里的文件名（如「录音文件」），用于拼提示
  * @returns {Promise<PickResult>} 选择结果（永不 reject）
  */
+/**
+ * 尝试加载「文件选择」原生插件（App 端）。
+ * 接入方式：插件市场导入 uni_modules 后，把插件名加到下面的候选列表里。
+ * 没装插件时返回 null，调用方走 notSupported() 兜底。
+ */
+function tryNativeFilePicker() {
+  // #ifdef APP-PLUS
+  const candidates = ['FilePicker', 'XL-FilePicker', 'tian-FilePicker']
+  for (const name of candidates) {
+    try {
+      // eslint-disable-next-line no-undef
+      const mod = uni.requireNativePlugin ? uni.requireNativePlugin(name) : null
+      if (mod && typeof mod.pick === 'function') return mod
+    } catch (e) { /* 忽略：插件未安装 */ }
+  }
+  // #endif
+  return null
+}
+
 export const pickFiles = (opts = {}) => {
   const count = Math.max(1, opts.count || 1)
   const accept = opts.accept || ''
@@ -235,7 +254,36 @@ export const pickFiles = (opts = {}) => {
     })
   }
 
-  // 走到这里 = 当前平台（App 端）没有文件选择器
+  // #ifdef APP-PLUS
+  // App 端：uni 没有文档选择 API，尝试原生插件「文件选择」。
+  // 插件市场常见插件名：FilePicker / XL-FilePicker / tian-FilePicker，
+  // 接入后在 manifest.json → App原生插件配置 里勾选，离线打包需集成到原生工程。
+  const nativePicker = tryNativeFilePicker()
+  if (nativePicker) {
+    return new Promise((resolve) => {
+      nativePicker.pick(
+        { count, extensions: exts },
+        (res) => {
+          const list = (res && res.files ? res.files : []).map((f) => ({
+            fileName: f.name || nameFromPath(f.path || ''),
+            file: null,
+            path: f.path || '',
+            size: f.size || 0
+          }))
+          const valid = list.filter((f) => allowed(f.fileName))
+          if (!valid.length) {
+            resolve({ ok: false, files: [], reason: 'empty' })
+            return
+          }
+          resolve({ ok: true, files: valid.slice(0, count) })
+        },
+        (err) => resolve(failed(err))
+      )
+    })
+  }
+  // #endif
+
+  // 走到这里 = 当前平台没有可用的文件选择器
   return Promise.resolve(notSupported())
   // #endif
 }

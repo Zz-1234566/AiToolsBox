@@ -152,8 +152,18 @@ const pickFile = () => {
     fail: () => {}
   })
   // #endif
-  // #ifndef H5
-  uni.showToast({ title: '请在网页端使用文件转换', icon: 'none' })
+  // #ifdef APP-PLUS
+  // App 端：uni 无文档选择 API。先按图片处理（chooseImage 全平台可用），
+  // 需要转 PDF/Word 时再引导用户去网页端。
+  uni.chooseImage({
+    count: 1,
+    success: (res) => {
+      const p = (res.tempFilePaths || [])[0]
+      const f = (res.tempFiles || [])[0] || {}
+      if (p) upload({ path: p, size: f.size || 0, name: f.name || '' })
+    },
+    fail: () => {}
+  })
   // #endif
 }
 
