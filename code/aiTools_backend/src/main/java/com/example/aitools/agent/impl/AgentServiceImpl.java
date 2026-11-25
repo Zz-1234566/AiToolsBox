@@ -87,6 +87,7 @@ public class AgentServiceImpl implements AgentService {
 
     /** 用户画像服务：注入画像 + 运行后异步抽取 */
     private final com.example.aitools.service.AgentProfileService agentProfileService;
+    private final com.example.aitools.agent.skill.SkillRegistry skillRegistry;
 
     @Override
     public String run(Long userId, String sessionId, String goal, List<AgentAttachment> attachments,
@@ -149,7 +150,7 @@ public class AgentServiceImpl implements AgentService {
             // 1) 工具清单（DB 生成）+ system 提示词
             List<AgentToolCatalog.AgentTool> tools = catalog.listTools();
             String profileText = agentProfileService.getProfileText(userId);
-            String systemPrompt = promptBuilder.buildSystemPrompt(tools, attachments, profileText);
+            String systemPrompt = promptBuilder.buildSystemPrompt(tools, attachments, profileText, skillRegistry.indexText());
 
             // 2) 凭据（BYOK：用户自己的模型 Key 优先）—— 压缩也要用它调模型
             ResolvedCredential cred = resolveCred(userId, modelCode);
@@ -320,6 +321,15 @@ public class AgentServiceImpl implements AgentService {
                 Object tf = action.getArgs() == null ? null : action.getArgs().get("targetFormat");
                 if (tf != null && !String.valueOf(tf).isBlank()) {
                     toolParams.put("targetFormat", String.valueOf(tf));
+                }
+                // doc-render 需要整篇正文与标题
+                Object mdArg = action.getArgs() == null ? null : action.getArgs().get("markdown");
+                if (mdArg != null && !String.valueOf(mdArg).isBlank()) {
+                    toolParams.put("markdown", String.valueOf(mdArg));
+                }
+                Object titleArg = action.getArgs() == null ? null : action.getArgs().get("title");
+                if (titleArg != null && !String.valueOf(titleArg).isBlank()) {
+                    toolParams.put("title", String.valueOf(titleArg));
                 }
                 // 附件的真实文件名（COS 对象名是 UUID，转换产物会跟着变成 UUID）
                 if (attachments != null) {

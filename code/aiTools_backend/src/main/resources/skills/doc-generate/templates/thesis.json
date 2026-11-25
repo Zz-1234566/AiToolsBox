@@ -1,0 +1,38 @@
+{
+  "name": "本科毕业论文",
+  "source": "广州商学院本科毕业论文（设计）通用模板（实测参数）",
+  "page": {
+    "top": 2.3,
+    "bottom": 2.3,
+    "left": 3.17,
+    "right": 2.59
+  },
+  "style": {
+    "body_font": "宋体",
+    "body_font_en": "Times New Roman",
+    "h_font": "宋体",
+    "h_font_en": "Times New Roman",
+    "body_size": 12,
+    "h1_size": 14,
+    "h2_size": 12,
+    "h3_size": 12,
+    "h4_size": 12,
+    "line_spacing": 1.5,
+    "indent_chars": 2
+  },
+  "sections": [
+    "摘要",
+    "Abstract",
+    "目录",
+    "第一章 绪论",
+    "第二章 相关技术",
+    "第三章 需求分析",
+    "第四章 系统设计",
+    "第五章 系统实现",
+    "第六章 系统测试",
+    "第七章 总结与展望",
+    "参考文献",
+    "致谢"
+  ],
+  "note": "标题与正文同为宋体，标题仅加粗放大（Heading 1 basedOn Normal）"
+}

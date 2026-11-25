@@ -27,7 +27,7 @@ public class AgentPromptBuilder {
      */
     public String buildSystemPrompt(List<AgentToolCatalog.AgentTool> tools,
                                      List<AgentAttachment> attachments) {
-        return buildSystemPrompt(tools, attachments, null);
+        return buildSystemPrompt(tools, attachments, null, null);
     }
 
     /**
@@ -38,6 +38,13 @@ public class AgentPromptBuilder {
     public String buildSystemPrompt(List<AgentToolCatalog.AgentTool> tools,
                                      List<AgentAttachment> attachments,
                                      String profileText) {
+        return buildSystemPrompt(tools, attachments, profileText, null);
+    }
+
+    public String buildSystemPrompt(List<AgentToolCatalog.AgentTool> tools,
+                                     List<AgentAttachment> attachments,
+                                     String profileText,
+                                     String skillIndex) {
         StringBuilder sb = new StringBuilder();
         if (profileText != null && !profileText.isBlank()) {
             sb.append("【用户长期偏好（仅作表达风格参考，与本会话内容无关）】\n");
@@ -100,6 +107,13 @@ public class AgentPromptBuilder {
         }
 
         sb.append('\n').append(describeAttachments(attachments));
+
+        // 技能索引：只放摘要，正文由 read-skill 按需加载（渐进式披露）
+        sb.append("\n【可用技能】\n");
+        sb.append("技能 = 一套完整的工作流程与写作规范，不是单次工具调用。\n");
+        sb.append("需要写整份文档（介绍书/方案/周报/PPT/表格）时，先调 read-skill 读技能，按流程执行。\n");
+        sb.append(skillIndex == null || skillIndex.isBlank() ? "（暂无技能）\n" : skillIndex);
+        sb.append('\n');
 
         sb.append("""
 

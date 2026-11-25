@@ -66,6 +66,10 @@ public class AgentToolCatalog {
     public static final String TOOL_BG_REMOVER = "image-bg-remover";
     /** 内置工具：文件格式转换（本地转换服务） */
     public static final String TOOL_FILE_CONVERT = "file-convert";
+    /** 内置工具：读取技能完整流程 */
+    public static final String TOOL_READ_SKILL = "read-skill";
+    /** 内置工具：Markdown 渲染成 docx */
+    public static final String TOOL_DOC_RENDER = "doc-render";
 
     private final AiToolMapper aiToolMapper;
     private final AiPromptTemplateService promptTemplateService;
@@ -78,6 +82,8 @@ public class AgentToolCatalog {
     private final com.example.aitools.service.SegmentationService segmentationService;
     private final com.example.aitools.service.FileStorageService fileStorageService;
     private final com.example.aitools.service.convert.FileConvertService fileConvertService;
+    private final com.example.aitools.agent.skill.SkillRegistry skillRegistry;
+    private final com.example.aitools.service.doc.Md2DocxService md2DocxService;
 
     /**
      * 智能体可用工具。
@@ -165,6 +171,8 @@ public class AgentToolCatalog {
         tools.add(builtinVisionTool());
         tools.add(builtinBgRemoverTool());
         tools.add(builtinFileConvertTool());
+        tools.add(builtinReadSkillTool());
+        tools.add(builtinDocRenderTool());
         log.info("[agent] 可用工具 {} 个：{}", tools.size(),
                 tools.stream().map(AgentTool::getCode).toList());
         return tools;
@@ -185,6 +193,12 @@ public class AgentToolCatalog {
         }
         if (TOOL_FILE_CONVERT.equals(code.trim())) {
             return builtinFileConvertTool();
+        }
+        if (TOOL_READ_SKILL.equals(code.trim())) {
+            return builtinReadSkillTool();
+        }
+        if (TOOL_DOC_RENDER.equals(code.trim())) {
+            return builtinDocRenderTool();
         }
         AiTool t = aiToolMapper.selectOne(new LambdaQueryWrapper<AiTool>()
                 .eq(AiTool::getToolCode, code.trim())
@@ -270,6 +284,29 @@ public class AgentToolCatalog {
         }
         long start = System.currentTimeMillis();
         try {
+            // 读取技能：返回正文给模型
+            if (TOOL_READ_SKILL.equals(tool.getCode())) {
+                String name = params == null ? null : params.get("skill");
+                var sk = skillRegistry.get(name, userId);
+                if (sk != null) {
+                    skillRegistry.markUsed(name);
+                }
+                String text = sk == null ? ("技能不存在：" + name + "（可用："
+                        + String.join("、", skillRegistry.all().stream().map(x -> x.getName()).toList()) + "）")
+                        : sk.getBody();
+                if (historyId != null) {
+                    historyService.completeHistory(historyId, brief(text), (int) (System.currentTimeMillis() - start));
+                }
+                return ToolResult.text(text);
+            }
+            // 渲染文档：Markdown → docx → COS
+            if (TOOL_DOC_RENDER.equals(tool.getCode())) {
+                ToolResult r = runDocRender(input, params);
+                if (historyId != null) {
+                    historyService.completeHistory(historyId, brief(r.getText()), (int) (System.currentTimeMillis() - start));
+                }
+                return r;
+            }
             // 文件转换工具：附件字节 → 转换服务 → 新文件落 COS
             if (TOOL_FILE_CONVERT.equals(tool.getCode())) {
                 ToolResult fileResult = runFileConvertTool(tool, input, params);
@@ -353,12 +390,53 @@ public class AgentToolCatalog {
                 "image", "image", List.of());
     }
 
+    /** 内置：读取技能正文（渐进式披露，避免一次性把所有流程塞进上下文） */
+    private AgentTool builtinReadSkillTool() {
+        return new AgentTool(null, TOOL_READ_SKILL, "读取技能",
+                "按名称读取某个技能的完整流程与规范。写整份文档前必须先读对应技能。"
+                        + "args: {\"skill\":\"doc-generate\"}",
+                "text", "text", List.of());
+    }
+
+    /** 内置：Markdown 渲染成 docx 并落 COS，返回可下载文件 */
+    private AgentTool builtinDocRenderTool() {
+        return new AgentTool(null, TOOL_DOC_RENDER, "渲染文档",
+                "把整篇 Markdown 渲染成 docx 文件并返回下载链接。"
+                        + "args: {\"markdown\":\"整篇正文\",\"title\":\"文档标题\"}",
+                "text", "file", List.of());
+    }
+
     /** 内置的格式转换工具（走本地 FastAPI 转换服务；输出文件） */
     private AgentTool builtinFileConvertTool() {
         return new AgentTool(null, TOOL_FILE_CONVERT, "文件格式转换",
                 "把附件换成另一种格式并返回新文件。支持：图片(jpg/png/webp)；PDF→png/jpg/docx/txt；"
                         + "Word→pdf/txt；PPT→pdf/png；Excel↔CSV。args 用 targetFormat 指定目标格式",
                 "file", "file", List.of());
+    }
+
+    /** Markdown → docx → COS，返回文件产物 */
+    private ToolResult runDocRender(String input, Map<String, String> params) {
+        String md = params == null ? null : params.get("markdown");
+        if (md == null || md.isBlank()) {
+            md = input;   // 兼容：正文直接作为工具输入
+        }
+        if (md == null || md.isBlank()) {
+            throw new IllegalStateException("缺少 markdown 正文");
+        }
+        String title = params == null ? null : params.get("title");
+        if (title == null || title.isBlank()) {
+            title = "文档";
+        }
+        try {
+            byte[] docx = md2DocxService.render(md, title);
+            String fileName = title + (title.endsWith(".docx") ? "" : ".docx");
+            com.example.aitools.dto.FileUploadResponse up = fileStorageService.store(docx, fileName, null, "file");
+            String url = up.getFileUrl();
+            return ToolResult.files("文档已生成：" + fileName + "（" + docx.length + " 字节），可直接下载：" + url,
+                    List.of(new ToolResult.FileArtifact(url, fileName, docx.length)));
+        } catch (Exception e) {
+            throw new IllegalStateException("渲染失败：" + e.getMessage(), e);
+        }
     }
 
     /**
