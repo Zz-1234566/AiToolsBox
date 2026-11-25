@@ -35,22 +35,22 @@ public class FileConvertService {
     /** 各组支持的源扩展名 → 可转目标 */
     private static final Map<String, List<String>> TARGETS = new LinkedHashMap<>();
     static {
-        TARGETS.put("image", List.of("jpg", "png", "webp", "bmp", "tiff", "gif"));
-        // 实测：PDF 转 PPTX 转换服务不支持，已移除，避免用户选了才失败
-        TARGETS.put("pdf", List.of("png", "jpg", "docx", "txt", "md", "html", "xlsx"));
-        TARGETS.put("docx", List.of("pdf", "txt", "html", "md"));
-        TARGETS.put("pptx", List.of("pdf", "png", "jpg"));
-        TARGETS.put("data", List.of("csv", "xlsx", "json", "xml", "html", "txt"));
+        // 只保留高频格式：图片（jpg/png/webp）、PDF、Word、PPT、表格
+        TARGETS.put("image", List.of("jpg", "png", "webp"));
+        TARGETS.put("pdf", List.of("png", "jpg", "docx", "txt"));
+        TARGETS.put("docx", List.of("pdf", "txt"));
+        TARGETS.put("pptx", List.of("pdf", "png"));
+        TARGETS.put("data", List.of("csv", "xlsx"));
     }
 
     /** 按源扩展名判断所属类别（不在表里的不支持） */
     public static String categoryOf(String ext) {
         String e = ext == null ? "" : ext.toLowerCase().replaceFirst("^\\.", "");
-        if (List.of("jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif", "gif").contains(e)) return "image";
+        if (List.of("jpg", "jpeg", "png", "webp").contains(e)) return "image";
         if ("pdf".equals(e)) return "pdf";
-        if (List.of("docx", "doc").contains(e)) return "docx";
-        if (List.of("pptx", "ppt").contains(e)) return "pptx";
-        if (List.of("csv", "xlsx", "xls", "json", "xml", "html", "txt").contains(e)) return "data";
+        if ("docx".equals(e)) return "docx";
+        if ("pptx".equals(e)) return "pptx";
+        if (List.of("csv", "xlsx").contains(e)) return "data";
         return null;
     }
 

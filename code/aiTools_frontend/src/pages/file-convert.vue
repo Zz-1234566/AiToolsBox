@@ -21,7 +21,7 @@
           </svg>
         </view>
         <text class="upload__t">点击选择文件</text>
-        <text class="upload__d">支持图片 / PDF / Word / PPT / 表格，单个不超过 50MB</text>
+        <text class="upload__d">支持 PDF / Word / PPT / Excel / 图片（JPG/PNG/WEBP），单个不超过 50MB</text>
       </view>
 
       <!-- 2. 已选文件 -->

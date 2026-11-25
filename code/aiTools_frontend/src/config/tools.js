@@ -192,7 +192,7 @@ export const TOOLS = {
     desc: '图片 / PDF / Word / PPT / 表格 格式互转，本地处理不走云端。',
     inputTypes: ['file'], defaultInput: 'file', fileType: 'file',
     fileRule: {
-      accept: '.png,.jpg,.jpeg,.webp,.bmp,.tiff,.gif,.pdf,.docx,.pptx,.csv,.xlsx,.json,.txt',
+      accept: '.png,.jpg,.jpeg,.webp,.pdf,.docx,.pptx,.csv,.xlsx',
       maxCount: 1
     }
   },
