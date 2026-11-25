@@ -47,13 +47,7 @@
                   @click="pickTarget(t)">{{ t.toUpperCase() }}</view>
           </view>
         </view>
-        <view class="group group--off">
-          <view class="group__head">
-            <text class="group__name">音视频</text>
-            <text class="group__off">未启用</text>
-          </view>
-          <text class="group__tip">当前版本不支持音视频转换（需 FFmpeg 环境）</text>
-        </view>
+
       </block>
 
       <!-- 4. 转换中 -->
@@ -265,7 +259,6 @@ onLoad(() => { state.value = 'pick' })
 .sec-title { display: block; margin: 0 32rpx 16rpx; font-size: 30rpx; font-weight: 700; color: var(--text-primary); }
 .groups { display: flex; flex-direction: column; gap: 20rpx; }
 .group { margin: 0 32rpx; padding: 24rpx; border-radius: 20rpx; background: var(--bg-card, #fff); }
-.group--off { opacity: .55; }
 .group__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16rpx; }
 .group__name { font-size: 28rpx; font-weight: 600; color: var(--text-primary); }
 .group__off { font-size: 22rpx; color: var(--text-tertiary); }
